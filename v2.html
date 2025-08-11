@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Life of Factions — v1.1</title>
+  <style>
+    :root{
+      --bg:#0f1220; --panel:#171a2b; --panel-2:#1f2340; --text:#e8ecff; --muted:#9aa2d6; --accent:#7bdcff; --good:#60e6a8; --bad:#ff6d7a; --warn:#ffd166;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#0e1020,#0b0e1a);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Inter,Arial}
+    h1{font-size:18px;margin:0 0 6px}
+    h2{font-size:15px;margin:0 0 6px;color:var(--muted)}
+    .app{display:grid;grid-template-columns:320px 1fr 340px;gap:12px;padding:12px;height:100%}
+    .card{background:linear-gradient(180deg,var(--panel),var(--panel-2));border:1px solid #262b55;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.25);padding:12px;min-height:0}
+    .controls label{display:block;margin:10px 0 4px;color:var(--muted)}
+    .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+    .row > *{flex:1}
+    input[type="range"]{width:100%}
+    input[type="number"]{background:#0e1130;border:1px solid #2b316a;color:var(--text);border-radius:8px;padding:6px}
+    button{cursor:pointer;background:#1e7fd6;border:0;color:white;padding:8px 12px;border-radius:10px;font-weight:600;box-shadow:0 3px 0 #115493}
+    button.secondary{background:#2a2f66;box-shadow:0 3px 0 #1b1f4b}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    .stat{background:#0f1335;border:1px solid #2b316a;border-radius:10px;padding:8px;text-align:center}
+    .stat .n{font-weight:800;font-size:18px}
+    canvas{width:100%;height:100%;display:block;background:#0b0e1a;border-radius:14px;border:1px solid #262b55}
+    .canvasWrap{position:relative}
+    .hud{position:absolute;left:8px;top:8px;background:rgba(10,12,25,.7);backdrop-filter:blur(6px);padding:6px 8px;border-radius:8px;border:1px solid #2b316a;font-size:12px}
+    .list{height:45vh;overflow:auto;border:1px solid #2b316a;border-radius:10px;padding:8px;background:#0d1030}
+    .logItem{padding:6px 8px;border-bottom:1px dashed #2b316a}
+    .logItem:last-child{border-bottom:0}
+    .pill{display:inline-block;padding:2px 6px;border-radius:999px;font-size:11px;margin-right:6px}
+    .pill.good{background:rgba(96,230,168,.15);color:var(--good);border:1px solid rgba(96,230,168,.4)}
+    .pill.bad{background:rgba(255,109,122,.15);color:var(--bad);border:1px solid rgba(255,109,122,.4)}
+    .pill.info{background:rgba(123,220,255,.12);color:var(--accent);border:1px solid rgba(123,220,255,.4)}
+    .kv{display:grid;grid-template-columns:110px 1fr;gap:6px;margin-bottom:8px}
+    .muted{color:var(--muted)}
+    .filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+    .filters label{display:flex;align-items:center;gap:6px;background:#0f1335;padding:4px 6px;border-radius:8px;border:1px solid #2b316a}
+    .gridline{position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none}
+    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="card controls">
+      <h1>Life of Factions</h1>
+      <h2>Simulation Controls</h2>
+      <div class="row" style="gap:8px;margin:8px 0 6px">
+        <button id="btnStart">Start</button>
+        <button id="btnPause" class="secondary" disabled>Pause</button>
+        <button id="btnResume" class="secondary" disabled>Resume</button>
+      </div>
+
+      <label>Starting Agents <span class="muted" id="lblAgents">20</span></label>
+      <input id="rngAgents" type="range" min="20" max="300" step="1" value="20" />
+
+      <label>Speed <span class="muted" id="lblSpeed">50%</span></label>
+      <input id="rngSpeed" type="range" min="5" max="300" step="1" value="50" />
+
+      <label>Crop Spawn Multiplier <span class="muted" id="lblSpawn">1.0×</span></label>
+      <input id="rngSpawn" type="range" min="0.1" max="5" step="0.1" value="1" />
+
+      <div class="row" style="margin-top:8px">
+        <button id="btnSpawnCrop" class="secondary">Spawn Crop</button>
+      </div>
+
+      <h2 style="margin-top:12px">Stats</h2>
+      <div class="stats" id="stats">
+        <div class="stat"><div class="muted">Agents</div><div class="n" id="stAgents">0</div></div>
+        <div class="stat"><div class="muted">Factions</div><div class="n" id="stFactions">0</div></div>
+        <div class="stat"><div class="muted">Crops</div><div class="n" id="stCrops">0</div></div>
+        <div class="stat"><div class="muted">Farms</div><div class="n" id="stFarms">0</div></div>
+        <div class="stat"><div class="muted">Walls</div><div class="n" id="stWalls">0</div></div>
+        <div class="stat"><div class="muted">Flags</div><div class="n" id="stFlags">0</div></div>
+      </div>
+
+      <h2 style="margin-top:12px">Factions</h2>
+      <div class="list" id="factionsList"></div>
+    </div>
+
+    <div class="card canvasWrap">
+      <canvas id="canvas" width="1000" height="1000"></canvas>
+      <div class="hud mono" id="hud">tick:0 | fps:0</div>
+    </div>
+
+    <div class="card">
+      <h2>Inspector</h2>
+      <div id="inspector">
+        <div class="muted">Click an agent on the canvas.</div>
+      </div>
+
+      <h2 style="margin-top:10px">Event Log</h2>
+      <div class="filters" id="logFilters"></div>
+      <div class="list" id="logList"></div>
+    </div>
+  </div>
+
+<script>
+// ==========================
+// World & Simulation (v1.1)
+// ==========================
+(() => {
+  const CELL = 16;
+  const GRID = 62; // 62x62 => 992px
+  const WORLD_PX = GRID * CELL; // 992
+  const CANVAS_PX = 1000; // viewport
+  const OFFSET = Math.floor((CANVAS_PX - WORLD_PX)/2); // center letterbox
+
+  // ---- Tunables (Section 5 defaults) ----
+  const TUNE = {
+    moveEnergy: 0.15,
+    actionCost: {talk:0.5, quarrel:1.0, attack:2.5, heal:3.0, help:2.0, attack_wall:1.5, attack_flag:2.0, reproduce:4.0},
+    cropGain: 22,
+    starvationSeconds: 18,
+    healAuraRadius: 4,
+    healAuraPerTick: 0.6,
+    baseDamage: 8,
+    wallHp:[10,15],
+    flagHp:[12,18],
+    farmBoostRadius:3,
+    factionThreshold:0.6,
+    factionMinSize:2,
+    greenBaseSpawnProb: 0.0009,
+    buildWallChance: 0.0002,
+  };
+
+  const ACTION_DURATIONS = {
+    talk:[1200,2600], quarrel:[1200,2600], attack:[1200,2600], heal:[1200,2600], help:[1200,2600],
+    attack_wall:[1200,2600], attack_flag:[1200,2600], reproduce:[3500,6000]
+  };
+  const ACTION_BASE_ADDED = 5000; // +5s to every action baseline
+
+  const COLORS = {
+    agentFill: '#e6e9ff',
+    crop:'#3adf7e',
+    farm:'#edd65a',
+    wall:'#9aa2d6',
+    wallDam:'#ff7b8b',
+    flag:'#e06aff',
+    hp:'#60e6a8',
+    energy:'#7bdcff',
+    grid:'#1a1e3f'
+  };
+
+  // ---- Utilities ----
+  const rnd = (a,b)=> Math.random()*(b-a)+a;
+  const rndi = (a,b)=> Math.floor(rnd(a,b+1));
+  const clamp=(v,min,max)=> v<min?min:(v>max?max:v);
+  const key=(x,y)=> `${x},${y}`;
+  const fromKey=k=>{const [x,y]=k.split(',').map(Number); return {x,y}};
+  const name6 = ()=> Array.from({length:6},()=> (Math.random()<0.5? String.fromCharCode(65+rndi(0,25)) : String(rndi(0,9)))).join('');
+
+  // Ring buffer log
+  class RingLog{
+    constructor(limit=100){this.limit=limit;this.arr=[]}
+    push(item){this.arr.push(item); if(this.arr.length>this.limit) this.arr.shift()}
+    list(filters){if(!filters||filters.size===0) return [...this.arr]; return this.arr.filter(x=>filters.has(x.cat))}
+  }
+
+  // ---- Data Structures ----
+  class World{
+    constructor(){
+      this.walls=new Map();
+      this.crops=new Map();
+      this.farms=new Map();
+      this.flags=new Map(); // factionId->Flag
+      this.agents=[];
+      this.agentsById=new Map();
+      this.agentsByCell=new Map();
+      this.factions=new Map(); // id->{id, members:Set, color}
+      this.log=new RingLog(100);
+      this.logFilters=new Set();
+      this.tick=0;
+      this.speedPct=50; // default
+      this.spawnMult=1.0;
+      this.running=false;
+      this.selectedId=null;
+    }
+  }
+
+  // ---- Pathfinding (A*) ----
+  function astar(start,goal,isBlocked){
+    const h=(x,y)=> Math.abs(x-goal.x)+Math.abs(y-goal.y);
+    const open = new Map();
+    const came = new Map();
+    const g = new Map();
+    const f = new Map();
+    const sk=(x,y)=> key(x,y);
+    const neighbors = (x,y)=> [[x+1,y],[x-1,y],[x,y+1],[x,y-1]].filter(([nx,ny])=> nx>=0&&ny>=0&&nx<GRID&&ny<GRID && !isBlocked(nx,ny));
+
+    const sK=sk(start.x,start.y);
+    g.set(sK,0); f.set(sK,h(start.x,start.y)); open.set(sK,[start.x,start.y]);
+
+    while(open.size){
+      // get node with lowest f
+      let currentKey=null, current=null, best=Infinity;
+      for(const [k,xy] of open){ const fv=f.get(k) ?? Infinity; if(fv<best){best=fv; currentKey=k; current=xy;}}
+      if(!current) break;
+      const [cx,cy]=current; if(cx===goal.x && cy===goal.y){
+        // reconstruct
+        const path=[]; let ck=currentKey; while(ck){ const {x,y}=fromKey(ck); path.push({x,y}); ck=came.get(ck);} return path.reverse();
+      }
+      open.delete(currentKey);
+      for(const [nx,ny] of neighbors(cx,cy)){
+        const nk=sk(nx,ny); const tentative=(g.get(currentKey)??Infinity)+1;
+        if(tentative < (g.get(nk)??Infinity)){
+          came.set(nk,currentKey); g.set(nk,tentative); f.set(nk,tentative+h(nx,ny));
+          if(!open.has(nk)) open.set(nk,[nx,ny]);
+        }
+      }
+    }
+    return null;
+  }
+
+  // ---- Initialization ----
+  const world = new World();
+
+  // UI refs
+  const $ = sel=>document.querySelector(sel);
+  const canvas = $('#canvas'); const hud=$('#hud');
+  const ctx = canvas.getContext('2d');
+  const btnStart=$('#btnStart'), btnPause=$('#btnPause'), btnResume=$('#btnResume');
+  const rngAgents=$('#rngAgents'), lblAgents=$('#lblAgents');
+  const rngSpeed=$('#rngSpeed'), lblSpeed=$('#lblSpeed');
+  const rngSpawn=$('#rngSpawn'), lblSpawn=$('#lblSpawn');
+  const btnSpawnCrop=$('#btnSpawnCrop');
+  const stAgents=$('#stAgents'), stFactions=$('#stFactions'), stCrops=$('#stCrops'), stFarms=$('#stFarms'), stWalls=$('#stWalls'), stFlags=$('#stFlags');
+  const factionsList=$('#factionsList');
+  const inspector=$('#inspector');
+  const logList=$('#logList');
+  const logFilters=$('#logFilters');
+
+  const LOG_CATS = ['talk','quarrel','attack','heal','help','attack_wall','attack_flag','reproduce','harvest','share','build','destroy','death','faction','level'];
+  function setupLogFilters(){
+    LOG_CATS.forEach(cat=>{
+      const id='flt_'+cat; const w=document.createElement('label');
+      w.innerHTML=`<input type="checkbox" id="${id}" checked /> ${cat}`;
+      logFilters.appendChild(w);
+      const cb = w.querySelector('input');
+      cb.addEventListener('change',()=>{
+        if(cb.checked) world.logFilters.delete(cat); else world.logFilters.add(cat);
+        renderLog();
+      });
+      // default: show all => filters set excludes cat
+    });
+  }
+  setupLogFilters();
+
+  // Random initial farms/walls for interest
+  function seedEnvironment(){
+    // farms
+    for(let i=0;i<4;i++){
+      const x=rndi(5,GRID-6), y=rndi(5,GRID-6); world.farms.set(key(x,y),{id:crypto.randomUUID(),x,y});
+    }
+    // sparse walls
+    for(let i=0;i<40;i++){
+      const x=rndi(0,GRID-1), y=rndi(0,GRID-1); const k=key(x,y);
+      if(world.walls.has(k)) continue;
+      world.walls.set(k,{id:crypto.randomUUID(),x,y,hp:rndi(TUNE.wallHp[0],TUNE.wallHp[1]),maxHp:TUNE.wallHp[1]});
+    }
+  }
+
+  function addAgentAt(x,y){
+    const id=crypto.randomUUID();
+    const a={id, name:name6(), cellX:x, cellY:y, health:100, maxHealth:100, energy:100, attack:TUNE.baseDamage, level:1, ageTicks:0, starvingSeconds:0, factionId:null, relationships:new Map(), path:null, pathIdx:0, action:null};
+    world.agents.push(a); world.agentsById.set(id,a); world.agentsByCell.set(key(x,y),id); return a;
+  }
+
+  function randomFreeCell(){
+    for(let tries=0; tries<5000; tries++){
+      const x=rndi(0,GRID-1), y=rndi(0,GRID-1); const k=key(x,y);
+      if(world.agentsByCell.has(k)) continue;
+      if(world.walls.has(k)) continue;
+      if([...world.flags.values()].some(f=> f.x===x && f.y===y)) continue;
+      return {x,y};
+    }
+    return {x:0,y:0};
+  }
+
+  function spawnAgents(n){
+    for(let i=0;i<n;i++){ const {x,y}=randomFreeCell(); addAgentAt(x,y); }
+  }
+
+  function addCrop(x,y){ const k=key(x,y); if(world.crops.has(k)) return false; if(world.walls.has(k)) return false; world.crops.set(k,{id:crypto.randomUUID(),x,y}); logEvt('harvest', 'spawned crop', null,{x,y}); return true; }
+
+  // ---- Logging ----
+  function logEvt(cat,msg,actorId,extra={}){ world.log.push({t:performance.now(), cat, msg, actorId, extra}); }
+
+  // ---- Factions ----
+  const FACTION_COLORS = ['#ff5252','#42a5f5','#66bb6a','#ffa726','#ab47bc','#26c6da','#ec407a','#8d6e63'];
+
+  function recomputeFactions(){
+    // Build graph where edge if rel>=threshold
+    const ids = world.agents.map(a=>a.id);
+    const idx = new Map(ids.map((id,i)=>[id,i]));
+    const parent = ids.map((_,i)=>i);
+    const find=i=> parent[i]===i? i : (parent[i]=find(parent[i]));
+    const union=(a,b)=>{a=find(a); b=find(b); if(a!==b) parent[b]=a};
+
+    for(const a of world.agents){
+      for(const [bid,val] of a.relationships){ if(val>=TUNE.factionThreshold && world.agentsById.has(bid)) union(idx.get(a.id), idx.get(bid)); }
+    }
+    // groups
+    const groups = new Map();
+    ids.forEach((id,i)=>{ const r=find(i); if(!groups.has(r)) groups.set(r,[]); groups.get(r).push(id); });
+
+    // assign factions only to groups meeting min size
+    const newFactions = new Map();
+    let colorIdx=0;
+    for(const [_,members] of groups){
+      if(members.length>=TUNE.factionMinSize){
+        const fid = members.sort().join('|').slice(0,8)+"-"+members.length; // stable-ish id
+        const color = FACTION_COLORS[colorIdx++ % FACTION_COLORS.length];
+        newFactions.set(fid,{id:fid, members:new Set(members), color});
+      }
+    }
+    // update agents, create/remove flags
+    const prevFlags = new Set(world.flags.keys());
+
+    for(const a of world.agents){
+      let newFid = null;
+      for(const [fid, f] of newFactions){ if(f.members.has(a.id)){ newFid=fid; break; } }
+      if(a.factionId !== newFid){
+        const old=a.factionId; a.factionId=newFid;
+        logEvt('faction', `${a.name} now ${newFid? 'in faction '+newFid : 'factionless'}`, a.id, {from:old,to:newFid});
+      }
+    }
+
+    // create flags for new factions
+    const nextFlags = new Map();
+    for(const [fid,f] of newFactions){
+      if(world.flags.has(fid)) { nextFlags.set(fid, world.flags.get(fid)); continue; }
+      // place flag near centroid of members
+      const cells=[...f.members].map(id=> world.agentsById.get(id)).map(a=>({x:a.cellX,y:a.cellY}));
+      const cx=Math.round(cells.reduce((s,c)=>s+c.x,0)/cells.length); const cy=Math.round(cells.reduce((s,c)=>s+c.y,0)/cells.length);
+      let spot={x:cx,y:cy};
+      if(world.agentsByCell.has(key(cx,cy))||world.walls.has(key(cx,cy))) spot=randomFreeCell();
+      nextFlags.set(fid,{id:crypto.randomUUID(), factionId:fid, x:spot.x, y:spot.y, hp:rndi(TUNE.flagHp[0],TUNE.flagHp[1]), maxHp:TUNE.flagHp[1]});
+      logEvt('faction', `Faction ${fid} formed flag @${spot.x},${spot.y}`, null, {factionId:fid});
+    }
+    world.flags = nextFlags;
+
+    // flags with no members should be removed
+    for(const fid of prevFlags){ if(!world.flags.has(fid)) logEvt('destroy', `Flag ${fid} removed`, null, {factionId:fid}); }
+
+    // materialize factions map (with colors)
+    world.factions = new Map();
+    for(const [fid,f] of newFactions){ world.factions.set(fid,{id:fid, members:f.members, color: (world.flags.get(fid)?.color) || (FACTION_COLORS[[...newFactions.keys()].indexOf(fid)%FACTION_COLORS.length])}); }
+  }
+
+  // ---- Simulation helpers ----
+  function isBlocked(x,y,ignoreId=null){
+    if(x<0||y<0||x>=GRID||y>=GRID) return true;
+    const k=key(x,y);
+    if(world.walls.has(k)) return true;
+    if([...world.flags.values()].some(f=> f.x===x && f.y===y)) return true;
+    const occ=world.agentsByCell.get(k); if(occ && occ!==ignoreId) return true;
+    return false;
+  }
+
+  function findNearest(a, coll){
+    let best=null, bestD=1e9;
+    for(const it of coll){ const d=Math.abs(a.cellX-it.x)+Math.abs(a.cellY-it.y); if(d<bestD){bestD=d; best=it;} }
+    return best? {target:best, dist:bestD} : null;
+  }
+
+  function planPathTo(a, gx,gy){
+    const path = astar({x:a.cellX,y:a.cellY},{x:gx,y:gy},(x,y)=> isBlocked(x,y,a.id));
+    a.path = path; a.pathIdx=0;
+  }
+
+  function tryStartAction(a,type,payload){
+    if(a.action) return false;
+    const [mn,mx]=ACTION_DURATIONS[type];
+    a.action = {type, remainingMs: (rndi(mn,mx)+ACTION_BASE_ADDED), tickCounterMs:0, payload};
+    return true;
+  }
+
+  // Relationship helper
+  function getRel(a,bId){ return a.relationships.get(bId) ?? 0; }
+  function setRel(a,bId,val){ a.relationships.set(bId, clamp(val,-1,1)); }
+
+  function harvestAt(a,x,y){
+    const k=key(x,y); const crop=world.crops.get(k); if(!crop) return false;
+    world.crops.delete(k);
+    a.energy += TUNE.cropGain;
+    logEvt('harvest', `${a.name} harvested`, a.id, {x,y});
+    // share with adjacent faction members
+    let shared=0;
+    if(a.factionId){
+      const adj=[[x+1,y],[x-1,y],[x,y+1],[x,y-1]];
+      for(const [nx,ny] of adj){
+        const id=world.agentsByCell.get(key(nx,ny)); if(!id) continue; const b=world.agentsById.get(id);
+        if(b.factionId===a.factionId){ const s=TUNE.cropGain*0.35; b.energy+=s; shared+=s; logEvt('share', `${a.name} shared ${s.toFixed(1)} with ${b.name}`, a.id, {to:b.id}); }
+      }
+    }
+    return true;
+  }
+
+  function considerInteract(a){
+    // Look for adjacent agent
+    const adj=[[a.cellX+1,a.cellY],[a.cellX-1,a.cellY],[a.cellX,a.cellY+1],[a.cellX,a.cellY-1]];
+    for(const [nx,ny] of adj){
+      const id=world.agentsByCell.get(key(nx,ny)); if(!id) continue; const b=world.agentsById.get(id);
+      const rel=getRel(a,b.id);
+      // decide action based on hostility bias
+      const otherFaction = (a.factionId && b.factionId && a.factionId!==b.factionId) || (!a.factionId && b.factionId) || (a.factionId && !b.factionId);
+      const hostileBias = otherFaction || rel<0 ? 0.65 : 0.25;
+      const r=Math.random();
+      if(r<hostileBias){
+        // attack or quarrel
+        if(Math.random()<0.6){ tryStartAction(a,'attack',{targetId:b.id}); return; }
+        else { tryStartAction(a,'quarrel',{targetId:b.id}); return; }
+      }else{
+        if(Math.random()<0.6){ tryStartAction(a,'talk',{targetId:b.id}); return; }
+        else if(Math.random()<0.2){ tryStartAction(a,'heal',{targetId:b.id}); return; }
+        else if(Math.random()<0.2){ tryStartAction(a,'help',{targetId:b.id}); return; }
+      }
+    }
+    // maybe reproduce with friendly adjacent
+    for(const [nx,ny] of adj){
+      const id=world.agentsByCell.get(key(nx,ny)); if(!id) continue; const b=world.agentsById.get(id);
+      const rel=getRel(a,b.id);
+      if(rel>=0.5 && a.energy>60 && b.energy>60){ if(tryStartAction(a,'reproduce',{targetId:b.id})) return; }
+    }
+  }
+
+  function processAction(a, dtMs){
+    if(!a.action) return;
+    const act=a.action; act.remainingMs -= dtMs; act.tickCounterMs += dtMs;
+    const costPerMs = (TUNE.actionCost[act.type]||1)/1000;
+    a.energy -= costPerMs * dtMs;
+    if(act.tickCounterMs>=700){ act.tickCounterMs=0; // periodic effects
+      const targ = act.payload?.targetId ? world.agentsById.get(act.payload.targetId) : null;
+      if(act.type==='attack' && targ){
+        targ.health -= a.attack * 0.35; logEvt('attack', `${a.name} hit ${targ.name}`, a.id, {to:targ.id});
+      } else if(act.type==='heal' && targ){
+        targ.health = Math.min(targ.maxHealth, targ.health + 2.0); logEvt('heal', `${a.name} healed ${targ.name}`, a.id, {to:targ.id});
+      } else if(act.type==='help' && targ){
+        if(targ.action){ targ.action.remainingMs *= 0.5; logEvt('help', `${a.name} helped ${targ.name}`, a.id, {to:targ.id}); }
+      } else if(act.type==='quarrel' && targ){
+        const delta = (Math.random()<0.5? -0.1 : 0.1) * (a.factionId===targ.factionId? 0.6 : 1);
+        setRel(a,targ.id, getRel(a,targ.id)+delta);
+        setRel(targ,a.id, getRel(targ,a.id)+delta);
+        logEvt('quarrel', `${a.name} ${delta>0? 'made peace with' : 'argued with'} ${targ.name}`, a.id, {to:targ.id, delta});
+      } else if(act.type==='talk' && targ){
+        const delta = (Math.random()<0.7? +0.1 : -0.08) * (a.factionId===targ.factionId? 1.1 : 0.7);
+        setRel(a,targ.id, getRel(a,targ.id)+delta);
+        setRel(targ,a.id, getRel(targ,a.id)+delta);
+        logEvt('talk', `${a.name} talked with ${targ.name}`, a.id, {to:targ.id, delta});
+      }
+    }
+    if(act.remainingMs<=0){
+      // finish
+      const targ = act.payload?.targetId ? world.agentsById.get(act.payload.targetId) : null;
+      if(act.type==='attack' && targ){ if(targ.health<=0){} }
+      if(act.type==='reproduce' && targ){
+        // if both still adjacent and energy ok
+        if(Math.abs(a.cellX-targ.cellX)+Math.abs(a.cellY-targ.cellY)===1){
+          const spots=[[a.cellX+1,a.cellY],[a.cellX-1,a.cellY],[a.cellX,a.cellY+1],[a.cellX,a.cellY-1]];
+          const free=spots.find(([x,y])=> !isBlocked(x,y));
+          if(free){ a.energy-=20; targ.energy-=20; const [x,y]=free; const child=addAgentAt(x,y); child.energy=60; child.health=80; logEvt('reproduce', `${a.name} & ${targ.name} had ${child.name}`, a.id, {child:child.id}); }
+        }
+      }
+      a.action=null;
+    }
+  }
+
+  function tryBuildWall(a){ if(Math.random()<TUNE.buildWallChance){ const adj=[[a.cellX+1,a.cellY],[a.cellX-1,a.cellY],[a.cellX,a.cellY+1],[a.cellX,a.cellY-1]]; const free=adj.filter(([x,y])=> !isBlocked(x,y)); if(free.length){ const [x,y]=free[rndi(0,free.length-1)]; const k=key(x,y); world.walls.set(k,{id:crypto.randomUUID(),x,y,hp:rndi(TUNE.wallHp[0],TUNE.wallHp[1]),maxHp:TUNE.wallHp[1]}); logEvt('build', `${a.name} built wall`, a.id, {x,y}); }} }
+
+  function applyFlagHealing(){ for(const a of world.agents){ if(!a.factionId) continue; const flag=world.flags.get(a.factionId); if(!flag) continue; const d=Math.abs(a.cellX-flag.x)+Math.abs(a.cellY-flag.y); if(d<=TUNE.healAuraRadius){ a.health = Math.min(a.maxHealth, a.health+TUNE.healAuraPerTick); } } }
+
+  function cleanDead(){
+    // agents
+    world.agents = world.agents.filter(a=>{
+      if(a.health<=0){ world.agentsByCell.delete(key(a.cellX,a.cellY)); world.agentsById.delete(a.id); logEvt('death', `${a.name} died`, a.id, {}); return false;} return true; });
+    // flags destroyed (hp<=0)
+    for(const [fid,f] of [...world.flags]){ if(f.hp<=0 || !world.agents.some(a=>a.factionId===fid)){ world.flags.delete(fid); logEvt('destroy', `Flag ${fid} destroyed`, null, {factionId:fid}); } }
+    // walls destroyed
+    for(const [k,w] of [...world.walls]){ if(w.hp<=0){ world.walls.delete(k); logEvt('destroy', `Wall @${w.x},${w.y} destroyed`, null, {}); } }
+  }
+
+  function maybeSpawnCrops(){
+    const base = TUNE.greenBaseSpawnProb * world.spawnMult;
+    // bias near farms
+    for(let y=0;y<GRID;y++){
+      for(let x=0;x<GRID;x++){
+        if(world.crops.has(key(x,y))||world.walls.has(key(x,y))||world.agentsByCell.has(key(x,y))) continue;
+        let prob = base;
+        // proximity multiplier
+        for(const fm of world.farms.values()){
+          const d = Math.abs(x-fm.x)+Math.abs(y-fm.y);
+          if(d<=TUNE.farmBoostRadius){ prob *= (1 + (TUNE.farmBoostRadius - d + 1)); }
+        }
+        if(Math.random()<prob){ world.crops.set(key(x,y),{id:crypto.randomUUID(),x,y}); }
+      }
+    }
+  }
+
+  function levelCheck(a){ if(a.energy>220){ a.level++; a.maxHealth+=8; a.attack+=1.5; a.energy=140; logEvt('level', `${a.name} leveled to ${a.level}`, a.id, {}); } }
+
+  // ---- Main update step ----
+  const BASE_TICK_MS=40; // fixed logic delta
+  let lastTs=0, acc=0, fps=0, fpsAcc=0, fpsCount=0;
+
+  function updateTick(){
+    world.tick++;
+
+    // 1) crop spawns
+    maybeSpawnCrops();
+
+    // 2) per agent
+    for(const a of world.agents){
+      a.ageTicks++;
+      // ambient health decay a tiny bit
+      a.health -= 0.01;
+
+      // in action?
+      if(a.action){ processAction(a, BASE_TICK_MS); }
+      else{
+        // harvest underfoot or adjacent if standing on crop
+        if(world.crops.has(key(a.cellX,a.cellY))) harvestAt(a,a.cellX,a.cellY);
+        else{
+          // if adjacent crop, move into it
+          const adjTargets=[[a.cellX+1,a.cellY],[a.cellX-1,a.cellY],[a.cellX,a.cellY+1],[a.cellX,a.cellY-1]];
+          for(const [nx,ny] of adjTargets){ if(world.crops.has(key(nx,ny))){ planPathTo(a,nx,ny); break; } }
+        }
+
+        // if no path, plan to nearest crop; else wander
+        if(!a.path){
+          const near = findNearest(a, world.crops.values());
+          if(near) planPathTo(a, near.target.x, near.target.y);
+          else if(Math.random()<0.2){ const rx=clamp(a.cellX + rndi(-4,4),0,GRID-1), ry=clamp(a.cellY + rndi(-4,4),0,GRID-1); if(!isBlocked(rx,ry,a.id)) planPathTo(a,rx,ry); }
+        }
+
+        // move one step
+        if(a.path && a.pathIdx < a.path.length){
+          const step = a.path[a.pathIdx];
+          if(!isBlocked(step.x,step.y,a.id)){
+            // update occupancy
+            world.agentsByCell.delete(key(a.cellX,a.cellY));
+            a.cellX=step.x; a.cellY=step.y; world.agentsByCell.set(key(a.cellX,a.cellY),a.id);
+            a.pathIdx++;
+            a.energy -= TUNE.moveEnergy;
+            // harvest if stepped onto crop
+            if(world.crops.has(key(a.cellX,a.cellY))) harvestAt(a,a.cellX,a.cellY);
+          } else { a.path=null; }
+        } else { a.path=null; }
+
+        // interact
+        if(Math.random()<0.35) considerInteract(a);
+
+        // maybe build
+        if(Math.random()<0.02) tryBuildWall(a);
+      }
+
+      // starvation
+      if(a.energy<=0){ a.starvingSeconds += BASE_TICK_MS/1000; if(a.starvingSeconds> TUNE.starvationSeconds){ a.health=0; } }
+      else a.starvingSeconds=0;
+
+      levelCheck(a);
+    }
+
+    // 3) recompute factions (periodically)
+    if(world.tick%25===0) recomputeFactions();
+
+    // 4) flag heal aura
+    applyFlagHealing();
+
+    // 5) remove destroyed/dead
+    cleanDead();
+
+    // 6) UI updated in render
+  }
+
+  function render(){
+    // clear
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    // letterbox background already dark; draw grid area outline
+    ctx.save();
+    ctx.translate(OFFSET,OFFSET);
+
+    // grid
+    ctx.strokeStyle=COLORS.grid; ctx.lineWidth=1; ctx.beginPath();
+    for(let i=0;i<=GRID;i++){ ctx.moveTo(0,i*CELL+.5); ctx.lineTo(WORLD_PX,i*CELL+.5); }
+    for(let i=0;i<=GRID;i++){ ctx.moveTo(i*CELL+.5,0); ctx.lineTo(i*CELL+.5,WORLD_PX); }
+    ctx.stroke();
+
+    // crops
+    for(const c of world.crops.values()){
+      ctx.fillStyle=COLORS.crop; ctx.fillRect(c.x*CELL+3, c.y*CELL+3, CELL-6, CELL-6);
+    }
+    // farms
+    for(const f of world.farms.values()){
+      ctx.fillStyle=COLORS.farm; ctx.fillRect(f.x*CELL+2, f.y*CELL+2, CELL-4, CELL-4);
+    }
+    // walls
+    for(const w of world.walls.values()){
+      const dmg = 1 - (w.hp/w.maxHp);
+      ctx.fillStyle=COLORS.wall; ctx.fillRect(w.x*CELL+1, w.y*CELL+1, CELL-2, CELL-2);
+      if(dmg>0){ ctx.fillStyle=COLORS.wallDam; ctx.globalAlpha=clamp(dmg,0,0.7); ctx.fillRect(w.x*CELL+1, w.y*CELL+1, CELL-2, CELL-2); ctx.globalAlpha=1; }
+    }
+
+    // flags
+    for(const f of world.flags.values()){
+      ctx.fillStyle=COLORS.flag; ctx.fillRect(f.x*CELL+6, f.y*CELL+2, 3, CELL-4); // pole
+      ctx.fillRect(f.x*CELL+9, f.y*CELL+4, CELL-8, 8); // banner
+    }
+
+    // agents
+    for(const a of world.agents){
+      const x=a.cellX*CELL, y=a.cellY*CELL;
+      // body
+      ctx.fillStyle=COLORS.agentFill; ctx.fillRect(x+3,y+3,CELL-6,CELL-6);
+      // border by faction
+      const col = a.factionId ? (world.factions.get(a.factionId)?.color || '#ffffff') : '#6b7280';
+      ctx.strokeStyle=col; ctx.lineWidth=2; ctx.strokeRect(x+2.5,y+2.5,CELL-5,CELL-5);
+      // hp bar
+      const hpw = Math.max(0,Math.floor((CELL-6)*(a.health/a.maxHealth)));
+      ctx.fillStyle=COLORS.hp; ctx.fillRect(x+3, y+1, hpw, 2);
+      // action glyph
+      if(a.action){ ctx.fillStyle=COLORS.energy; ctx.fillRect(x+6, y-5, 6, 3); }
+    }
+
+    ctx.restore();
+
+    // HUD
+    hud.textContent = `tick:${world.tick} | fps:${fps.toFixed(0)} | agents:${world.agents.length}`;
+
+    // stats
+    stAgents.textContent = world.agents.length;
+    stFactions.textContent = world.factions.size;
+    stCrops.textContent = world.crops.size;
+    stFarms.textContent = world.farms.size;
+    stWalls.textContent = world.walls.size;
+    stFlags.textContent = world.flags.size;
+
+    // factions panel
+    factionsList.innerHTML='';
+    for(const [fid,f] of world.factions){
+      const color = FACTION_COLORS[[...world.factions.keys()].indexOf(fid)%FACTION_COLORS.length];
+      const div=document.createElement('div');
+      const members=[...f.members].map(id=>world.agentsById.get(id)).filter(Boolean);
+      const avgLvl = (members.reduce((s,a)=>s+a.level,0)/(members.length||1)).toFixed(1);
+      const flag = world.flags.get(fid);
+      div.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin:6px 0">
+        <div style="width:12px;height:12px;border-radius:3px;background:${color}"></div>
+        <div class="mono" style="flex:1">${fid}</div>
+      </div>
+      <div class="kv">
+        <div class="muted">Members</div><div>${members.length}</div>
+        <div class="muted">Avg level</div><div>${avgLvl}</div>
+        <div class="muted">Flag</div><div>${flag? `${flag.x},${flag.y} (${flag.hp}/${flag.maxHp})` : '—'}</div>
+      </div>`;
+      factionsList.appendChild(div);
+    }
+  }
+
+  function loop(ts){
+    if(!lastTs) lastTs=ts; const dt=ts-lastTs; lastTs=ts;
+    // fps
+    fpsAcc+=dt; fpsCount++; if(fpsAcc>=500){ fps = 1000/(fpsAcc/fpsCount); fpsAcc=0; fpsCount=0; }
+
+    if(world.running){
+      const effTick = BASE_TICK_MS / (world.speedPct/100);
+      acc += dt;
+      while(acc>=effTick){ updateTick(); acc -= effTick; }
+    }
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  // ---- Inspector ----
+  canvas.addEventListener('click', (e)=>{
+    const rect=canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left - OFFSET;
+    const py = e.clientY - rect.top - OFFSET;
+    const x = Math.floor(px/CELL), y=Math.floor(py/CELL);
+    if(x<0||y<0||x>=GRID||y>=GRID) return;
+    const id = world.agentsByCell.get(key(x,y));
+    world.selectedId = id || null; updateInspector();
+  });
+
+  function updateInspector(){
+    if(!world.selectedId){ inspector.innerHTML='<div class="muted">Click an agent on the canvas.</div>'; return; }
+    const a = world.agentsById.get(world.selectedId); if(!a){ inspector.innerHTML='<div class="muted">(agent gone)</div>'; return; }
+    const relCount = a.relationships.size;
+    inspector.innerHTML = `
+      <div class="kv">
+        <div class="muted">Name</div><div class="mono">${a.name}</div>
+        <div class="muted">Faction</div><div>${a.factionId || '—'}</div>
+        <div class="muted">Level</div><div>${a.level}</div>
+        <div class="muted">Attack</div><div>${a.attack.toFixed(1)}</div>
+        <div class="muted">HP</div><div>${a.health.toFixed(1)} / ${a.maxHealth.toFixed(0)}</div>
+        <div class="muted">Energy</div><div>${a.energy.toFixed(1)}</div>
+        <div class="muted">Age (ticks)</div><div>${a.ageTicks}</div>
+        <div class="muted">Relationships</div><div>${relCount}</div>
+        <div class="muted">Action</div><div>${a.action? a.action.type : '—'}</div>
+        <div class="muted">Remaining</div><div>${a.action? (a.action.remainingMs/1000).toFixed(1)+'s' : '—'}</div>
+      </div>
+    `;
+  }
+
+  // ---- Event Log ----
+  function renderLog(){
+    const items = world.log.list(world.logFilters);
+    logList.innerHTML = items.slice(-100).reverse().map(it=>{
+      const cls = it.cat==='attack'||it.cat==='quarrel'||it.cat==='destroy'||it.cat==='death' ? 'bad' : (it.cat==='heal'||it.cat==='help'||it.cat==='share'||it.cat==='faction'||it.cat==='level' ? 'good':'info');
+      return `<div class="logItem"><span class="pill ${cls}">${it.cat}</span>${it.msg}</div>`;
+    }).join('');
+  }
+
+  // periodic UI updates
+  setInterval(()=>{ updateInspector(); renderLog(); }, 400);
+
+  // ---- Controls ----
+  rngAgents.addEventListener('input', ()=> lblAgents.textContent=rngAgents.value);
+  rngSpeed.addEventListener('input', ()=>{ lblSpeed.textContent=rngSpeed.value+'%'; world.speedPct=Number(rngSpeed.value); });
+  rngSpawn.addEventListener('input', ()=>{ lblSpawn.textContent=Number(rngSpawn.value).toFixed(1)+'×'; world.spawnMult=Number(rngSpawn.value); });
+
+  btnStart.addEventListener('click', ()=>{
+    if(world.running) return;
+    // reset world
+    world.walls.clear(); world.crops.clear(); world.farms.clear(); world.flags.clear(); world.agents.length=0; world.agentsById.clear(); world.agentsByCell.clear(); world.factions.clear(); world.log=new RingLog(100); world.tick=0; world.selectedId=null;
+    world.speedPct = Number(rngSpeed.value);
+    world.spawnMult = Number(rngSpawn.value);
+    seedEnvironment();
+    spawnAgents(Number(rngAgents.value));
+    world.running=true; btnStart.disabled=true; btnPause.disabled=false; btnResume.disabled=true; logEvt('info','Simulation started',null,{});
+  });
+  btnPause.addEventListener('click', ()=>{ world.running=false; btnPause.disabled=true; btnResume.disabled=false; });
+  btnResume.addEventListener('click', ()=>{ world.running=true; btnPause.disabled=false; btnResume.disabled=true; });
+  btnSpawnCrop.addEventListener('click', ()=>{ const {x,y}=randomFreeCell(); addCrop(x,y); render(); });
+
+  // Kick off RAF loop
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
