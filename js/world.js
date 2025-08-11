@@ -14,6 +14,7 @@ export class World {
     this.factions = new Map();
     this.log = new RingLog(100);
     this.activeLogCats = new Set(LOG_CATS);
+    this.activeLogAgentId
     this.tick = 0;
     this.speedPct = 50;
     this.spawnMult = 1.0;

@@ -25,8 +25,14 @@ export class RingLog {
     this.arr.push(item);
     if (this.arr.length > this.limit) this.arr.shift();
   }
-  list(activeSet) {
+  list(activeSet, agentId = null) {
     if (!activeSet || activeSet.size === 0) return [];
-    return this.arr.filter((x) => activeSet.has(x.cat));
+    return this.arr.filter((x) => {
+      if (!activeSet.has(x.cat)) return false;
+      if (!agentId) return true;
+      const to = x.extra?.to ?? null;
+      const targetId = x.extra?.targetId ?? null; // future-proofing
+      return x.actorId === agentId || to === agentId || targetId === agentId;
+    });
   }
 }

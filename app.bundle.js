@@ -138,9 +138,15 @@
           this.arr.push(item);
           if (this.arr.length > this.limit) this.arr.shift();
         }
-        list(activeSet) {
+        list(activeSet, agentId = null) {
           if (!activeSet || activeSet.size === 0) return [];
-          return this.arr.filter((x) => activeSet.has(x.cat));
+          return this.arr.filter((x) => {
+            if (!activeSet.has(x.cat)) return false;
+            if (!agentId) return true;
+            const to = x.extra?.to ?? null;
+            const targetId = x.extra?.targetId ?? null;
+            return x.actorId === agentId || to === agentId || targetId === agentId;
+          });
         }
       };
     }
@@ -659,6 +665,7 @@
       this.factions = /* @__PURE__ */ new Map();
       this.log = new RingLog(100);
       this.activeLogCats = new Set(LOG_CATS);
+      this.activeLogAgentId;
       this.tick = 0;
       this.speedPct = 50;
       this.spawnMult = 1;
@@ -829,6 +836,46 @@
     btns.appendChild(all);
     btns.appendChild(none);
     logFilters.appendChild(btns);
+    const agentRow = document.createElement("div");
+    agentRow.style.marginTop = "8px";
+    const agentLabel = document.createElement("label");
+    agentLabel.textContent = "Agent";
+    agentLabel.style.display = "block";
+    agentLabel.style.margin = "10px 0 4px";
+    const agentSelect = document.createElement("select");
+    agentSelect.id = "agentFilter";
+    agentSelect.style.width = "100%";
+    agentSelect.style.background = "#0e1130";
+    agentSelect.style.border = "1px solid #2b316a";
+    agentSelect.style.color = "var(--text)";
+    agentSelect.style.borderRadius = "8px";
+    agentSelect.style.padding = "6px";
+    const rebuildAgentOptions = () => {
+      const cur = world.activeLogAgentId;
+      const opts = [{ value: "", label: "All agents" }].concat(
+        world.agents.map((a) => ({
+          value: a.id,
+          label: `${a.name} (${a.id.slice(0, 4)})`
+        }))
+      );
+      agentSelect.innerHTML = "";
+      for (const o of opts) {
+        const opt = document.createElement("option");
+        opt.value = o.value;
+        opt.textContent = o.label;
+        if (cur === o.value) opt.selected = true;
+        agentSelect.appendChild(opt);
+      }
+    };
+    rebuildAgentOptions();
+    agentSelect.addEventListener("change", () => {
+      world.activeLogAgentId = agentSelect.value || null;
+      renderLog2();
+    });
+    agentRow.appendChild(agentLabel);
+    agentRow.appendChild(agentSelect);
+    logFilters.appendChild(agentRow);
+    setInterval(rebuildAgentOptions, 1500);
     all.addEventListener("click", () => {
       world.activeLogCats = new Set(LOG_CATS);
       LOG_CATS.forEach(
@@ -845,7 +892,7 @@
     });
   }
   function renderLog(world, logList) {
-    const items = world.log.list(world.activeLogCats);
+    const items = world.log.list(world.activeLogCats, world.activeLogAgentId);
     logList.innerHTML = items.slice(-100).reverse().map((it) => {
       const cls = it.cat === "attack" || it.cat === "quarrel" || it.cat === "destroy" || it.cat === "death" ? "bad" : it.cat === "heal" || it.cat === "help" || it.cat === "share" || it.cat === "faction" || it.cat === "level" ? "good" : "info";
       return `<div class="logItem"><span class="pill ${cls}">${it.cat}</span>${it.msg}</div>`;

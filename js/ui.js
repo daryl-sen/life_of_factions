@@ -72,6 +72,49 @@ export function setupLogFilters(world, logFilters, renderLog) {
   btns.appendChild(all);
   btns.appendChild(none);
   logFilters.appendChild(btns);
+  // Agent filter UI
+  const agentRow = document.createElement("div");
+  agentRow.style.marginTop = "8px";
+  const agentLabel = document.createElement("label");
+  agentLabel.textContent = "Agent";
+  agentLabel.style.display = "block";
+  agentLabel.style.margin = "10px 0 4px";
+  const agentSelect = document.createElement("select");
+  agentSelect.id = "agentFilter";
+  agentSelect.style.width = "100%";
+  agentSelect.style.background = "#0e1130";
+  agentSelect.style.border = "1px solid #2b316a";
+  agentSelect.style.color = "var(--text)";
+  agentSelect.style.borderRadius = "8px";
+  agentSelect.style.padding = "6px";
+
+  const rebuildAgentOptions = () => {
+    const cur = world.activeLogAgentId;
+    const opts = [{ value: "", label: "All agents" }].concat(
+      world.agents.map((a) => ({
+        value: a.id,
+        label: `${a.name} (${a.id.slice(0, 4)})`,
+      }))
+    );
+    agentSelect.innerHTML = "";
+    for (const o of opts) {
+      const opt = document.createElement("option");
+      opt.value = o.value;
+      opt.textContent = o.label;
+      if (cur === o.value) opt.selected = true;
+      agentSelect.appendChild(opt);
+    }
+  };
+  rebuildAgentOptions();
+  agentSelect.addEventListener("change", () => {
+    world.activeLogAgentId = agentSelect.value || null;
+    renderLog();
+  });
+  agentRow.appendChild(agentLabel);
+  agentRow.appendChild(agentSelect);
+  logFilters.appendChild(agentRow);
+  // keep options fresh as agents spawn/die
+  setInterval(rebuildAgentOptions, 1500);
   all.addEventListener("click", () => {
     world.activeLogCats = new Set(LOG_CATS);
     LOG_CATS.forEach(
@@ -89,7 +132,7 @@ export function setupLogFilters(world, logFilters, renderLog) {
 }
 
 export function renderLog(world, logList) {
-  const items = world.log.list(world.activeLogCats);
+  const items = world.log.list(world.activeLogCats, world.activeLogAgentId);
   logList.innerHTML = items
     .slice(-100)
     .reverse()
