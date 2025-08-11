@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Life of Factions — v1.1 (Republish)</title>
+    <title>Life of Factions — v1.2 (Low-Energy Seeking + Shape Update)</title>
     <style>
       :root {
         --bg: #0f1220;
@@ -336,9 +336,9 @@
         const CANVAS_PX = 1000; // viewport
         const OFFSET = Math.floor((CANVAS_PX - WORLD_PX) / 2); // center letterbox
 
-        // ====== Tunables / Balance (adjusted to prevent starvation) ======
+        // ====== Tunables / Balance ======
         const TUNE = {
-          moveEnergy: 0.12, // was 0.15
+          moveEnergy: 0.12, // slightly cheaper to move
           actionCost: {
             talk: 0.4,
             quarrel: 0.8,
@@ -360,6 +360,7 @@
           factionThreshold: 0.6,
           factionMinSize: 2,
           buildWallChance: 0.0002,
+          energyLowThreshold: 40, // NEW: when energy < this, seek food immediately
         };
         const ACTION_DURATIONS = {
           talk: [1200, 2600],
@@ -371,7 +372,7 @@
           attack_flag: [1200, 2600],
           reproduce: [3500, 6000],
         };
-        const ACTION_BASE_ADDED = 5000; // +5s to each action baseline (per spec)
+        const ACTION_BASE_ADDED = 5000; // +5s per spec
 
         const COLORS = {
           agentFill: "#e6e9ff",
@@ -384,7 +385,6 @@
           energy: "#7bdcff",
           grid: "#1a1e3f",
         };
-
         const FACTION_COLORS = [
           "#ff5252",
           "#42a5f5",
@@ -440,14 +440,14 @@
             this.log = new RingLog(100);
             this.logFilters = new Set();
             this.tick = 0;
-            this.speedPct = 50; // default 50% (slower)
+            this.speedPct = 50;
             this.spawnMult = 1.0;
             this.running = false;
             this.selectedId = null;
           }
         }
 
-        // ====== A* Pathfinding ======
+        // ====== A* ======
         function astar(start, goal, isBlocked) {
           const h = (x, y) => Math.abs(x - goal.x) + Math.abs(y - goal.y);
           const open = new Map();
@@ -469,12 +469,10 @@
                 ny < GRID &&
                 !isBlocked(nx, ny)
             );
-
           const sK = sk(start.x, start.y);
           g.set(sK, 0);
           f.set(sK, h(start.x, start.y));
           open.set(sK, [start.x, start.y]);
-
           while (open.size) {
             let currentKey = null,
               current = null,
@@ -562,6 +560,7 @@
           "faction",
           "level",
           "spawn",
+          "info",
         ];
         function setupLogFilters() {
           LOG_CATS.forEach((cat) => {
@@ -579,7 +578,7 @@
         }
         setupLogFilters();
 
-        // ====== Seed Environment ======
+        // ====== Seed World ======
         function seedEnvironment() {
           for (let i = 0; i < 4; i++) {
             const x = rndi(5, GRID - 6),
@@ -600,7 +599,6 @@
             });
           }
         }
-
         function addAgentAt(x, y) {
           const id = crypto.randomUUID();
           const a = {
@@ -626,7 +624,6 @@
           world.agentsByCell.set(key(x, y), id);
           return a;
         }
-
         function randomFreeCell() {
           for (let tries = 0; tries < 5000; tries++) {
             const x = rndi(0, GRID - 1),
@@ -640,14 +637,12 @@
           }
           return { x: 0, y: 0 };
         }
-
         function spawnAgents(n) {
           for (let i = 0; i < n; i++) {
             const { x, y } = randomFreeCell();
             addAgentAt(x, y);
           }
         }
-
         function addCrop(x, y) {
           const k = key(x, y);
           if (world.crops.has(k) || world.walls.has(k)) return false;
@@ -661,8 +656,6 @@
           });
           return true;
         }
-
-        // ====== Logging ======
         function logEvt(cat, msg, actorId, extra = {}) {
           world.log.push({ t: performance.now(), cat, msg, actorId, extra });
         }
@@ -679,7 +672,6 @@
             b = find(b);
             if (a !== b) parent[b] = a;
           };
-
           for (const a of world.agents) {
             for (const [bid, val] of a.relationships) {
               if (val >= TUNE.factionThreshold && world.agentsById.has(bid))
@@ -692,7 +684,6 @@
             if (!groups.has(r)) groups.set(r, []);
             groups.get(r).push(id);
           });
-
           const newFactions = new Map();
           let colorIdx = 0;
           for (const [, members] of groups) {
@@ -711,7 +702,6 @@
           }
 
           const prevFlags = new Set(world.flags.keys());
-
           for (const a of world.agents) {
             let newFid = null;
             for (const [fid, f] of newFactions) {
@@ -771,14 +761,12 @@
             );
           }
           world.flags = nextFlags;
-
           for (const fid of prevFlags) {
             if (!world.flags.has(fid))
               logEvt("destroy", `Flag ${fid} removed`, null, {
                 factionId: fid,
               });
           }
-
           world.factions = new Map();
           for (const [fid, f] of newFactions) {
             world.factions.set(fid, {
@@ -789,7 +777,7 @@
           }
         }
 
-        // ====== Helpers ======
+        // ====== Blockers & Searching ======
         function isBlocked(x, y, ignoreId = null) {
           if (x < 0 || y < 0 || x >= GRID || y >= GRID) return true;
           const k = key(x, y);
@@ -800,7 +788,6 @@
           if (occ && occ !== ignoreId) return true;
           return false;
         }
-
         function findNearest(a, coll) {
           let best = null,
             bestD = 1e9;
@@ -813,7 +800,6 @@
           }
           return best ? { target: best, dist: bestD } : null;
         }
-
         function planPathTo(a, gx, gy) {
           const path = astar(
             { x: a.cellX, y: a.cellY },
@@ -823,7 +809,6 @@
           a.path = path;
           a.pathIdx = 0;
         }
-
         function tryStartAction(a, type, payload) {
           if (a.action) return false;
           const [mn, mx] = ACTION_DURATIONS[type];
@@ -835,14 +820,11 @@
           };
           return true;
         }
-
-        function getRel(a, bId) {
-          return a.relationships.get(bId) ?? 0;
-        }
-        function setRel(a, bId, val) {
+        const getRel = (a, bId) => a.relationships.get(bId) ?? 0;
+        const setRel = (a, bId, val) =>
           a.relationships.set(bId, clamp(val, -1, 1));
-        }
 
+        // ====== Harvest ======
         function harvestAt(a, x, y) {
           const k = key(x, y);
           const crop = world.crops.get(k);
@@ -876,7 +858,9 @@
           return true;
         }
 
+        // ====== Interaction ======
         function considerInteract(a) {
+          if (a.energy < TUNE.energyLowThreshold) return; // NEW: skip interactions when hungry
           const adj = [
             [a.cellX + 1, a.cellY],
             [a.cellX - 1, a.cellY],
@@ -915,7 +899,12 @@
               }
             }
           }
-          for (const [nx, ny] of adj) {
+          for (const [nx, ny] of [
+            [a.cellX + 1, a.cellY],
+            [a.cellX - 1, a.cellY],
+            [a.cellX, a.cellY + 1],
+            [a.cellX, a.cellY - 1],
+          ]) {
             const id = world.agentsByCell.get(key(nx, ny));
             if (!id) continue;
             const b = world.agentsById.get(id);
@@ -928,6 +917,11 @@
 
         function processAction(a, dtMs) {
           if (!a.action) return;
+          // NEW: low-energy override — abort action and seek food
+          if (a.energy < TUNE.energyLowThreshold) {
+            a.action = null;
+            return;
+          }
           const act = a.action;
           act.remainingMs -= dtMs;
           act.tickCounterMs += dtMs;
@@ -1041,7 +1035,6 @@
             }
           }
         }
-
         function applyFlagHealing() {
           for (const a of world.agents) {
             if (!a.factionId) continue;
@@ -1053,7 +1046,6 @@
             }
           }
         }
-
         function cleanDead() {
           world.agents = world.agents.filter((a) => {
             if (a.health <= 0) {
@@ -1082,7 +1074,7 @@
 
         // ====== Crop Spawn (tamed) ======
         function maybeSpawnCrops() {
-          const attempts = GRID; // sample ~62 random cells per tick
+          const attempts = GRID;
           const base = 0.004 * world.spawnMult;
           for (let i = 0; i < attempts; i++) {
             const x = rndi(0, GRID - 1),
@@ -1124,17 +1116,21 @@
           fps = 0,
           fpsAcc = 0,
           fpsCount = 0;
-
         function updateTick() {
           world.tick++;
-
-          // 1) crops
           maybeSpawnCrops();
-
-          // 2) agents
           for (const a of world.agents) {
             a.ageTicks++;
             a.health -= 0.01;
+
+            // NEW: if hungry, abort any action and path to nearest crop immediately
+            if (a.energy < TUNE.energyLowThreshold) {
+              if (a.action) a.action = null;
+              if (!world.crops.has(key(a.cellX, a.cellY))) {
+                const near = findNearest(a, world.crops.values());
+                if (near) planPathTo(a, near.target.x, near.target.y);
+              }
+            }
 
             if (a.action) {
               processAction(a, BASE_TICK_MS);
@@ -1156,7 +1152,6 @@
                 }
               }
 
-              // Explore strongly when no target crop
               if (!a.path) {
                 const near = findNearest(a, world.crops.values());
                 if (near) {
@@ -1169,7 +1164,6 @@
                 }
               }
 
-              // move one step along path
               if (a.path && a.pathIdx < a.path.length) {
                 const step = a.path[a.pathIdx];
                 if (!isBlocked(step.x, step.y, a.id)) {
@@ -1188,9 +1182,8 @@
                 a.path = null;
               }
 
-              // fewer long actions so agents keep moving
-              if (Math.random() < 0.1) considerInteract(a);
-
+              // even fewer interactions to keep them moving; also disabled when hungry in considerInteract()
+              if (Math.random() < 0.08) considerInteract(a);
               if (Math.random() < 0.02) tryBuildWall(a);
             }
 
@@ -1200,18 +1193,33 @@
                 a.health = 0;
               }
             } else a.starvingSeconds = 0;
-
             levelCheck(a);
           }
 
-          // 3) factions periodically
           if (world.tick % 25 === 0) recomputeFactions();
-
-          // 4) heal aura
           applyFlagHealing();
-
-          // 5) cleanups
           cleanDead();
+        }
+
+        // ====== Rendering (Agents as circles, Crops as triangles) ======
+        function drawAgentCircle(x, y, radius, stroke) {
+          ctx.beginPath();
+          ctx.arc(x + CELL / 2, y + CELL / 2, radius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = stroke;
+          ctx.stroke();
+        }
+        function drawTriangle(x, y) {
+          const cx = x + CELL / 2,
+            cy = y + CELL / 2;
+          const r = CELL / 2 - 3;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy - r);
+          ctx.lineTo(cx - r * 0.866, cy + r * 0.5);
+          ctx.lineTo(cx + r * 0.866, cy + r * 0.5);
+          ctx.closePath();
+          ctx.fill();
         }
 
         function render() {
@@ -1233,12 +1241,12 @@
           }
           ctx.stroke();
 
-          // crops
+          // crops (triangles)
+          ctx.fillStyle = COLORS.crop;
           for (const c of world.crops.values()) {
-            ctx.fillStyle = COLORS.crop;
-            ctx.fillRect(c.x * CELL + 3, c.y * CELL + 3, CELL - 6, CELL - 6);
+            drawTriangle(c.x * CELL, c.y * CELL);
           }
-          // farms
+          // farms (squares remain)
           for (const f of world.farms.values()) {
             ctx.fillStyle = COLORS.farm;
             ctx.fillRect(f.x * CELL + 2, f.y * CELL + 2, CELL - 4, CELL - 4);
@@ -1250,7 +1258,7 @@
             ctx.fillRect(w.x * CELL + 1, w.y * CELL + 1, CELL - 2, CELL - 2);
             if (dmg > 0) {
               ctx.fillStyle = COLORS.wallDam;
-              ctx.globalAlpha = clamp(dmg, 0, 0.7);
+              ctx.globalAlpha = Math.min(0.7, Math.max(0, dmg));
               ctx.fillRect(w.x * CELL + 1, w.y * CELL + 1, CELL - 2, CELL - 2);
               ctx.globalAlpha = 1;
             }
@@ -1261,29 +1269,29 @@
             ctx.fillRect(f.x * CELL + 6, f.y * CELL + 2, 3, CELL - 4);
             ctx.fillRect(f.x * CELL + 9, f.y * CELL + 4, CELL - 8, 8);
           }
-          // agents
+          // agents (circles)
           for (const a of world.agents) {
             const x = a.cellX * CELL,
               y = a.cellY * CELL;
             ctx.fillStyle = COLORS.agentFill;
-            ctx.fillRect(x + 3, y + 3, CELL - 6, CELL - 6);
             const col = a.factionId
               ? world.factions.get(a.factionId)?.color || "#ffffff"
               : "#6b7280";
-            ctx.strokeStyle = col;
-            ctx.lineWidth = 2;
-            ctx.strokeRect(x + 2.5, y + 2.5, CELL - 5, CELL - 5);
+            drawAgentCircle(x, y, CELL / 2 - 3, col);
+            // hp bar
             const hpw = Math.max(
               0,
               Math.floor((CELL - 6) * (a.health / a.maxHealth))
             );
             ctx.fillStyle = COLORS.hp;
             ctx.fillRect(x + 3, y + 1, hpw, 2);
-            if (a.action) {
+            // low-energy glyph
+            if (a.energy < TUNE.energyLowThreshold) {
               ctx.fillStyle = COLORS.energy;
-              ctx.fillRect(x + 6, y - 5, 6, 3);
+              ctx.fillRect(x + CELL / 2 - 3, y - 5, 6, 3);
             }
           }
+
           ctx.restore();
 
           hud.textContent = `tick:${world.tick} | fps:${fps.toFixed(
@@ -1327,6 +1335,7 @@
           }
         }
 
+        // ====== RAF & Controls ======
         function loop(ts) {
           if (!lastTs) lastTs = ts;
           const dt = ts - lastTs;
@@ -1338,7 +1347,6 @@
             fpsAcc = 0;
             fpsCount = 0;
           }
-
           if (world.running) {
             const effTick = BASE_TICK_MS / (world.speedPct / 100);
             acc += dt;
@@ -1351,8 +1359,7 @@
           requestAnimationFrame(loop);
         }
 
-        // ====== Inspector & Log ======
-        canvas.addEventListener("click", (e) => {
+        const canvasClick = (e) => {
           const rect = canvas.getBoundingClientRect();
           const scaleX = canvas.width / rect.width;
           const scaleY = canvas.height / rect.height;
@@ -1364,7 +1371,8 @@
           const id = world.agentsByCell.get(key(x, y));
           world.selectedId = id || null;
           updateInspector();
-        });
+        };
+        canvas.addEventListener("click", canvasClick);
 
         function updateInspector() {
           if (!world.selectedId) {
@@ -1428,7 +1436,9 @@
           renderLog();
         }, 400);
 
-        // ====== Controls ======
+        // Controls sync
+        const $clamp = (v, min, max) =>
+          isNaN(v) ? min : Math.max(min, Math.min(max, v));
         rngAgents.addEventListener("input", () => {
           lblAgents.textContent = rngAgents.value;
           numAgents.value = rngAgents.value;
@@ -1443,15 +1453,14 @@
           numSpawn.value = rngSpawn.value;
           world.spawnMult = Number(rngSpawn.value);
         });
-
         numAgents.addEventListener("input", () => {
-          const v = clamp(Number(numAgents.value) || 20, 20, 300);
+          const v = $clamp(Number(numAgents.value), 20, 300);
           numAgents.value = v;
           rngAgents.value = v;
           lblAgents.textContent = v;
         });
         numSpeed.addEventListener("input", () => {
-          const v = clamp(Number(numSpeed.value) || 50, 5, 300);
+          const v = $clamp(Number(numSpeed.value), 5, 300);
           numSpeed.value = v;
           rngSpeed.value = v;
           lblSpeed.textContent = v + "%";
@@ -1459,8 +1468,7 @@
         });
         numSpawn.addEventListener("input", () => {
           let v = Number(numSpawn.value);
-          if (isNaN(v)) v = 1;
-          v = clamp(v, 0.1, 5);
+          v = $clamp(v, 0.1, 5);
           numSpawn.value = v;
           rngSpawn.value = v;
           lblSpawn.textContent = v.toFixed(1) + "×";
@@ -1506,7 +1514,6 @@
           render();
         });
 
-        // ====== Start RAF ======
         requestAnimationFrame(loop);
       })();
     </script>
