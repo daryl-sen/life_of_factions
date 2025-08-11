@@ -1,978 +1,345 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Life of Factions — Sandbox</title>
-  <style>
-    :root {
-      --bg: #0f1320;
-      --panel: #141a2a;
-      --muted: #94a3b8;
-      --text: #e2e8f0;
-      --accent: #6ec1e4;
-      --good: #22c55e;
-      --bad: #ef4444;
-    }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
-    body {
-      margin: 0; display: grid; grid-template-rows: auto 1fr auto; gap: 8px;
-      background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-    }
-    header, footer { background: var(--panel); padding: 10px 12px; box-shadow: 0 1px 0 #00000040 inset; }
-    header { display:flex; flex-wrap: wrap; align-items: center; gap: 14px; }
-    header .group { display:flex; align-items:center; gap:8px; background:#0c1020; padding:6px 8px; border-radius:10px; }
-    header label { color: var(--muted); font-size: 12px; }
-    header input[type=range] { width: 160px; }
-    header input[type=number] { width: 72px; background:#0b0f1a; color: var(--text); border:1px solid #243045; border-radius:8px; padding:4px 6px; }
-    header button { background:#1f2a44; color:#cfe8ff; border:1px solid #2b3a5d; padding:6px 10px; border-radius:10px; cursor:pointer; }
-    header button:hover { filter: brightness(1.1); }
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Life of Factions — v1.3.5 (Move-Then-Plan)</title>
+    <style>
+      :root {
+        --bg: #0f1220;
+        --panel: #171a2b;
+        --panel-2: #1f2340;
+        --text: #e8ecff;
+        --muted: #9aa2d6;
+        --accent: #7bdcff;
+        --good: #60e6a8;
+        --bad: #ff6d7a;
+        --warn: #ffd166;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: linear-gradient(180deg, #0e1020, #0b0e1a);
+        color: var(--text);
+        font: 14px/1.4 system-ui, Segoe UI, Roboto, Inter, Arial;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 6px;
+      }
+      h2 {
+        font-size: 15px;
+        margin: 0 0 6px;
+        color: var(--muted);
+      }
+      .app {
+        display: grid;
+        grid-template-columns: 320px 1fr 340px;
+        gap: 12px;
+        padding: 12px;
+        height: 100%;
+      }
+      .card {
+        background: linear-gradient(180deg, var(--panel), var(--panel-2));
+        border: 1px solid #262b55;
+        border-radius: 14px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+        padding: 12px;
+        min-height: 0;
+      }
+      .controls label {
+        display: block;
+        margin: 10px 0 4px;
+        color: var(--muted);
+      }
+      .row {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .row > * {
+        flex: 1;
+      }
+      input[type="range"] {
+        width: 100%;
+      }
+      input[type="number"] {
+        background: #0e1130;
+        border: 1px solid #2b316a;
+        color: var(--text);
+        border-radius: 8px;
+        padding: 6px;
+      }
+      button {
+        cursor: pointer;
+        background: #1e7fd6;
+        border: 0;
+        color: white;
+        padding: 8px 12px;
+        border-radius: 10px;
+        font-weight: 600;
+        box-shadow: 0 3px 0 #115493;
+      }
+      button.secondary {
+        background: #2a2f66;
+        box-shadow: 0 3px 0 #1b1f4b;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+      .stat {
+        background: #0f1335;
+        border: 1px solid #2b316a;
+        border-radius: 10px;
+        padding: 8px;
+        text-align: center;
+      }
+      .stat .n {
+        font-weight: 800;
+        font-size: 18px;
+      }
+      canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+        background: #0b0e1a;
+        border-radius: 14px;
+        border: 1px solid #262b55;
+      }
+      .canvasWrap {
+        position: relative;
+      }
+      .hud {
+        position: absolute;
+        left: 8px;
+        top: 8px;
+        background: rgba(10, 12, 25, 0.7);
+        backdrop-filter: blur(6px);
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid #2b316a;
+        font-size: 12px;
+      }
 
-    main { display:grid; grid-template-columns: 1000px 1fr; gap: 10px; padding: 0 10px 10px; }
-    #canvasWrap { position: relative; width:1000px; height:1000px; background:#0b0f1a; border:1px solid #202a3f; border-radius:12px; overflow:hidden; }
-    canvas { image-rendering: pixelated; display:block; }
-
-    #side { display:grid; grid-template-rows: auto auto 1fr; gap:10px; }
-
-    .panel { background: var(--panel); border:1px solid #1e293b; border-radius:12px; padding:10px; }
-
-    .stats { display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; }
-    .stat { background:#0c1020; padding:8px; border-radius:10px; text-align:center; }
-    .stat .v { font-weight: 700; }
-
-    .logControls { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
-    .log { height: 420px; overflow:auto; background:#0c1020; border-radius:10px; padding:8px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:12px; }
-    .log .ts { color:#7aa2ff; }
-    .log .evt { color:#d1d5db; }
-    .log .cat { color:#93c5fd; }
-
-    .inspector { font-size: 13px; line-height: 1.35; }
-    .inspector .kv { display:grid; grid-template-columns: 110px 1fr; gap: 6px 10px; align-items: center; }
-    .inspector .name { font-weight: 700; font-size: 16px; }
-
-    .legend { font-size: 12px; color: var(--muted); display:flex; flex-wrap:wrap; gap:10px; }
-    .pill { background:#0c1020; border:1px solid #23314b; padding:2px 6px; border-radius:999px; }
-    .flag-icon { font-size: 11px; margin-left: 6px; }
-  </style>
-</head>
-<body>
-  <header>
-    <div class="group">
-      <label for="startAgents">Starting Agents</label>
-      <input id="startAgents" type="number" min="50" max="300" step="10" value="200" />
-      <button id="btnRestart" title="Restart with starting agent count">Restart</button>
-    </div>
-    <div class="group">
-      <label for="speed">Speed</label>
-      <input id="speed" type="range" min="25" max="200" step="5" value="50" />
-      <span id="speedVal">50%</span>
-    </div>
-    <div class="group">
-      <label for="spawnMult">Crop Spawn</label>
-      <input id="spawnMult" type="range" min="0.1" max="5" step="0.1" value="1" />
-      <span id="spawnVal">1.0×</span>
-      <button id="btnSpawnGreen" title="Spawn a crop at a random free cell">Spawn Crop</button>
-    </div>
-    <div class="group">
-      <button id="btnPause">Pause</button>
-    </div>
-  </header>
-
-  <main>
-    <div id="canvasWrap">
-      <canvas id="game" width="1000" height="1000"></canvas>
-    </div>
-    <div id="side">
-      <section class="panel">
-        <div class="stats">
-          <div class="stat"><div class="k">Agents</div><div id="statAgents" class="v">0</div></div>
-          <div class="stat"><div class="k">Crops</div><div id="statGreens" class="v">0</div></div>
-          <div class="stat"><div class="k">Farms</div><div id="statYellows" class="v">0</div></div>
-          <div class="stat"><div class="k">Walls/Flags</div><div id="statWalls" class="v">0</div></div>
+      /* Lists constrained to prevent overflow */
+      .list {
+        height: 40vh;
+        max-height: 40vh;
+        overflow: auto;
+        border: 1px solid #2b316a;
+        border-radius: 10px;
+        padding: 8px;
+        background: #0d1030;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+      .logItem {
+        padding: 6px 8px;
+        border-bottom: 1px dashed #2b316a;
+      }
+      .logItem:last-child {
+        border-bottom: 0;
+      }
+      .pill {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 999px;
+        font-size: 11px;
+        margin-right: 6px;
+      }
+      .pill.good {
+        background: rgba(96, 230, 168, 0.15);
+        color: var(--good);
+        border: 1px solid rgba(96, 230, 168, 0.4);
+      }
+      .pill.bad {
+        background: rgba(255, 109, 122, 0.15);
+        color: var(--bad);
+        border: 1px solid rgba(255, 109, 122, 0.4);
+      }
+      .pill.info {
+        background: rgba(123, 220, 255, 0.12);
+        color: var(--accent);
+        border: 1px solid rgba(123, 220, 255, 0.4);
+      }
+      .kv {
+        display: grid;
+        grid-template-columns: 110px 1fr;
+        gap: 6px;
+        margin-bottom: 8px;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+      .filters label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: #0f1335;
+        padding: 4px 6px;
+        border-radius: 8px;
+        border: 1px solid #2b316a;
+      }
+      .filters .buttons {
+        display: flex;
+        gap: 6px;
+        margin-left: auto;
+      }
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", monospace;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="card controls">
+        <h1>Life of Factions</h1>
+        <h2>Simulation Controls</h2>
+        <div class="row" style="gap: 8px; margin: 8px 0 6px">
+          <button id="btnStart">Start</button>
+          <button id="btnPause" class="secondary" disabled>Pause</button>
+          <button id="btnResume" class="secondary" disabled>Resume</button>
         </div>
-      </section>
 
-      <section class="panel inspector" id="inspector">
-        <div class="name">Inspector</div>
-        <div class="kv" id="inspectorKV">
-          <div>Tip</div><div>Click an agent to inspect.</div>
+        <label
+          >Starting Agents <span class="muted" id="lblAgents">20</span></label
+        >
+        <div class="row">
+          <input
+            id="rngAgents"
+            type="range"
+            min="20"
+            max="300"
+            step="1"
+            value="20"
+          />
+          <input
+            id="numAgents"
+            type="number"
+            min="20"
+            max="300"
+            step="1"
+            value="20"
+          />
         </div>
-        <div class="legend" style="margin-top:8px">
-          <span class="pill">Actions: 💬 talk, ! quarrel, ⚔ attack, ✹ under attack, ❤ heal, ⇆ help, 🧱 wall, ⚑ flag, ∞ reproduce</span>
-        </div>
-      </section>
 
-      <section class="panel">
-        <div class="logControls" id="logControls"></div>
-        <div class="log" id="log"></div>
-      </section>
+        <label>Speed <span class="muted" id="lblSpeed">50%</span></label>
+        <div class="row">
+          <input
+            id="rngSpeed"
+            type="range"
+            min="5"
+            max="300"
+            step="1"
+            value="50"
+          />
+          <input
+            id="numSpeed"
+            type="number"
+            min="5"
+            max="300"
+            step="1"
+            value="50"
+          />
+        </div>
+
+        <label
+          >Crop Spawn Multiplier
+          <span class="muted" id="lblSpawn">1.0×</span></label
+        >
+        <div class="row">
+          <input
+            id="rngSpawn"
+            type="range"
+            min="0.1"
+            max="5"
+            step="0.1"
+            value="1"
+          />
+          <input
+            id="numSpawn"
+            type="number"
+            min="0.1"
+            max="5"
+            step="0.1"
+            value="1"
+          />
+        </div>
+
+        <div class="row" style="margin-top: 8px">
+          <button id="btnSpawnCrop" class="secondary">Spawn Crop</button>
+        </div>
+
+        <h2 style="margin-top: 12px">Stats</h2>
+        <div class="stats" id="stats">
+          <div class="stat">
+            <div class="muted">Agents</div>
+            <div class="n" id="stAgents">0</div>
+          </div>
+          <div class="stat">
+            <div class="muted">Factions</div>
+            <div class="n" id="stFactions">0</div>
+          </div>
+          <div class="stat">
+            <div class="muted">Crops</div>
+            <div class="n" id="stCrops">0</div>
+          </div>
+          <div class="stat">
+            <div class="muted">Farms</div>
+            <div class="n" id="stFarms">0</div>
+          </div>
+          <div class="stat">
+            <div class="muted">Walls</div>
+            <div class="n" id="stWalls">0</div>
+          </div>
+          <div class="stat">
+            <div class="muted">Flags</div>
+            <div class="n" id="stFlags">0</div>
+          </div>
+        </div>
+
+        <h2 style="margin-top: 12px">Factions</h2>
+        <div class="list" id="factionsList"></div>
+      </div>
+
+      <div class="card canvasWrap">
+        <canvas id="canvas" width="1000" height="1000"></canvas>
+        <div class="hud mono" id="hud">tick:0 | fps:0</div>
+      </div>
+
+      <div class="card">
+        <h2>Inspector</h2>
+        <div id="inspector">
+          <div class="muted">Click an agent on the canvas.</div>
+        </div>
+
+        <h2 style="margin-top: 10px">Event Log</h2>
+        <div class="filters" id="logFilters"></div>
+        <div class="list" id="logList"></div>
+      </div>
     </div>
-  </main>
-
-  <footer>
-    Life of Factions • 62×62 grid • 16px cells • Canvas 1000×1000
-    <span class="flag-icon">⚑</span>
-  </footer>
-
-<script>
-(() => {
-  // ------------------------------
-  // Config & Constants
-  // ------------------------------
-  const CANVAS_SIZE = 1000;
-  const CELL_SIZE = 16;
-  const GRID_W = Math.floor(CANVAS_SIZE / CELL_SIZE); // 62
-  const GRID_H = Math.floor(CANVAS_SIZE / CELL_SIZE);
-
-  const DEFAULT_SPEED_PERCENT = 50; // slower start
-  const BASE_TICK_MS = 40; // baseline logical tick
-  const ACTION_TICK_MS = 700; // periodic effect period (~700ms)
-
-  const ENERGY_PER_CROP = 20; // crop = green
-  const ENERGY_TO_REPRODUCE = 60;
-  const ENERGY_TO_BUILD_GRAY = 60;
-  const BUILD_GRAY_CHANCE = 0.001;
-
-  // Durations: per request, add ~5s to all actions. Reproduction also longer.
-  const ACTION_MIN_MS_BASE = 1200 + 5000;
-  const ACTION_MAX_MS_BASE = 2600 + 5000;
-  const REPRO_MIN_MS = 3500 + 5000; // 8.5s
-  const REPRO_MAX_MS = 6000 + 5000; // 11s
-
-  const WALL_HP_MIN = 10, WALL_HP_MAX = 15;
-  const FLAG_HP_MIN = 12, FLAG_HP_MAX = 18;
-
-  const GREEN_BASE_SPAWN_PROB = 0.001; // crop base spawn
-  const FARM_BOOST_RADIUS = 3; // farm (yellow) radius
-  const FARM_BOOST_FACTOR = 4; // heavy boost near farms
-
-  const AGENT_MAX_HEALTH = 100;
-  const AGENT_START_MIN = 50, AGENT_START_MAX = 300;
-  const PATHFINDING_MAX_ITER = 6000;
-  const FACTION_THRESHOLD = 0.6;
-  const FACTION_MIN_SIZE = 2;
-  const LOG_LIMIT = 100;
-
-  const AGENT_FILL = '#6ec1e4';
-
-  // UI Elements
-  const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d');
-  const statAgents = document.getElementById('statAgents');
-  const statGreens = document.getElementById('statGreens');
-  const statYellows = document.getElementById('statYellows');
-  const statWalls = document.getElementById('statWalls');
-  const speedSlider = document.getElementById('speed');
-  const speedVal = document.getElementById('speedVal');
-  const spawnSlider = document.getElementById('spawnMult');
-  const spawnVal = document.getElementById('spawnVal');
-  const btnPause = document.getElementById('btnPause');
-  const btnSpawnGreen = document.getElementById('btnSpawnGreen');
-  const startAgentsInput = document.getElementById('startAgents');
-  const btnRestart = document.getElementById('btnRestart');
-  const logDiv = document.getElementById('log');
-  const logControlsDiv = document.getElementById('logControls');
-  const inspectorKV = document.getElementById('inspectorKV');
-
-  // ------------------------------
-  // Data Structures
-  // ------------------------------
-  const key = (x, y) => `${x},${y}`;
-  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  const randInt = (a, b) => (a + Math.floor(Math.random() * (b - a + 1)));
-  const choice = (arr) => arr[(Math.random() * arr.length) | 0];
-  const nowTs = () => new Date().toLocaleTimeString();
-
-  let nextEntityId = 1;
-
-  /** @typedef {{id:number,x:number,y:number,hp:number,maxHp:number}} Wall */
-  /** @typedef {{id:number,x:number,y:number}} Crop */
-  /** @typedef {{id:number,x:number,y:number, cooldown:number}} Farm */
-  /** @typedef {{id:number,factionId:string,x:number,y:number,hp:number,maxHp:number}} Flag */
-
-  /** @type {Map<string, Wall>} */
-  const wallMap = new Map();
-  /** @type {Map<string, Crop>} */
-  const greenMap = new Map(); // crops
-  /** @type {Map<string, Farm>} */
-  const yellowMap = new Map(); // farms
-  /** @type {Map<string, Flag>} */
-  const flagMap = new Map();
-
-  /** @type {Agent[]} */
-  let agents = [];
-  const agentsById = new Map();
-  const agentsByCell = new Map();
-  const factions = new Map(); // id -> {id, members:Set<id>, color}
-  const factionSpawns = new Map(); // id -> Flag
-
-  /** @type {string[]} */
-  const logEntries = [];
-  const logCategories = [
-    'talk','quarrel','attack','heal','help','reproduce','faction','build','destroy','crop','path','flag'
-  ];
-  const logEnabled = Object.fromEntries(logCategories.map(c => [c, true]));
-
-  // Inspector
-  let selectedAgentId = null;
-
-  // Speed & Timing
-  let paused = false;
-  let speedPercent = DEFAULT_SPEED_PERCENT;
-  let spawnMultiplier = 1.0;
-  let lastDraw = 0;
-  let acc = 0;
-  let effectiveTickMs = BASE_TICK_MS / (speedPercent / 100);
-  let tickCount = 0;
-
-  // A* budget
-  const MAX_ASTAR_PER_TICK = 8;
-  let astarBudget = MAX_ASTAR_PER_TICK;
-
-  // ------------------------------
-  // Agents
-  // ------------------------------
-  /** @typedef {{id:number,name:string,cellX:number,cellY:number,px:number,py:number,health:number,energy:number,relationships:Map<number,number>, factionId:string|null, path:Array<{x:number,y:number}>|null, pathIdx:number, colorSeed:number, age:number, action:null|{type:string,remainingMs:number,tickCounter:number,payload?:any}}} Agent */
-
-  function randomName() {
-    const c = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let s = '';
-    for (let i=0;i<6;i++) s += c[(Math.random()*c.length)|0];
-    return s;
-  }
-
-  function factionColorFromId(fid) {
-    // Deterministic pastel from hash
-    let h = 0;
-    for (let i=0;i<fid.length;i++) h = (h*31 + fid.charCodeAt(i))|0;
-    const hue = (h >>> 0) % 360;
-    return `hsl(${hue} 70% 60%)`;
-  }
-
-  function addAgent(x, y) {
-    const id = nextEntityId++;
-    const a = {
-      id,
-      name: randomName(),
-      cellX: x, cellY: y,
-      px: x*CELL_SIZE, py: y*CELL_SIZE,
-      health: randInt(60, AGENT_MAX_HEALTH),
-      energy: randInt(20, 80),
-      relationships: new Map(),
-      factionId: null,
-      path: null,
-      pathIdx: 0,
-      colorSeed: Math.random(),
-      age: 0,
-      action: null,
-    };
-    agents.push(a); agentsById.set(id, a); agentsByCell.set(key(x,y), id);
-    return a;
-  }
-
-  function moveAgentToCell(a, nx, ny) {
-    agentsByCell.delete(key(a.cellX, a.cellY));
-    a.cellX = nx; a.cellY = ny; a.px = nx*CELL_SIZE; a.py = ny*CELL_SIZE;
-    agentsByCell.set(key(nx,ny), a.id);
-  }
-
-  // ------------------------------
-  // Logging
-  // ------------------------------
-  function log(cat, msg) {
-    const line = `[${nowTs()}] [${cat}] ${msg}`;
-    logEntries.push(line);
-    while (logEntries.length > LOG_LIMIT) logEntries.shift();
-  }
-
-  function buildLogControls() {
-    logControlsDiv.innerHTML = '';
-    for (const cat of logCategories) {
-      const id = `log_${cat}`;
-      const label = document.createElement('label');
-      label.className = 'pill';
-      const cb = document.createElement('input');
-      cb.type = 'checkbox'; cb.checked = logEnabled[cat]; cb.id = id; cb.style.marginRight = '6px';
-      cb.addEventListener('change', () => { logEnabled[cat] = cb.checked; drawLog(); });
-      label.appendChild(cb);
-      label.appendChild(document.createTextNode(cat));
-      logControlsDiv.appendChild(label);
-    }
-  }
-
-  function drawLog() {
-    const frag = document.createDocumentFragment();
-    for (const line of logEntries) {
-      const m = line.match(/\[(\d{1,2}:\d{2}:\d{2}.*?)\] \[(\w+)\] (.*)/);
-      const ts = m? m[1] : '';
-      const cat = m? m[2] : 'misc';
-      const msg = m? m[3] : line;
-      if (!logEnabled[cat]) continue;
-      const div = document.createElement('div');
-      const s1 = document.createElement('span'); s1.className = 'ts'; s1.textContent = ts + ' ';
-      const s2 = document.createElement('span'); s2.className = 'cat'; s2.textContent = '['+cat+'] ';
-      const s3 = document.createElement('span'); s3.className = 'evt'; s3.textContent = msg;
-      div.appendChild(s1); div.appendChild(s2); div.appendChild(s3);
-      frag.appendChild(div);
-    }
-    logDiv.innerHTML = '';
-    logDiv.appendChild(frag);
-    logDiv.scrollTop = logDiv.scrollHeight;
-  }
-
-  // ------------------------------
-  // World helpers
-  // ------------------------------
-  function inBounds(x,y){ return x>=0 && y>=0 && x<GRID_W && y<GRID_H; }
-  function isBlocked(x,y) {
-    if (!inBounds(x,y)) return true;
-    if (wallMap.has(key(x,y))) return true;
-    if (flagMap.has(key(x,y))) return true;
-    if (agentsByCell.has(key(x,y))) return true;
-    return false;
-  }
-  function isFree(x,y){ return inBounds(x,y) && !isBlocked(x,y); }
-
-  function randomFreeCell(maxTry=2000) {
-    for (let i=0;i<maxTry;i++) {
-      const x = randInt(0, GRID_W-1), y = randInt(0, GRID_H-1);
-      if (!isBlocked(x,y) && !greenMap.has(key(x,y)) && !yellowMap.has(key(x,y))) return {x,y};
-    }
-    return null;
-  }
-
-  // ------------------------------
-  // Factions & Flags
-  // ------------------------------
-  function recomputeFactions() {
-    // Union-Find by relationships >= threshold
-    const parent = new Map();
-    const find = (x)=>{ if(parent.get(x)!==x) parent.set(x, find(parent.get(x))); return parent.get(x); };
-    const union = (a,b)=>{ a=find(a); b=find(b); if(a!==b) parent.set(a,b); };
-
-    for (const a of agents) parent.set(a.id, a.id);
-    for (const a of agents) {
-      for (const [bid, rel] of a.relationships) {
-        if (rel >= FACTION_THRESHOLD) union(a.id, bid);
-      }
-    }
-
-    const groups = new Map(); // root -> Set ids
-    for (const a of agents) {
-      const r = find(a.id);
-      if (!groups.has(r)) groups.set(r, new Set());
-      groups.get(r).add(a.id);
-    }
-
-    // Assign factions, create/destroy flags
-    const oldFactions = new Map(factions);
-    factions.clear();
-    for (const [root, set] of groups) {
-      if (set.size >= FACTION_MIN_SIZE) {
-        const fid = 'F'+root;
-        const color = factionColorFromId(fid);
-        factions.set(fid, { id: fid, members: new Set(set), color });
-      }
-    }
-
-    // Update agent factionId, log joins/leaves
-    for (const a of agents) {
-      const was = a.factionId;
-      let now = null;
-      for (const [fid, f] of factions) if (f.members.has(a.id)) { now = fid; break; }
-      if (was !== now) {
-        a.factionId = now;
-        if (was && !now) log('faction', `${a.name} left ${was}`);
-        if (!was && now) log('faction', `${a.name} joined ${now}`);
-      }
-    }
-
-    // Maintain flags (spawn points)
-    // Create flags for new factions; place near centroid
-    for (const [fid, f] of factions) {
-      if (!factionSpawns.has(fid)) {
-        const cells = [...f.members].map(id => agentsById.get(id)).map(a => ({x:a.cellX,y:a.cellY}));
-        const cx = Math.round(cells.reduce((s,c)=>s+c.x,0)/cells.length);
-        const cy = Math.round(cells.reduce((s,c)=>s+c.y,0)/cells.length);
-        let place = null;
-        // spiral search around centroid
-        const R = 8;
-        for (let r=0;r<=R && !place;r++){
-          for (let dx=-r; dx<=r && !place; dx++){
-            for (let dy=-r; dy<=r && !place; dy++){
-              const x = cx+dx, y = cy+dy;
-              if (!inBounds(x,y)) continue;
-              if (isFree(x,y) && !greenMap.has(key(x,y)) && !yellowMap.has(key(x,y))) place = {x,y};
-            }
-          }
-        }
-        if (place){
-          const id = nextEntityId++;
-          const hp = randInt(FLAG_HP_MIN, FLAG_HP_MAX);
-          const fl = { id, factionId: fid, x: place.x, y: place.y, hp, maxHp: hp };
-          factionSpawns.set(fid, fl);
-          flagMap.set(key(place.x, place.y), fl);
-          log('flag', `Spawn point for ${fid} created at (${place.x},${place.y})`);
-        }
-      }
-    }
-
-    // Remove flags for factions that no longer exist
-    for (const [fid, fl] of [...factionSpawns]) {
-      if (!factions.has(fid)) {
-        // auto-destroy
-        flagMap.delete(key(fl.x, fl.y));
-        factionSpawns.delete(fid);
-        log('flag', `Spawn point for ${fid} removed (no members)`);
-      }
-    }
-  }
-
-  // ------------------------------
-  // A* Pathfinding (4-connected)
-  // ------------------------------
-  function astar(start, goal) {
-    // If same cell
-    if (start.x===goal.x && start.y===goal.y) return [];
-
-    const open = new Map();
-    const openPQ = []; // [key, f]
-    const came = new Map();
-    const g = new Map();
-
-    const startK = key(start.x,start.y);
-    const goalK = key(goal.x,goal.y);
-    const h = (x,y)=> Math.abs(x-goal.x) + Math.abs(y-goal.y);
-
-    function pushOpen(k, fscore){ open.set(k, fscore); openPQ.push([k,fscore]); }
-
-    pushOpen(startK, h(start.x,start.y));
-    g.set(startK, 0);
-
-    let iter=0;
-    while (openPQ.length && iter++ < PATHFINDING_MAX_ITER) {
-      // get min f
-      let idx=0; for (let i=1;i<openPQ.length;i++) if (openPQ[i][1] < openPQ[idx][1]) idx = i;
-      const [curK, fscore] = openPQ.splice(idx,1)[0];
-      if (!open.has(curK)) continue; // skip removed
-      open.delete(curK);
-      const [cx, cy] = curK.split(',').map(Number);
-      if (curK===goalK) {
-        // reconstruct
-        const path=[]; let t=goalK;
-        while (t!==startK){ const [px,py] = t.split(',').map(Number); path.push({x:px,y:py}); t = came.get(t); }
-        path.reverse();
-        return path;
-      }
-
-      const neigh = [ [1,0],[-1,0],[0,1],[0,-1] ];
-      for (const [dx,dy] of neigh) {
-        const nx=cx+dx, ny=cy+dy; if (!inBounds(nx,ny)) continue;
-        const nk = key(nx,ny);
-        // Allow stepping onto goal even if blocked by agent (we plan for target crop cell etc.)
-        const blocked = (wallMap.has(nk) || flagMap.has(nk) || agentsByCell.has(nk));
-        if (blocked && nk!==goalK) continue;
-        const tentative = g.get(curK) + 1;
-        if (tentative < (g.get(nk) ?? Infinity)) {
-          came.set(nk, curK);
-          g.set(nk, tentative);
-          const fsc = tentative + h(nx,ny);
-          pushOpen(nk, fsc);
-        }
-      }
-    }
-    return null; // no path
-  }
-
-  // ------------------------------
-  // Spawning Crops near Farms
-  // ------------------------------
-  function spawnCropAt(x,y, manual=false){
-    if (!isFree(x,y) || greenMap.has(key(x,y)) || yellowMap.has(key(x,y))) return false;
-    const id = nextEntityId++;
-    greenMap.set(key(x,y), {id, x, y});
-    if (manual) log('crop', `Manual crop spawned at (${x},${y})`);
-    return true;
-  }
-
-  function farmBoostAtCell(x,y){
-    // Distance falloff within FARM_BOOST_RADIUS
-    let boost = 1;
-    for (let dx=-FARM_BOOST_RADIUS; dx<=FARM_BOOST_RADIUS; dx++){
-      for (let dy=-FARM_BOOST_RADIUS; dy<=FARM_BOOST_RADIUS; dy++){
-        const nx=x+dx, ny=y+dy; if (!inBounds(nx,ny)) continue;
-        if (yellowMap.has(key(nx,ny))){
-          const dist = Math.abs(dx)+Math.abs(dy);
-          if (dist<=FARM_BOOST_RADIUS){
-            const factor = Math.pow(FARM_BOOST_FACTOR, Math.max(0, FARM_BOOST_RADIUS - dist));
-            boost *= factor;
-          }
-        }
-      }
-    }
-    return boost;
-  }
-
-  function maybeSpawnCrop() {
-    // Probabilistic spawn scaled by multiplier and farm boosts; attempt a few random cells
-    const attempts = 2;
-    for (let i=0;i<attempts;i++){
-      const cell = randomFreeCell(200);
-      if (!cell) return;
-      const p = GREEN_BASE_SPAWN_PROB * spawnMultiplier * farmBoostAtCell(cell.x, cell.y);
-      if (Math.random() < p) {
-        spawnCropAt(cell.x, cell.y);
-        log('crop', `Crop grew at (${cell.x},${cell.y})`);
-      }
-    }
-  }
-
-  // ------------------------------
-  // Walls & Flags interactions
-  // ------------------------------
-  function buildWallNear(a){
-    if (a.energy < ENERGY_TO_BUILD_GRAY) return;
-    if (Math.random() > BUILD_GRAY_CHANCE) return;
-    // spacing: limit to <=3 neighbors that are walls to reduce spam
-    const neigh = [ [1,0],[-1,0],[0,1],[0,-1], [1,1],[1,-1],[-1,1],[-1,-1] ];
-    for (const [dx,dy] of neigh) {
-      const nx=a.cellX+dx, ny=a.cellY+dy; const k=key(nx,ny);
-      if (!inBounds(nx,ny)) continue; if (!isFree(nx,ny)) continue;
-      // Count adjacent walls
-      let adj=0; for (const [sx,sy] of neigh){ const kk=key(nx+sx,ny+sy); if (wallMap.has(kk)) adj++; }
-      if (adj>3) continue;
-      const hp = randInt(WALL_HP_MIN, WALL_HP_MAX);
-      const w={id:nextEntityId++, x:nx,y:ny, hp, maxHp:hp};
-      wallMap.set(k, w); log('build', `${a.name} built a wall at (${nx},${ny})`);
-      a.energy -= ENERGY_TO_BUILD_GRAY;
-      break;
-    }
-  }
-
-  // ------------------------------
-  // Actions
-  // ------------------------------
-  const ActionGlyph = {
-    talk:'💬', quarrel:'!', attack:'⚔', under_attack:'✹', heal:'❤', help:'⇆', attack_wall:'🧱', attack_flag:'⚑', reproduce:'∞'
-  };
-
-  function startAction(a, type, payload={}){
-    if (a.action) return false;
-    const dur = (type==='reproduce') ? randInt(REPRO_MIN_MS, REPRO_MAX_MS) : randInt(ACTION_MIN_MS_BASE, ACTION_MAX_MS_BASE);
-    a.action = { type, remainingMs: dur, tickCounter: 0, payload };
-    return true;
-  }
-
-  function processAgentAction(a, dt){
-    if (!a.action) return;
-    const act = a.action;
-    act.remainingMs -= dt; act.tickCounter += dt;
-
-    // Periodic effects
-    while (act.tickCounter >= ACTION_TICK_MS) {
-      act.tickCounter -= ACTION_TICK_MS;
-      switch (act.type) {
-        case 'attack': {
-          const t = agentsById.get(act.payload.targetId);
-          if (t) { t.health -= 8; startUnderAttack(t); if (t.health<=0) { killAgent(t, a); } }
-          break; }
-        case 'heal': {
-          const t = agentsById.get(act.payload.targetId);
-          if (t && a.energy>0) { t.health = clamp(t.health+6, 0, AGENT_MAX_HEALTH); a.energy = Math.max(0, a.energy-4); }
-          break; }
-        case 'help': {
-          const t = agentsById.get(act.payload.targetId);
-          if (t && a.energy>1) {
-            const give = Math.min(6, a.energy);
-            a.energy -= give; t.energy = Math.min(200, t.energy + give);
-            // Help reduces target's action remaining time by half
-            if (t.action) {
-              t.action.remainingMs = Math.max(0, t.action.remainingMs * 0.5);
-              log('help', `${a.name} helped ${t.name}, speeding their ${t.action.type}`);
-            }
-          }
-          break; }
-        case 'quarrel': {
-          const t = agentsById.get(act.payload.targetId);
-          if (t) adjustRelationshipBoth(a, t, -0.03);
-          break; }
-        case 'talk': {
-          const t = agentsById.get(act.payload.targetId);
-          if (t) talkOutcome(a, t);
-          break; }
-        case 'attack_wall': {
-          const wk = act.payload.wallKey; const w = wallMap.get(wk);
-          if (w) { w.hp -= 1; if (w.hp<=0) { wallMap.delete(wk); log('destroy', `${a.name} destroyed a wall at (${w.x},${w.y})`);} }
-          break; }
-        case 'attack_flag': {
-          const fk = act.payload.flagKey; const fl = flagMap.get(fk);
-          if (fl) { fl.hp -= 1; if (fl.hp<=0) { flagMap.delete(fk); factionSpawns.delete(fl.factionId); log('flag', `${a.name} destroyed flag of ${fl.factionId}`);} }
-          break; }
-        case 'reproduce': {
-          // Energy drain to keep commitment meaningful
-          a.energy = Math.max(0, a.energy - 4);
-          break; }
-      }
-    }
-
-    if (act.remainingMs <= 0) {
-      // completion effects
-      switch (act.type) {
-        case 'reproduce': {
-          // spawn child adjacent if free
-          const dirs = [ [1,0],[-1,0],[0,1],[0,-1] ];
-          let placed=false;
-          for (const [dx,dy] of dirs) {
-            const nx=a.cellX+dx, ny=a.cellY+dy; if (isFree(nx,ny)) { const child=addAgent(nx,ny); child.health=randInt(50,80); child.energy=randInt(20,60); placed=true; log('reproduce', `${a.name} reproduced; child ${child.name} at (${nx},${ny})`); break; }
-          }
-          break; }
-      }
-      a.action = null;
-    }
-  }
-
-  function startUnderAttack(t) {
-    if (!t.action || t.action.type!=='under_attack') {
-      t.action = t.action && t.action.type==='under_attack' ? t.action : { type:'under_attack', remainingMs: 1200, tickCounter:0, payload:{} };
-    }
-  }
-
-  function killAgent(victim, by) {
-    // cleanup maps
-    agentsByCell.delete(key(victim.cellX, victim.cellY));
-    agentsById.delete(victim.id);
-    agents = agents.filter(x=>x.id!==victim.id);
-    log('destroy', `${by?by.name:'system'} defeated ${victim.name}`);
-  }
-
-  function talkOutcome(a, b) {
-    let p = 0.5;
-    if (a.factionId && b.factionId && a.factionId===b.factionId) p = 0.75;
-    const relA = a.relationships.get(b.id) ?? 0;
-    if (relA > 0.5) p = Math.min(0.9, p+0.1);
-    const positive = Math.random() < p;
-    const delta = positive ? +0.05 : -0.05;
-    adjustRelationshipBoth(a, b, delta);
-    log('talk', `${a.name} talked to ${b.name}: ${positive?'+':'-'} relation (${(relA+delta).toFixed(2)})`);
-  }
-
-  function adjustRelationshipBoth(a,b,delta){
-    const ra = clamp((a.relationships.get(b.id) ?? 0) + delta, -1, 1);
-    const rb = clamp((b.relationships.get(a.id) ?? 0) + delta, -1, 1);
-    a.relationships.set(b.id, ra); b.relationships.set(a.id, rb);
-  }
-
-  // ------------------------------
-  // Agent Decisions
-  // ------------------------------
-  function agentTick(a, dt){
-    a.age += 1;
-    // health decay tiny
-    if (a.age % 50 === 0) a.health = Math.max(0, a.health - 1);
-
-    if (a.action) { processAgentAction(a, dt); return; }
-
-    // Interact with adjacent agent probabilistically
-    const neighbors = adjacentAgents(a.cellX, a.cellY);
-    if (neighbors.length) {
-      const t = choice(neighbors);
-      const r = Math.random();
-      if (r < 0.05) startAction(a, 'talk', {targetId:t.id});
-      else if (r < 0.08) startAction(a, 'quarrel', {targetId:t.id});
-      else if (r < 0.11) startAction(a, 'attack', {targetId:t.id});
-      else if (r < 0.14 && a.energy>10) startAction(a, 'heal', {targetId:t.id});
-      else if (r < 0.17 && a.energy>10) startAction(a, 'help', {targetId:t.id});
-    }
-
-    // Collect crop if on it
-    const gk = key(a.cellX, a.cellY);
-    if (greenMap.has(gk)) {
-      greenMap.delete(gk); a.energy = Math.min(200, a.energy + ENERGY_PER_CROP); a.health = clamp(a.health+8,0,AGENT_MAX_HEALTH);
-      log('crop', `${a.name} harvested a crop at (${a.cellX},${a.cellY})`);
-    }
-
-    // Possibly attack adjacent wall/flag
-    const around = [ [1,0],[-1,0],[0,1],[0,-1] ];
-    for (const [dx,dy] of around) {
-      const nx=a.cellX+dx, ny=a.cellY+dy; const k=key(nx,ny);
-      if (wallMap.has(k)) { if (Math.random()<0.05) { startAction(a,'attack_wall',{wallKey:k}); return; } }
-      if (flagMap.has(k)) { if (Math.random()<0.05) { startAction(a,'attack_flag',{flagKey:k}); return; } }
-    }
-
-    // Reproduce if enough energy and chance
-    if (a.energy >= ENERGY_TO_REPRODUCE && Math.random()<0.02) {
-      startAction(a,'reproduce',{});
-      return;
-    }
-
-    // Build walls sometimes
-    buildWallNear(a);
-
-    // Movement: follow path if any
-    if (a.path && a.pathIdx < a.path.length) {
-      const step = a.path[a.pathIdx];
-      if (!agentsByCell.has(key(step.x, step.y)) && !wallMap.has(key(step.x, step.y)) && !flagMap.has(key(step.x, step.y))) {
-        moveAgentToCell(a, step.x, step.y);
-        a.pathIdx++;
-        return;
-      } else {
-        // blocked -> drop path sometimes
-        a.path = null; a.pathIdx = 0;
-      }
-    }
-
-    // Plan: seek nearest crop within radius or wander
-    const target = findNearestCrop(a.cellX, a.cellY, 10);
-    if (target && astarBudget>0) {
-      astarBudget--;
-      const path = astar({x:a.cellX,y:a.cellY},{x:target.x,y:target.y});
-      if (path && path.length) { a.path = path; a.pathIdx = 0; log('path', `${a.name} path→ crop (${target.x},${target.y}) len=${path.length}`); return; }
-    }
-
-    // Follow faction mate occasionally
-    if (a.factionId && Math.random()<0.05){
-      const mates = agents.filter(b=>b.factionId===a.factionId && b.id!==a.id);
-      if (mates.length){ const m = choice(mates); const dx=Math.sign(m.cellX - a.cellX), dy=Math.sign(m.cellY - a.cellY); const nx=a.cellX+dx, ny=a.cellY+dy; if (isFree(nx,ny)) { moveAgentToCell(a,nx,ny); return; } }
-    }
-
-    // Random wander
-    const dirs = [ [1,0],[-1,0],[0,1],[0,-1] ];
-    const [dx,dy] = choice(dirs);
-    const nx=a.cellX+dx, ny=a.cellY+dy; if (isFree(nx,ny)) moveAgentToCell(a,nx,ny);
-  }
-
-  function adjacentAgents(x,y){
-    const arr=[]; const n=[[1,0],[-1,0],[0,1],[0,-1]];
-    for (const [dx,dy] of n){ const k=key(x+dx,y+dy); const id=agentsByCell.get(k); if (id){ arr.push(agentsById.get(id)); } }
-    return arr;
-  }
-
-  function findNearestCrop(x,y, radius){
-    let best=null, bestd=1e9;
-    for (let dx=-radius; dx<=radius; dx++){
-      for (let dy=-radius; dy<=radius; dy++){
-        const nx=x+dx, ny=y+dy; const k=key(nx,ny);
-        if (greenMap.has(k)) { const d=Math.abs(dx)+Math.abs(dy); if (d<bestd) { bestd=d; best={x:nx,y:ny}; } }
-      }
-    }
-    return best;
-  }
-
-  // ------------------------------
-  // Rendering
-  // ------------------------------
-  function drawGrid(){
-    ctx.fillStyle = '#0a0e18';
-    ctx.fillRect(0,0, CANVAS_SIZE, CANVAS_SIZE);
-    ctx.strokeStyle = '#0f1626';
-    ctx.lineWidth = 1;
-    for (let x=0;x<=CANVAS_SIZE;x+=CELL_SIZE){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,CANVAS_SIZE); ctx.stroke(); }
-    for (let y=0;y<=CANVAS_SIZE;y+=CELL_SIZE){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(CANVAS_SIZE,y); ctx.stroke(); }
-  }
-
-  function shadeRect(x,y,w,h, base){
-    ctx.fillStyle = base; ctx.fillRect(x,y,w,h);
-    ctx.globalAlpha = 0.25; ctx.fillStyle = '#000'; ctx.fillRect(x+w*0.5,y+h*0.5,w*0.5,h*0.5); ctx.globalAlpha=1;
-  }
-
-  function hpColor(ratio){
-    if (ratio>0.6) return '#a8a8b3';
-    if (ratio>0.3) return '#eab308';
-    return '#ef4444';
-  }
-
-  function drawWorld(){
-    // Crops (greens)
-    for (const g of greenMap.values()){
-      const x=g.x*CELL_SIZE, y=g.y*CELL_SIZE; shadeRect(x,y,CELL_SIZE,CELL_SIZE, '#2dd4bf'); // teal-ish crop
-      // add little stem
-      ctx.fillStyle = '#065f46'; ctx.fillRect(x+6,y+4,4,3);
-    }
-    // Farms (yellows)
-    for (const f of yellowMap.values()){
-      const x=f.x*CELL_SIZE, y=f.y*CELL_SIZE; shadeRect(x,y,CELL_SIZE,CELL_SIZE, '#fbbf24');
-      // tiny field rows
-      ctx.globalAlpha=0.5; ctx.fillStyle='#a16207'; ctx.fillRect(x+3,y+6,10,2); ctx.fillRect(x+3,y+10,10,2); ctx.globalAlpha=1;
-    }
-    // Walls
-    for (const w of wallMap.values()){
-      const x=w.x*CELL_SIZE, y=w.y*CELL_SIZE; shadeRect(x,y,CELL_SIZE,CELL_SIZE, hpColor(w.hp/w.maxHp));
-    }
-    // Flags
-    for (const fl of flagMap.values()){
-      const x=fl.x*CELL_SIZE, y=fl.y*CELL_SIZE;
-      // pole
-      ctx.fillStyle = '#cbd5e1'; ctx.fillRect(x+6, y+3, 2, 10);
-      // flag
-      const fcol = factions.get(fl.factionId)?.color ?? '#94a3b8';
-      ctx.fillStyle = fcol; ctx.fillRect(x+8, y+3, 6, 5);
-    }
-    // Agents
-    for (const a of agents){
-      const x=a.cellX*CELL_SIZE, y=a.cellY*CELL_SIZE;
-      // body
-      ctx.fillStyle = AGENT_FILL; ctx.fillRect(x+2,y+2,CELL_SIZE-4,CELL_SIZE-4);
-      // border (faction color or neutral)
-      ctx.lineWidth = (selectedAgentId===a.id)? 3 : 2;
-      ctx.strokeStyle = a.factionId ? (factions.get(a.factionId)?.color ?? '#9ca3af') : '#6b7280';
-      ctx.strokeRect(x+1.5,y+1.5,CELL_SIZE-3,CELL_SIZE-3);
-      // HP bar
-      const ratio = a.health/AGENT_MAX_HEALTH;
-      ctx.fillStyle = '#111827'; ctx.fillRect(x+2,y-4,CELL_SIZE-4,3);
-      ctx.fillStyle = ratio>0.5? '#16a34a' : (ratio>0.25? '#eab308' : '#ef4444');
-      ctx.fillRect(x+2,y-4,(CELL_SIZE-4)*ratio,3);
-      // Action indicator
-      if (a.action){
-        const g = ActionGlyph[a.action.type] || '?';
-        ctx.font = '10px sans-serif'; ctx.textBaseline='bottom'; ctx.textAlign='center';
-        ctx.fillStyle = '#fff'; ctx.strokeStyle='#000'; ctx.lineWidth=2; ctx.strokeText(g, x+CELL_SIZE/2, y-6); ctx.fillText(g, x+CELL_SIZE/2, y-6);
-      }
-    }
-  }
-
-  // ------------------------------
-  // UI & Inspector
-  // ------------------------------
-  function updateStats(){
-    statAgents.textContent = String(agents.length);
-    statGreens.textContent = String(greenMap.size);
-    statYellows.textContent = String(yellowMap.size);
-    statWalls.textContent = String(wallMap.size + flagMap.size);
-  }
-
-  function setInspectorAgent(id){
-    selectedAgentId = id;
-    inspectorKV.innerHTML = '';
-    if (!id) { inspectorKV.innerHTML = '<div>Tip</div><div>Click an agent to inspect.</div>'; return; }
-    const a = agentsById.get(id); if (!a) return;
-    const add = (k,v)=>{ const dk=document.createElement('div'); dk.textContent=k; const dv=document.createElement('div'); dv.textContent=v; inspectorKV.appendChild(dk); inspectorKV.appendChild(dv); };
-    add('Name', a.name);
-    add('HP', `${a.health}/${AGENT_MAX_HEALTH}`);
-    add('Energy', String(a.energy));
-    add('Faction', a.factionId ?? '—');
-    add('Rel count', String(a.relationships.size));
-    const secs = Math.round((a.age * effectiveTickMs)/1000);
-    add('Age', `${a.age} ticks (~${secs}s)`);
-    add('Cell', `(${a.cellX},${a.cellY})`);
-    if (a.action) add('Action', `${a.action.type} (${Math.ceil(a.action.remainingMs/100)/10}s left)`);
-    else add('Action', '—');
-    if (a.path) add('Path', `${a.path.length - a.pathIdx} steps left`);
-  }
-
-  canvas.addEventListener('click', (e)=>{
-    const rect = canvas.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left) / CELL_SIZE);
-    const y = Math.floor((e.clientY - rect.top) / CELL_SIZE);
-    const id = agentsByCell.get(key(x,y));
-    setInspectorAgent(id ?? null);
-  });
-
-  // ------------------------------
-  // Main Loop
-  // ------------------------------
-  function logicTick(dt){
-    // spawn attempts
-    maybeSpawnCrop();
-
-    // periodic recompute factions
-    if (tickCount % 220 === 0) recomputeFactions();
-
-    // agents
-    astarBudget = MAX_ASTAR_PER_TICK;
-    for (const a of [...agents]){
-      agentTick(a, dt);
-      if (a.health<=0) killAgent(a);
-      // energy decay
-      if (a.age % 100 === 0) a.energy = Math.max(0, a.energy-1);
-    }
-  }
-
-  function draw(){
-    drawGrid();
-    drawWorld();
-  }
-
-  function frame(ts){
-    if (!lastDraw) lastDraw = ts;
-    const rawdt = ts - lastDraw; lastDraw = ts;
-    if (!paused) {
-      acc += rawdt;
-      while (acc >= effectiveTickMs) {
-        logicTick(effectiveTickMs);
-        acc -= effectiveTickMs; tickCount++;
-      }
-    }
-    if (tickCount % 8 === 0) { // throttle UI updates
-      updateStats(); drawLog(); if (selectedAgentId) setInspectorAgent(selectedAgentId);
-    }
-    draw();
-    requestAnimationFrame(frame);
-  }
-
-  // ------------------------------
-  // Init & Controls
-  // ------------------------------
-  function resetWorld(agentCount){
-    nextEntityId = 1;
-    wallMap.clear(); greenMap.clear(); yellowMap.clear(); flagMap.clear();
-    agents = []; agentsById.clear(); agentsByCell.clear(); factions.clear(); factionSpawns.clear();
-    log('destroy', `World reset with ${agentCount} agents.`);
-
-    // seed some farms (yellows)
-    for (let i=0;i<20;i++){
-      const cell = randomFreeCell(); if (!cell) break;
-      yellowMap.set(key(cell.x,cell.y), {id:nextEntityId++, x:cell.x, y:cell.y, cooldown:0});
-    }
-
-    // seed some walls
-    for (let i=0;i<40;i++){
-      const cell = randomFreeCell(); if (!cell) break;
-      const hp = randInt(WALL_HP_MIN, WALL_HP_MAX);
-      wallMap.set(key(cell.x,cell.y), {id:nextEntityId++, x:cell.x, y:cell.y, hp, maxHp:hp});
-    }
-
-    // agents
-    for (let i=0;i<agentCount;i++){
-      const c = randomFreeCell(); if (!c) break; addAgent(c.x, c.y);
-    }
-
-    recomputeFactions();
-  }
-
-  function start(){
-    buildLogControls();
-    speedSlider.value = String(DEFAULT_SPEED_PERCENT); speedVal.textContent = `${DEFAULT_SPEED_PERCENT}%`;
-    spawnSlider.value = '1'; spawnVal.textContent = '1.0×';
-    effectiveTickMs = BASE_TICK_MS / (DEFAULT_SPEED_PERCENT/100);
-    const startCount = clamp(parseInt(startAgentsInput.value||'200',10), AGENT_START_MIN, AGENT_START_MAX);
-    resetWorld(startCount);
-    requestAnimationFrame(frame);
-  }
-
-  speedSlider.addEventListener('input', () => {
-    speedPercent = parseInt(speedSlider.value, 10);
-    effectiveTickMs = BASE_TICK_MS / (speedPercent/100);
-    speedVal.textContent = `${speedPercent}%`;
-  });
-  spawnSlider.addEventListener('input', () => {
-    spawnMultiplier = parseFloat(spawnSlider.value);
-    spawnVal.textContent = `${spawnMultiplier.toFixed(1)}×`;
-  });
-  btnPause.addEventListener('click', () => { paused = !paused; btnPause.textContent = paused? 'Unpause' : 'Pause'; });
-  btnSpawnGreen.addEventListener('click', () => { const c=randomFreeCell(); if(c){ spawnCropAt(c.x,c.y,true); drawLog(); }});
-  btnRestart.addEventListener('click', () => {
-    const n = clamp(parseInt(startAgentsInput.value||'200',10), AGENT_START_MIN, AGENT_START_MAX);
-    if (!Number.isFinite(n)) return;
-    if (!confirm(`Restart world with ${n} agents? This clears current state.`)) return;
-    resetWorld(n);
-  });
-
-  // Expose for debugging
-  window._world = { agents, wallMap, greenMap, yellowMap, factions, factionSpawns };
-
-  start();
-})();
-</script>
-</body>
+    <script src="./app.bundle.js"></script>
+  </body>
 </html>
