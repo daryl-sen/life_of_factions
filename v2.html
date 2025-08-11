@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Life of Factions — v1.3.2 (Option A: Move-Then-Plan)</title>
+  <title>Life of Factions — v1.3.3 (Option A: Move-Then-Plan)</title>
   <style>
     :root{
       --bg:#0f1220; --panel:#171a2b; --panel-2:#1f2340; --text:#e8ecff; --muted:#9aa2d6; --accent:#7bdcff; --good:#60e6a8; --bad:#ff6d7a; --warn:#ffd166;
@@ -118,9 +118,11 @@
 
   // ====== Tunables / Balance ======
   const TUNE = {
-    moveEnergy: 0.12,
-    actionCost: {talk:0.4, quarrel:0.8, attack:2.5, heal:3.0, help:1.6, attack_wall:1.5, attack_flag:2.0, reproduce:4.0},
-    cropGain: 22,
+    // economy / costs
+    moveEnergy: 0.10, // was 0.12
+    actionCost: {talk:0.4, quarrel:0.8, attack:2.5, heal:3.0, help:1.6, attack_wall:1.5, attack_flag:2.0, reproduce:1.6}, // repro was 4.0
+    cropGain: 28, // was 22
+
     starvationSeconds: 18,
     healAuraRadius: 4,
     healAuraPerTick: 0.6,
@@ -128,17 +130,20 @@
     wallHp:[10,15],
     flagHp:[12,18],
     farmBoostRadius:3,
-    factionThreshold:0.6,
+    factionThreshold:0.5, // was 0.6
     factionMinSize:2,
     buildWallChance: 0.0002,
     energyLowThreshold: 40,
     lowEnergyExploreRange: 14
   };
+
+  // Shorter actions, remove global +5s extender
   const ACTION_DURATIONS = {
-    talk:[1200,2600], quarrel:[1200,2600], attack:[1200,2600], heal:[1200,2600], help:[1200,2600],
-    attack_wall:[1200,2600], attack_flag:[1200,2600], reproduce:[3500,6000]
+    talk:[900,1800], quarrel:[900,1800], attack:[900,1800], heal:[900,1800], help:[900,1800],
+    attack_wall:[1000,2000], attack_flag:[1000,2000], reproduce:[2200,3600]
   };
-  const ACTION_BASE_ADDED = 5000; // +5s per spec
+  const ACTION_BASE_ADDED = 0; // was 5000ms
+
   const BASE_TICK_MS = 40;        // fixed-step
 
   const COLORS = {
@@ -223,7 +228,7 @@
   // ====== World instance ======
   const world = new World();
   world.activeLogCats = new Set(LOG_CATS);
-  // Expose for quick debugging if needed:
+  // Expose for quick debugging:
   window.world = world;
 
   // ====== Filters UI ======
@@ -390,29 +395,38 @@
       const id=world.agentsByCell.get(key(nx,ny)); if(!id) continue; const b=world.agentsById.get(id);
       const rel=getRel(a,b.id);
       const otherFaction = (a.factionId && b.factionId && a.factionId!==b.factionId) || (!a.factionId && b.factionId) || (a.factionId && !b.factionId);
-      const hostileBias = otherFaction || rel<0 ? 0.65 : 0.25;
+      const hostileBias = otherFaction || rel<0 ? 0.5 : 0.2; // softened
       const r=Math.random();
       if(r<hostileBias){
-        if(Math.random()<0.6){ tryStartAction(a,'attack',{targetId:b.id}); return; }
+        if(Math.random()<0.55){ tryStartAction(a,'attack',{targetId:b.id}); return; }
         else { tryStartAction(a,'quarrel',{targetId:b.id}); return; }
       }else{
-        if(Math.random()<0.6){ tryStartAction(a,'talk',{targetId:b.id}); return; }
-        else if(Math.random()<0.2){ tryStartAction(a,'heal',{targetId:b.id}); return; }
-        else if(Math.random()<0.2){ tryStartAction(a,'help',{targetId:b.id}); return; }
+        if(Math.random()<0.65){ tryStartAction(a,'talk',{targetId:b.id}); return; }
+        else if(Math.random()<0.25){ tryStartAction(a,'heal',{targetId:b.id}); return; }
+        else if(Math.random()<0.25){ tryStartAction(a,'help',{targetId:b.id}); return; }
       }
     }
+    // Reproduction pass: require higher energy and reserve a little upfront
     for(const [nx,ny] of [[a.cellX+1,a.cellY],[a.cellX-1,a.cellY],[a.cellX,a.cellY+1],[a.cellX,a.cellY-1]]){
-      const id=world.agentsByCell.get(key(nx,ny)); if(!id) continue; const b=world.agentsById.get(id); const rel=getRel(a,b.id);
-      if(rel>=0.5 && a.energy>60 && b.energy>60){ if(tryStartAction(a,'reproduce',{targetId:b.id})) return; }
+      const id=world.agentsByCell.get(key(nx,ny)); if(!id) continue;
+      const b=world.agentsById.get(id); const rel=getRel(a,b.id);
+      if(rel>=0.5 && a.energy>=95 && b.energy>=95){
+        if(tryStartAction(a,'reproduce',{targetId:b.id})){
+          const reserve=8; a.energy-=reserve; b.energy-=reserve;
+          return;
+        }
+      }
     }
   }
 
   function processAction(a, dtMs){
     if(!a.action) return;
-    // Hungry override: cancel action immediately and go find food
-    if(a.energy < TUNE.energyLowThreshold){ a.action = null; return; }
+    const act=a.action;
 
-    const act=a.action; act.remainingMs -= dtMs; act.tickCounterMs += dtMs;
+    // Hungry override: cancel all except reproduction
+    if(a.energy < TUNE.energyLowThreshold && act.type !== 'reproduce'){ a.action = null; return; }
+
+    act.remainingMs -= dtMs; act.tickCounterMs += dtMs;
     const costPerMs = (TUNE.actionCost[act.type]||1)/1000;
     a.energy -= costPerMs * dtMs;
 
@@ -425,7 +439,6 @@
       } else if(act.type==='heal' && targ){
         targ.health = Math.min(targ.maxHealth, targ.health + 2.0); logEvt('heal', `${a.name} healed ${targ.name}`, a.id, {to:targ.id});
       } else if(act.type==='help' && targ){
-        // ENERGY TRANSFER: giver -> recipient + small time boost
         const transfer = Math.min(6, Math.max(0, a.energy - 1));
         if(transfer>0){
           a.energy -= transfer;
@@ -439,7 +452,7 @@
         setRel(targ,a.id, getRel(targ,a.id)+delta);
         logEvt('quarrel', `${a.name} ${delta>0? 'made peace with' : 'argued with'} ${targ.name}`, a.id, {to:targ.id, delta});
       } else if(act.type==='talk' && targ){
-        const delta = (Math.random()<0.7? +0.1 : -0.08) * (a.factionId===targ.factionId? 1.1 : 0.7);
+        const delta = (Math.random()<0.75? +0.14 : -0.06) * (a.factionId===targ.factionId? 1.1 : 0.8);
         setRel(a,targ.id, getRel(a,targ.id)+delta);
         setRel(targ,a.id, getRel(targ,a.id)+delta);
         logEvt('talk', `${a.name} talked with ${targ.name}`, a.id, {to:targ.id, delta});
@@ -452,7 +465,13 @@
         if(Math.abs(a.cellX-targ.cellX)+Math.abs(a.cellY-targ.cellY)===1){
           const spots=[[a.cellX+1,a.cellY],[a.cellX-1,a.cellY],[a.cellX,a.cellY+1],[a.cellX,a.cellY-1]];
           const free=spots.find(([x,y])=> !isBlocked(x,y));
-          if(free){ a.energy-=20; targ.energy-=20; const [x,y]=free; const child=addAgentAt(x,y); child.energy=60; child.health=80; logEvt('reproduce', `${a.name} & ${targ.name} had ${child.name}`, a.id, {child:child.id}); }
+          if(free){
+            // modest finishing cost to both parents
+            a.energy-=20; targ.energy-=20;
+            const [x,y]=free; const child=addAgentAt(x,y);
+            child.energy=60; child.health=80;
+            logEvt('reproduce', `${a.name} & ${targ.name} had ${child.name}`, a.id, {child:child.id});
+          }
         }
       }
       a.action=null;
@@ -502,10 +521,10 @@
     }
   }
 
-  // ====== Crop Spawn (tamed) ======
+  // ====== Crop Spawn (slightly richer) ======
   function maybeSpawnCrops(){
-    const attempts = GRID;            // sample ~62 random cells per tick
-    const base = 0.004 * world.spawnMult;
+    const attempts = GRID;                 // ~62 random cells per tick
+    const base = 0.006 * world.spawnMult;  // was 0.004
     for(let i=0;i<attempts;i++){
       const x=rndi(0,GRID-1), y=rndi(0,GRID-1);
       const k=key(x,y);
@@ -523,7 +542,7 @@
     if(a.energy>220){ a.level++; a.maxHealth+=8; a.attack+=1.5; a.energy=140; logEvt('level', `${a.name} leveled to ${a.level}`, a.id, {}); }
   }
 
-  // ====== Hunger targetting ======
+  // ====== Hunger targeting ======
   function seekFoodWhenHungry(a){
     if(world.crops.has(key(a.cellX,a.cellY))){ harvestAt(a,a.cellX,a.cellY); return; }
     const adj=[[a.cellX+1,a.cellY],[a.cellX-1,a.cellY],[a.cellX,a.cellY+1],[a.cellX,a.cellY-1]];
@@ -554,9 +573,9 @@
       a.ageTicks++;
       a.health -= 0.01;
 
-      // Hunger: cancel actions; only plan if we don't already have a path
+      // Hunger: cancel actions (except repro) and plan food when needed
       if(a.energy < TUNE.energyLowThreshold){
-        if(a.action) a.action=null;
+        if(a.action && a.action.type!=='reproduce') a.action=null;
         if(!a.path || a.pathIdx>=a.path.length){ seekFoodWhenHungry(a); }
       }
 
