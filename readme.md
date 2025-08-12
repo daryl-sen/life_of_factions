@@ -1,345 +1,196 @@
-# Life of Factions — Technical Specification (v1.3.5, 2025-08-11)
+# Welcome to **Life of Factions**
 
-## Purpose
+A cozy-chaotic little world plays itself on a 62×62 grid. Tiny agents wander, chat, help, quarrel, build, farm, fall in love, have kids, form factions, and sometimes… start fights. Your role isn’t to micromanage—it's to **set the stage**, hit **Start**, and enjoy the story that unfolds.
 
-A **zero-player**, real-time 2D sandbox where autonomous agents (“little people”) live on a small grid world, gather **crops**, interact, form **factions**, reproduce, build/destroy **walls**, build **farms**, and fight over **faction spawn points** (flags). The simulation is designed for smooth visual playback, tweakable parameters, and emergent social dynamics.
+Visit https://daryl-sen.github.io/life_of_factions/ to start now!
 
----
-
-## 1) Core World
-
-### 1.1 Space & Scale
-
-* **Canvas/viewport:** 1000 × 1000 px (visual may letterbox; logic uses grid)
-* **Grid:** 62 × 62 **integer cells**
-* **Cell size:** 16 × 16 px
-* **Coordinate conversions:** px = cell * 16, cell = floor(px/16)
-  No sub-cell movement.
-
-### 1.2 Time & Loop
-
-* **Rendering:** requestAnimationFrame (vsync)
-* **Simulation tick:** fixed-step accumulator
-  Base tick: **40 ms**; effective tick: 40ms / (speed% / 100)
-* **Game speed:** 5%–300% (default 50%)
-* **Performance target:** visually 30–60 FPS; logic stable under \~200 agents
-
-### 1.3 Game Start
-
-* Simulation does **not** start automatically
-* **Config panel** allows adjusting:
-
-  * Starting agents (20–300, default 20)
-  * Game speed (%)
-  * Crop spawn multiplier (0.1×–5×, default 1.0×)
-* Simulation starts only after **Start** button is clicked
+Note: This is a proof of concept for a bigger project later on. Stay tuned!
 
 ---
 
-## 2) Entities & Data Model
+## 1) What You’ll See On Screen
 
-### 2.1 Agents
+**Canvas (middle):** The world. Each agent is a small circle with a colored border:
 
-```ts
-Agent {
-  id: ID
-  name: string              // 6-char A–Z0–9
-  cellX, cellY: int         // grid coords
-  health: float             // 0..maxHealth
-  maxHealth: float          // base 100; increases with level
-  energy: float             // loosely 0..200+
-  attack: float             // base ~8; increases with level
-  level: int                // capped at 20
-  ageTicks: int
-  starvingSeconds: float
-  factionId: string|null
-  relationships: Map<agentId, float> // -1..1
-  path: Cell[]|null
-  pathIdx: int
-  lockMsRemaining: float    // movement lock for non-attack interactions
-  action: null | {
-    type: 'talk'|'quarrel'|'attack'|'under_attack'|'heal'|'help'|'attack_wall'|'attack_flag'|'reproduce'
-    remainingMs: float
-    tickCounterMs: float
-    payload?: { targetId?: ID, ... }
-  }
-}
-```
+* **Border color** = the agent’s faction color (gray border if they don’t have one yet).
+* **Green triangles** = crops (food!).
+* **Yellow squares** = farms.
+* **Purple-ish blocks** = walls.
+* **Little flags** = faction spawn points.
 
+**Over an agent’s head:**
 
-### 2.2 Terrain & Objects
+* **Tiny red ▼** = low energy—this agent is hungry or tired.
+* **Mini glyphs** show what they’re doing:
 
-* **Wall**: destructible, blocks movement
-* **Crop**: harvestable resource (global cap)
-* **Farm**: boosts nearby crop spawn probability; blocks movement; agents can **build** new farms (energy cost)
-* **FlagSpawn**: faction spawn point, destructible, blocks movement
+  * **+** healing, 🗨 chat/talk, ⚡ quarrel, ✖ attack, ❤ reproduce, 🪵 hammering walls, 🚩 attacking a flag (color matches the faction being targeted).
+* **HP bar** (thin green bar) = health. When it empties, that agent dies.
+
+**HUD (top-left of the canvas):** Tick counter, FPS, and totals for agents, factions, crops, farms, walls, flags.
+
+**Event Log (right):** A live feed of what’s happening—talks, help, heals, fights, births, building, deaths, faction news.
+
+**Inspector (right, above the log):** Click any agent on the canvas to see their name, faction, level, HP, energy, traits, and current action.
 
 ---
 
-## 3) Mechanics
+## 2) Your Controls (Left Panel)
 
-### 3.1 Movement & Pathfinding
+**Start / Pause / Resume**
 
-* Grid movement: 4-connected (N/E/S/W)
-* Pathfinding: A\* with Manhattan heuristic
-* Impassable: walls, farms, flags, agents (except self)
-* If blocked mid-path: drop path and replan later
-* **Move-first, plan-second order** per tick:
+* **Start** initializes a fresh world with your chosen settings.
+* **Pause** to freeze time. **Resume** to continue.
 
-  * Agents advance along any existing path before planning a new one
-  * Prevents path reset loops when adjacent to crops
-* **Movement locks:** while performing **non-attack** interactions (talk/heal/help/reproduce), participants are **locked** in place; lock is ignored if the agent is being **attacked** (they may move to escape)
+**Starting Agents**
+Choose how many agents spawn at the beginning (20–300). Fewer agents = a calmer start.
 
-### 3.2 Energy & Food-Seeking
+**Speed**
+Slow the world down to watch sweet moments unfold, or speed it up to see big stories develop.
 
-* **Low-energy override threshold:** 40
+**Crop Spawn Multiplier**
+More crops means less famine and gentler politics; fewer crops means scarcity, stress, and fights.
 
-  * Cancel current non-reproduction action
-  * Attempt immediate adjacent-crop step and harvest
-  * If none adjacent, plan path to nearest crop/farm area
-* **Food planning threshold (well-fed behavior):** 70
-  If energy ≥ 70, agents **do not** actively seek crops (but still harvest if they step onto one). This preserves time for social, reproduction, and building behaviors.
+**Spawn Crop**
+Instantly add a random new crop.
 
-### 3.3 Resources
+**Save / Load**
+Save a snapshot of your world to a file and load it later. Great for creating your favorite “world seeds.”
 
-* **Crops (green triangle)**: restore energy; small sharing to adjacent same-faction agents
-* **Farms (yellow square)**: increase nearby crop spawn probability within radius 3
-* **Global crop cap:** **150** concurrent crops (hard limit)
+**(Auto-added) Pause When Unfocused**
+A simple checkbox that stops the simulation when you switch tabs/windows, so you don’t miss the drama.
 
-### 3.4 Interactions
-
-* All **non-attack** interactions require **adjacency** (Manhattan distance = 1) and **lock** both agents for the duration.
-* **Attack**:
-
-  * **Range:** Manhattan distance ≤ **2**
-  * Does **not** lock the target; targets remain free to move
-  * Shorter action window; ticks faster (see 3.10)
-* Action cancellation if distance rule no longer satisfied (e.g., partner walked away or attacker out of range).
-
-### 3.5 Factions
-
-* Formed via union-find on relationship graph when relationship ≥ threshold
-* Each faction has:
-
-  * Unique color (also applied to its flag)
-  * Member set
-* Flags heal nearby members (aura), can be destroyed
-
-### 3.6 Building & Destruction
-
-* **Build Wall:** chance each tick; blocks movement; destructible
-* **Build Farm (new):**
-
-  * Attempt when agent is well-fed
-  * Consumes **energy** (see 5. Balancing)
-  * Placed on an adjacent free cell; blocks movement; boosts crop spawns
-* Walls and flags destructible
-
-### 3.7 Reproduction
-
-* Requires adjacency, sufficient energy, and time
-* **Behavioral priority:** reproduction is attempted **before** other interactions
-* Upfront small energy **reserve** is consumed to commit; additional **finishing cost** on success
-* Spawns child in adjacent free cell
-
-### 3.8 Leveling
-
-* Triggered by energy surplus
-* Grants +max HP and +attack
-* **Level cap:** **20**
-
-### 3.9 Health, Energy, Starvation
-
-* Health decays slowly over time
-* Movement costs energy
-* Starvation kills agent after threshold time at 0 energy
-* Flags apply heal aura within radius
-
-### 3.10 Action System (durations, costs, distance rules)
-
-* **Base durations** (randomized per action):
-
-  * talk/quarrel/heal/help: **0.9–1.8s**
-  * **attack:** **0.45–0.9s** (faster)
-  * reproduce: **2.0–3.2s**
-* **Distance rules:**
-
-  * Non-attack actions: distance **=1**
-  * Attack: distance **≤2**
-* **Tick cadence:** effects apply roughly every **0.5s** during actions
-* **Per-second energy costs** (approx.): talk 0.4, quarrel 0.8, **attack 2.2**, heal 3.0, help 1.6, attack\_wall 1.5, attack\_flag 2.0, **reproduce 1.2**
-* **Damage:** base 8; attack deals periodic damage scaled by level
+**Event Log Filters**
+Toggle categories (talk, help, attack, etc.). Pick a specific **Agent** from the dropdown to follow their personal story.
 
 ---
 
-## 4) User Interface
+## 3) How Agents Live
 
-### 4.1 Controls
+**Energy**
+Energy slowly ticks down as time passes and when agents move or act. Eating crops restores energy. If someone stays at zero energy too long, they **starve**.
 
-* **Start/Pause/Resume**
-* Input fields for:
+**Health (HP)**
+Damaged in fights or when under attack. Heals near their faction’s flag (a gentle “aura”), or when another agent heals them. If HP hits zero, the agent dies.
 
-  * Starting agents
-  * Speed (%)
-  * Crop spawn multiplier
-* **Spawn Crop** button (respects crop cap)
+**Levels**
+Well-fed agents can level up: more max HP, stronger attacks. There’s a level cap to keep things fair.
 
-### 4.2 Stats
-
-* Counts for: Agents, Factions, Crops, Farms, Walls, Flags
-
-### 4.3 Inspector
-
-* Click agent to see:
-
-  * Name, Faction, Level (cap 20), Attack, HP, Energy, Age (ticks), #Relationships
-  * Current Action & Remaining time
-
-### 4.4 Event Log
-
-* Filterable by action type (select all/none)
-* Logs: interactions, reproduction, faction changes, builds (wall/farm), destruction, crop spawns, deaths, level-ups
-
-### 4.5 Factions Panel
-
-* Lists: ID, member count, avg level, flag status, color
-
-### 4.6 Visuals
-
-* Agents: **circle** with faction-colored border, HP bar, low-energy glyph
-* Crops: **triangle**
-* Farms: **yellow square**
-* Walls: block with damage tint
-* Flags: colored banner matching faction
-
-### 4.7 Layout/Overflow
-
-* Factions and logs lists are height-capped and scrollable; long IDs wrap to avoid overflow.
+**Personalities**
+Every agent has a mix of **aggression** (more likely to attack) and **cooperation** (more likely to help or heal), plus a travel style (linger near base, roam far, or wander).
 
 ---
 
-## 5) Balancing (defaults)
+## 4) How They Interact
 
-**Economy & thresholds**
+**Talking & Quarreling**
+Hanging out boosts or bruises relationships. Friendly chats tend to warm things up; quarrels cool them down.
 
-* Move cost: **0.10** energy / step
-* Crop gain: **28** energy (pre-sharing)
-* **Food planning threshold:** 70 (only seek food below this)
-* **Low-energy override:** 40
-  Starvation: \~18s at 0 energy
+**Helping & Healing**
+Kind agents share energy or patch up wounds—especially with faction mates nearby. Sometimes a helpful gesture persuades someone to **join a faction**.
 
-**Actions (energy/sec)**
+**Attacking**
+When tempers flare (or food is scarce), agents may attack those nearby—especially members of rival factions. Infighting can happen, too, and the weaker participant sometimes **quits the faction** in frustration.
 
-* talk 0.4, quarrel 0.8, **attack 2.2**, heal 3.0, help 1.6, attack\_wall 1.5, attack\_flag 2.0, **reproduce 1.2**
+**Walls & Farms**
 
-**Action durations**
+* **Walls** block movement. Trapped agents will try to break a wall to escape.
+* **Farms** make nearby crops more likely to appear. Building farms costs energy, so agents usually do it when they’re doing well.
 
-* talk/quarrel/heal/help: **0.9–1.8s**
-* **attack:** **0.45–0.9s**
-* reproduce: **2.0–3.2s**
-
-**Combat & leveling**
-
-* Base damage/tick: 8 (scales with level)
-* Level-up trigger: energy > 220 ⇒ +8 max HP, +1.5 attack, energy reset to 140
-* **Level cap:** **20**
-
-**World objects**
-
-* Wall HP: 10–15
-* Flag HP: 12–18
-* **Farm boost radius:** 3
-* **Build farm energy cost:** **12**
-* Farm build attempt probability (when well-fed): small, periodic
-* **Crop spawn cap:** **150** total
-
-**Factions**
-
-* Formation threshold: 0.5, min size 2
-* Heal aura radius: 4 (+0.6 HP/tick)
+**Reproduction**
+When two compatible, well-fed, neighboring agents like each other enough, they may have a child. Kids inherit a blend of their parents’ tendencies.
 
 ---
 
-## 6) Simulation Order (per logic tick)
+## 5) Factions & Flags
 
-1. Attempt crop spawns (farm-biased, stop at global crop cap)
-2. Compute “under attack” set for this tick (for lock exceptions)
-3. For each agent:
+**Founding a Faction**
+Two unfactioned friends who get along really well may decide to found a new faction. A **flag** appears for them.
 
-   * Age & passive health decay
-   * Decrement movement **lock** time
-   * Low-energy override check (except reproduction)
-   * If acting: process action (distance rules; energy drain; effects)
-   * If not acting:
+**Flags Matter**
+The flag is home turf. Being near your own flag slowly heals you. Rival agents may try to damage or destroy a flag during conflict.
 
-     * If **not locked** (or locked but being attacked):
-       **Move-first**: walk one path step (harvest if landed on crop)
-       **Plan-second**: if no path,
-
-       * Seek food only if energy < 70 (adjacent → nearest crop/farm)
-       * Otherwise short wander to encourage interactions
-     * Consider interactions (reproduce first, then social, then combat with range 2)
-     * Try building (wall or farm; farm consumes energy)
-   * Starvation death check
-   * Level-up check (respect level cap)
-4. Recompute factions on interval (with union-find)
-5. Apply flag healing aura
-6. Remove destroyed objects / dead agents
-7. Update UI (stats, lists, inspector, logs)
+**Joining, Leaving, Switching**
+Helpful acts can recruit outsiders. Infighting or bad blood can push members to leave. Whole factions can fade away if their members die.
 
 ---
 
-## 7) Non-Functional
+## 6) Reading the Drama
 
-* Modular, commented code
-* Smooth performance with \~200 agents
-* Adjustable constants (TUNE & durations)
-* Browser-based implementation; single HTML file
+**Signs of Prosperity**
 
----
+* Lots of crops & farms
+* Few red ▼ icons
+* Healthy HP bars
+* Friendly logs: talk / help / heal / reproduce
 
-## 8) Debug/Telemetry
+**Signs of Trouble**
 
-* Stats overlay (tick, fps, agent count)
-* Path debug via inspector (selected agent)
-* Performance counters
-* Ring buffer event log with filters
-* Optional log export (future)
+* Many red ▼ icons and empty HP bars
+* Frequent quarrels and attacks
+* Agents clustering but not eating (increase crop spawn a bit!)
 
----
+**Quick Fixes You Can Try**
 
-## 9) Acceptance Criteria
-
-1. **Start** button initializes world; **Pause/Resume** work.
-2. **Crop cap**: total concurrent crops never exceeds **150** (Spawn Crop button respects this).
-3. **Interactions lock**: during talk/heal/help/reproduce, agents do **not move**; if they’re **attacked**, they may move despite being locked.
-4. **Attack range & speed**: agents can attack targets at Manhattan distance **≤2**; attack completes in **≤0.9s**.
-5. **Adjacency rule**: all non-attack actions (including reproduction) only occur at **distance = 1**; actions cancel if distance rule is violated.
-6. **Reproduction**: occurs noticeably over long runs (under default settings); upfront commitment and finishing energy costs are deducted from parents.
-7. **Farm building**: agents occasionally **build farms** on adjacent cells when well-fed, consuming **12 energy**; farms block movement and increase local crop spawns.
-8. **Well-fed behavior**: agents with energy ≥ **70** do not actively seek crops (but harvest if already on one), allowing time for social, reproduction, and construction.
-9. **Level cap**: agent level never exceeds **20**; leveling grants stated bonuses and resets energy to 140.
-10. **Faction visuals**: flags use faction colors; faction list shows ID, members, avg level, and flag status.
-11. **UI overflow**: factions list and log are scrollable and do not overflow their containers.
+* Tap **Spawn Crop** to break a famine.
+* Lower **Speed** to follow a tense scene.
+* Increase **Crop Spawn Multiplier** for a gentler world.
+* Start with fewer agents to reduce early chaos.
 
 ---
 
-## 10) Notable Changes Since v2
+## 7) A First-Run Mini Tour
 
-* **Interaction locks** added (freeze movement during non-attack interactions; escape allowed if attacked).
-* **Attack** is **faster** and **range-2**.
-* **Farm construction** by agents (energy-consuming).
-* **Global crop cap** (**150**).
-* **Well-fed behavior** (seek food only below **70** energy).
-* **Level cap** (**20**).
-* Economy tuned (cheaper movement, higher crop gain, cheaper/shorter reproduction, softened hostility bias).
-* UI lists made scrollable to prevent overflow.
+1. Set **Starting Agents** to \~40.
+2. Set **Speed** around 50–80% for a relaxed pace.
+3. Keep **Crop Spawn** at 1.0× for a balanced ecosystem.
+4. Click **Start** and watch.
+5. Click an agent to open the **Inspector**—track their energy, HP, and current action.
+6. In **Event Log**, select that agent in the **Agent** dropdown to follow their storyline.
+7. When you spot the first **flag**, hover there to watch quiet healing and faction life.
 
+Try nudging **Crop Spawn** up if you want cozier vibes, or down if you’re craving drama.
 
---- 
+---
 
-To bundle all the js files:
+## 8) Frequently Asked Questions
 
-```
-npx esbuild js/main.js --bundle --outfile=app.bundle.js
-```
+**Do agents die?**
+Yes—usually from starvation (long zero energy) or from losing too many fights.
+
+**Can I make peace?**
+You can’t order anyone around, but more crops mean fewer reasons to fight, and cooperative personalities tend to mellow things out.
+
+**What makes new factions appear?**
+Strong friendships between unfactioned agents. Watch for a celebratory log entry when a new flag pops up.
+
+**How can I follow one character’s arc?**
+Click them on the canvas, then choose them in the log’s **Agent** dropdown. You’ll see their conversations, assists, duels, and big life moments.
+
+**My world got grim—what now?**
+Slow it down, spawn a few crops, or start a fresh run with more starting food. You can always **Save** happy worlds and return later.
+
+---
+
+## 9) Little Legends to Watch For
+
+* A soft-hearted healer keeping a faction alive near the flag.
+* A restless wanderer who discovers new farmland and changes the food economy.
+* Star-crossed neighbors who chat, help, heal… and eventually welcome a child.
+* A faction torn by infighting, only to reform under a calmer banner.
+
+Every run tells a different tale—some cozy, some chaotic, all emergent.
+
+---
+
+## 10) Quick Reference (Cheat Sheet)
+
+* **Red ▼** = low energy (find crops!).
+* **Green bar** = health.
+* **Glyphs** = current action (✖ attack, + heal, ❤ reproduce, 🗨 talk, ⚡ quarrel, 🪵 wall work, 🚩 flag attack).
+* **Flags** heal nearby allies; enemies sometimes target them.
+* **More crops** → calmer world. **Scarcity** → conflict.
+* **Save/Load** your favorite worlds. **Pause/Resume** anytime.
+
+---
+
+### Have fun—and tell me about the most dramatic run you witness! 👀
