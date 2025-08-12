@@ -69,10 +69,15 @@
         lowEnergyExploreRange: 14,
         levelCap: 20,
         maxCrops: 150,
+
+        // Reproduction
         reproduction: {
           relationshipThreshold: 0.1,
           relationshipEnergy: 85,
         },
+
+        // Pathfinding budget per tick (CONFIGURABLE)
+        pathBudgetPerTick: 30,
       };
       ACTION_DURATIONS = {
         talk: [900, 1800],
@@ -357,16 +362,20 @@
     tryStartAction: () => tryStartAction,
   });
   function planPathTo(world, a, gx, gy) {
+    // Only let whitelisted agents run A* this tick — but do NOT push cooldowns if not allowed
+    if (world._pathWhitelist && !world._pathWhitelist.has(a.id)) {
+      return; // wait for your RR turn
+    }
+
     // Replan throttle + goal caching
     const cooldown = a.replanAtTick || 0;
     const sameGoal = a.goal && a.goal.x === gx && a.goal.y === gy;
     if (sameGoal && a.path && a.pathIdx < a.path.length) return;
     if (world.tick < cooldown) return;
 
-    // Global per-tick budget to prevent A* stampede
+    // Global per-tick budget to prevent A* stampede — also do NOT push cooldown here
     if (world.pathBudget <= 0) {
-      a.replanAtTick = world.tick + 10 + rndi(0, 10); // try later
-      return;
+      return; // try again when budget resets next tick
     }
     world.pathBudget--;
 
@@ -521,7 +530,7 @@
 
     // If there's no food anywhere, prioritize attacking enemies nearby
     if (
-      world.crops.size < world.agents.length * 0.1 &&
+      world.crops.size < world.agents.length * 0.15 &&
       a.energy < TUNE.energyLowThreshold
     ) {
       if (chooseAttack(world, a, true)) return;
@@ -792,7 +801,7 @@
       return;
     }
 
-    // If ANY adjacent crop, path to it (cheap + short)
+    // If ANY adjacent crop, take a single step WITHOUT A* (bypass whitelist/budget)
     const adj = [
       [a.cellX + 1, a.cellY],
       [a.cellX - 1, a.cellY],
@@ -801,7 +810,9 @@
     ];
     for (const [nx, ny] of adj) {
       if (world.crops.has(key(nx, ny))) {
-        planPathTo(world, a, nx, ny);
+        a.path = [{ x: nx, y: ny }];
+        a.pathIdx = 0;
+        a.goal = null;
         return;
       }
     }
@@ -950,8 +961,13 @@
       this._rebuildAgentOptions = null;
       this._lastFactionsSig = "";
       // A* per-tick budget
-      this.pathBudgetMax = 25;
+      this.pathBudgetMax = Number.isFinite(TUNE.pathBudgetPerTick)
+        ? TUNE.pathBudgetPerTick
+        : 30;
       this.pathBudget = 0;
+      // NEW: round-robin cursor + per-tick whitelist for fair A*
+      this._pathRR = 0;
+      this._pathWhitelist = new Set();
     }
   };
 
@@ -2136,6 +2152,25 @@
 
           // refill per-tick A* budget
           world.pathBudget = world.pathBudgetMax;
+
+          // NEW: rotate a fair whitelist of agents that may use A* this tick
+          world._pathWhitelist.clear();
+          const n = world.agents.length;
+          if (n > 0) {
+            const eligible = world.agents.filter(
+              (a) =>
+                (a.lockMsRemaining || 0) <= 0 &&
+                (!a.path || a.pathIdx >= a.path.length) &&
+                !a.action
+            );
+            const pool = eligible.length ? eligible : world.agents;
+            const k = Math.min(world.pathBudgetMax || 30, pool.length);
+            for (let i = 0; i < k; i++) {
+              const idx = (world._pathRR + i) % pool.length;
+              world._pathWhitelist.add(pool[idx].id);
+            }
+            world._pathRR = (world._pathRR + k) % pool.length;
+          }
 
           maybeSpawnCrops(world);
 
