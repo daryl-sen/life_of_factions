@@ -177,8 +177,8 @@
     const k = key(x, y);
     if (world.walls.has(k)) return true;
     if (world.farms.has(k)) return true;
-    if ([...world.flags.values()].some((f) => f.x === x && f.y === y))
-      return true;
+    // O(1) check using pre-keyed flag cells (no allocations)
+    if (world.flagCells.has(k)) return true;
     const occ = world.agentsByCell.get(k);
     if (occ && occ !== ignoreId) return true;
     return false;
@@ -358,11 +358,19 @@
     tryStartAction: () => tryStartAction,
   });
   function planPathTo(world, a, gx, gy) {
+    // Replan throttle + goal caching
+    const cooldown = a.replanAtTick || 0;
+    const sameGoal = a.goal && a.goal.x === gx && a.goal.y === gy;
+    if (sameGoal && a.path && a.pathIdx < a.path.length) return;
+    if (world.tick < cooldown) return;
+
+    a.goal = { x: gx, y: gy };
     const path = astar({ x: a.cellX, y: a.cellY }, { x: gx, y: gy }, (x, y) =>
       isBlocked(world, x, y, a.id)
     );
     a.path = path;
     a.pathIdx = 0;
+    a.replanAtTick = world.tick + 6 + rndi(0, 6); // ~0.5s @ 40ms
   }
   function findNearest(world, a, coll) {
     let best = null,
@@ -740,6 +748,9 @@
       travelPref: Math.random() < 0.5 ? "near" : "far",
       aggression: Math.random(),
       cooperation: Math.random(),
+      // replan throttle + goal cache
+      replanAtTick: 0,
+      goal: null,
     };
     world.agents.push(a);
     world.agentsById.set(id, a);
@@ -814,7 +825,23 @@
       init_building();
       init_utils();
       getRel = (a, bId) => a.relationships.get(bId) ?? 0;
-      setRel = (a, bId, val) => a.relationships.set(bId, clamp(val, -1, 1));
+      // Relationship setter with decay-to-zero + hard cap to prevent unbounded growth
+      setRel = (a, bId, val) => {
+        val = clamp(val, -1, 1);
+        if (Math.abs(val) < 0.02) {
+          a.relationships.delete(bId);
+          return;
+        }
+        a.relationships.set(bId, val);
+        const MAX_REL = 80;
+        if (a.relationships.size > MAX_REL) {
+          const prunable = [...a.relationships.entries()].sort(
+            ([_1, v1], [_2, v2]) => Math.abs(v1) - Math.abs(v2)
+          );
+          const toDrop = a.relationships.size - MAX_REL;
+          for (let i = 0; i < toDrop; i++) a.relationships.delete(prunable[i][0]);
+        }
+      };
     },
   });
 
@@ -830,6 +857,7 @@
       this.crops = /* @__PURE__ */ new Map();
       this.farms = /* @__PURE__ */ new Map();
       this.flags = /* @__PURE__ */ new Map(); // fid -> {id,factionId,x,y,hp,maxHp}
+      this.flagCells = new Set(); // keyed "x,y" for O(1) isBlocked checks
       this.agents = [];
       this.agentsById = /* @__PURE__ */ new Map();
       this.agentsByCell = /* @__PURE__ */ new Map();
@@ -846,6 +874,7 @@
       this._lastFactionsDomAt = 0;
       this._lastAgentCount = 0;
       this._rebuildAgentOptions = null;
+      this._lastFactionsSig = "";
     }
   };
 
@@ -876,12 +905,9 @@
   }
   // NEW: selection star
   function drawStar(ctx, cx, cy) {
-    const spikes = 5,
-      outer = 6,
-      inner = 3.2;
-    let rot = (Math.PI / 2) * 3;
-    let x = cx,
-      y = cy;
+    const spikes = 5, outer = 6, inner = 3.2;
+    let rot = Math.PI / 2 * 3;
+    let x = cx, y = cy;
     ctx.save();
     ctx.beginPath();
     ctx.moveTo(cx, cy - outer);
@@ -1003,9 +1029,13 @@
     stats.stWalls.textContent = world.walls.size;
     stats.stFlags.textContent = world.flags.size;
 
-    // THROTTLED FACTIONS LIST REBUILD (~500ms)
+    // THROTTLED FACTIONS LIST REBUILD (only on change or every ~2s)
     const now = performance.now();
-    if (!world._lastFactionsDomAt || now - world._lastFactionsDomAt >= 500) {
+    const sig =
+      world.factions.size +
+      "|" +
+      [...world.factions].map(([fid, f]) => fid + ":" + f.members.size).join(",");
+    if (sig !== world._lastFactionsSig || now - world._lastFactionsDomAt >= 2000) {
       factionsList.innerHTML = "";
       for (const [fid, f] of world.factions) {
         const color = f.color;
@@ -1031,6 +1061,7 @@
         factionsList.appendChild(div);
       }
       world._lastFactionsDomAt = now;
+      world._lastFactionsSig = sig;
     }
   }
 
@@ -1073,14 +1104,7 @@
     return {
       canvas,
       hud,
-      buttons: {
-        btnStart,
-        btnPause,
-        btnResume,
-        btnSpawnCrop,
-        btnSave,
-        btnLoad,
-      },
+      buttons: { btnStart, btnPause, btnResume, btnSpawnCrop, btnSave, btnLoad },
       fileLoad,
       ranges: { rngAgents, rngSpeed, rngSpawn },
       labels: { lblAgents, lblSpeed, lblSpawn },
@@ -1228,6 +1252,8 @@
       hp: rndi(TUNE.flagHp[0], TUNE.flagHp[1]),
       maxHp: TUNE.flagHp[1],
     });
+    // Track flag cell for O(1) isBlocked
+    world.flagCells.add(key(spot.x, spot.y));
     log(
       world,
       "faction",
@@ -1266,6 +1292,8 @@
     if (aliveCount === 0) {
       world.factions.delete(fid);
       if (world.flags.has(fid)) {
+        const flag = world.flags.get(fid);
+        if (flag) world.flagCells.delete(key(flag.x, flag.y));
         world.flags.delete(fid);
         log(world, "destroy", `Flag ${fid} destroyed`, null, {
           factionId: fid,
@@ -1343,6 +1371,8 @@
       if (set.size === 0) {
         world.factions.delete(fid);
         if (world.flags.has(fid)) {
+          const flag = world.flags.get(fid);
+          if (flag) world.flagCells.delete(key(flag.x, flag.y));
           world.flags.delete(fid);
           log(world, "destroy", `Flag ${fid} destroyed`, null, {
             factionId: fid,
@@ -1457,6 +1487,8 @@
       if (size === 0) {
         world.factions.delete(fid);
         if (world.flags.has(fid)) {
+          const flag = world.flags.get(fid);
+          if (flag) world.flagCells.delete(key(flag.x, flag.y));
           world.flags.delete(fid);
           log(world, "destroy", `Flag ${fid} destroyed`, null, {
             factionId: fid,
@@ -1617,6 +1649,7 @@
       world2.crops.clear();
       world2.farms.clear();
       world2.flags.clear();
+      world2.flagCells.clear();
       world2.agents.length = 0;
       world2.agentsById.clear();
       world2.agentsByCell.clear();
@@ -1637,6 +1670,7 @@
       // flags (keyed by factionId)
       for (const fl of data.flags || []) {
         world2.flags.set(fl.factionId, { ...fl });
+        world2.flagCells.add(key(fl.x, fl.y));
       }
       // walls/farms/crops
       for (const w of data.walls || []) {
@@ -1671,6 +1705,8 @@
           travelPref: a.travelPref || "near",
           aggression: a.aggression ?? Math.random(),
           cooperation: a.cooperation ?? Math.random(),
+          replanAtTick: 0,
+          goal: null,
         };
         // guard: action target must exist
         if (
@@ -1759,6 +1795,7 @@
           world.crops.clear();
           world.farms.clear();
           world.flags.clear();
+          world.flagCells.clear();
           world.agents.length = 0;
           world.agentsById.clear();
           world.agentsByCell.clear();
@@ -2109,9 +2146,7 @@
             doRenderLog();
           }
         }
-        window.addEventListener("blur", () =>
-          pauseForBlur("window lost focus")
-        );
+        window.addEventListener("blur", () => pauseForBlur("window lost focus"));
         document.addEventListener("visibilitychange", () => {
           if (document.hidden) pauseForBlur("tab hidden");
         });
