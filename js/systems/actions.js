@@ -250,6 +250,7 @@ export function processAction(world, a, dtMs) {
     const targ2 = act.payload?.targetId
       ? world.agentsById.get(act.payload.targetId)
       : null;
+
     if (act.type === "reproduce" && targ2) {
       if (manhattan(a.cellX, a.cellY, targ2.cellX, targ2.cellY) === 1) {
         const spots = [
@@ -275,7 +276,42 @@ export function processAction(world, a, dtMs) {
           );
         }
       }
+    } else if (act.type === "help" && targ2) {
+      // Try to convert the recipient into helper's faction if relationship is good
+      if (a.factionId && a.factionId !== targ2.factionId) {
+        const rel = getRel(a, targ2.id);
+        const chance = TUNE.helpConvertChance ?? 0.5;
+        const relThresh = TUNE.helpConvertRelThreshold ?? TUNE.factionThreshold;
+
+        if (rel >= relThresh && Math.random() < chance) {
+          const f = world.factions.get(a.factionId);
+          if (f) {
+            // Raise relationships between the target and all faction members
+            const req = TUNE.factionThreshold + 0.05;
+            for (const mid of f.members) {
+              const m = world.agentsById.get(mid);
+              if (!m) continue;
+              setRel(targ2, mid, Math.max(getRel(targ2, mid), req));
+              setRel(m, targ2.id, Math.max(getRel(m, targ2.id), req));
+            }
+            log(
+              world,
+              "faction",
+              `${a.name} convinced ${targ2.name} to join ${a.factionId}`,
+              a.id,
+              {
+                to: targ2.id,
+                factionId: a.factionId,
+              }
+            );
+            // Immediate regroup so the UI reflects the change right away
+            if (typeof recomputeFactions === "function")
+              recomputeFactions(world);
+          }
+        }
+      }
     }
+
     a.action = null;
   }
 }

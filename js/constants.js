@@ -49,6 +49,9 @@ export const TUNE = {
     relationshipThreshold: 0.1,
     relationshipEnergy: 85,
   },
+
+  helpConvertChance: 0.5,            // 50% by default
+  helpConvertRelThreshold: 0.4,      // "good relationship" threshold
 };
 
 export const ACTION_DURATIONS = {

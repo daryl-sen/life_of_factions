@@ -55,7 +55,11 @@
         reproduction: {
           relationshipThreshold: 0.1,
           relationshipEnergy: 85
-        }
+        },
+        helpConvertChance: 0.5,
+        // 50% by default
+        helpConvertRelThreshold: 0.4
+        // "good relationship" threshold
       };
       ACTION_DURATIONS = {
         talk: [900, 1800],
@@ -547,6 +551,36 @@
             );
           }
         }
+      } else if (act.type === "help" && targ2) {
+        if (a.factionId && a.factionId !== targ2.factionId) {
+          const rel = getRel(a, targ2.id);
+          const chance = TUNE.helpConvertChance ?? 0.5;
+          const relThresh = TUNE.helpConvertRelThreshold ?? TUNE.factionThreshold;
+          if (rel >= relThresh && Math.random() < chance) {
+            const f = world.factions.get(a.factionId);
+            if (f) {
+              const req = TUNE.factionThreshold + 0.05;
+              for (const mid of f.members) {
+                const m = world.agentsById.get(mid);
+                if (!m) continue;
+                setRel(targ2, mid, Math.max(getRel(targ2, mid), req));
+                setRel(m, targ2.id, Math.max(getRel(m, targ2.id), req));
+              }
+              log(
+                world,
+                "faction",
+                `${a.name} convinced ${targ2.name} to join ${a.factionId}`,
+                a.id,
+                {
+                  to: targ2.id,
+                  factionId: a.factionId
+                }
+              );
+              if (typeof recomputeFactions === "function")
+                recomputeFactions(world);
+            }
+          }
+        }
       }
       a.action = null;
     }
@@ -904,7 +938,7 @@
   init_utils();
   init_spatial();
   init_harvest();
-  function recomputeFactions(world) {
+  function recomputeFactions2(world) {
     const ids = world.agents.map((a) => a.id);
     const idx = new Map(ids.map((id, i) => [id, i]));
     const parent = ids.map((_, i) => i);
@@ -1261,7 +1295,7 @@
         }
         for (const a of world.agents) {
           a.ageTicks++;
-          a.health -= 0.01;
+          a.energy -= 0.01;
           a.lockMsRemaining = Math.max(
             0,
             (a.lockMsRemaining || 0) - BASE_TICK_MS
@@ -1351,7 +1385,7 @@
           }
           levelCheck(world, a);
         }
-        if (world.tick % 25 === 0) recomputeFactions(world);
+        if (world.tick % 25 === 0) recomputeFactions2(world);
         applyFlagHealing(world);
         cleanDead(world);
       }
