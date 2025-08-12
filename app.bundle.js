@@ -56,13 +56,16 @@
         farmEnergyCost: 12,
         buildWallChance: 2e-4,
         buildFarmChance: 5e-3,
-        // “small, periodic” attempt when well-fed
-        factionThreshold: 0.5,
+
+        // Factions (explicit, not graph-based)
+        factionThreshold: 0.5, // legacy (still used by UI labels)
         factionMinSize: 2,
+        factionFormRelThreshold: 0.6, // NEW: when two factionless agents interact and rel >= this -> form new faction
+        helpConvertChance: 0.5, // probability when recruiting via help
+        helpConvertRelThreshold: 0.4, // min relationship with recruiter to allow join
+
         energyLowThreshold: 40,
-        // override threshold
         foodPlanThreshold: 70,
-        // seek food only when below this
         lowEnergyExploreRange: 14,
         levelCap: 20,
         maxCrops: 150,
@@ -70,16 +73,11 @@
           relationshipThreshold: 0.1,
           relationshipEnergy: 85,
         },
-        helpConvertChance: 0.5,
-        // 50% by default
-        helpConvertRelThreshold: 0.4,
-        // "good relationship" threshold
       };
       ACTION_DURATIONS = {
         talk: [900, 1800],
         quarrel: [900, 1800],
-        attack: [450, 900],
-        // faster attacks
+        attack: [450, 900], // faster attacks
         heal: [900, 1800],
         help: [900, 1800],
         attack_wall: [1e3, 2e3],
@@ -395,7 +393,7 @@
     ag.lockMsRemaining = Math.max(ag.lockMsRemaining || 0, ms);
   }
 
-  // Aggression/Cooperation-driven chooser
+  // chooser helpers
   function chooseAttack(world, a) {
     const candidates = [];
     for (let dx = -2; dx <= 2; dx++) {
@@ -561,7 +559,7 @@
           to: targ.id,
         });
 
-        // Same-faction infighting: 20% chance lower-level leaves faction (no instant recompute)
+        // Same-faction infighting: 20% chance lower-level leaves faction
         if (
           a.factionId &&
           targ.factionId &&
@@ -573,15 +571,8 @@
           else if (targ.level === a.level)
             quitter = Math.random() < 0.5 ? a : targ;
           const old = quitter.factionId;
-          quitter.factionId = null;
-          log(
-            world,
-            "faction",
-            `${quitter.name} left faction ${old} after infighting`,
-            quitter.id,
-            { from: old, to: null }
-          );
-          // Allow periodic recompute to absorb this change organically
+          setFaction(world, quitter, null, "infighting");
+          // message logged inside setFaction with reason
         }
       } else if (act.type === "attack_wall") {
         const wx = act.payload?.x,
@@ -606,7 +597,7 @@
           to: targ.id,
         });
       } else if (act.type === "help" && targ) {
-        // Give 20% if helper >70% energy, else 10%
+        // Transfer some energy
         const high = a.energy > ENERGY_CAP * 0.7;
         const ratio = high ? 0.2 : 0.1;
         const transfer = Math.max(0, a.energy * ratio);
@@ -620,9 +611,6 @@
             a.id,
             { to: targ.id, transfer }
           );
-        }
-        if (targ.action) {
-          targ.action.remainingMs *= 0.9;
         }
       } else if (act.type === "quarrel" && targ) {
         const delta =
@@ -655,6 +643,33 @@
       const targ2 = act.payload?.targetId
         ? world.agentsById.get(act.payload.targetId)
         : null;
+
+      // Explicit faction logic on completion (no graph-based recompute)
+
+      // 1) Founding a NEW faction: two factionless agents interact and have high enough relationship.
+      if (targ2 && !a.factionId && !targ2.factionId) {
+        const rel = getRel(a, targ2.id);
+        if (
+          (act.type === "talk" || act.type === "help" || act.type === "heal") &&
+          rel >= TUNE.factionFormRelThreshold &&
+          a.id < targ2.id // guard to avoid double-creating from both agents
+        ) {
+          createFaction(world, [a, targ2]);
+        }
+      }
+
+      // 2) Recruiting into EXISTING faction: helper can recruit the target explicitly.
+      if (act.type === "help" && targ2 && a.factionId) {
+        if (
+          Math.random() < TUNE.helpConvertChance &&
+          getRel(a, targ2.id) >= TUNE.helpConvertRelThreshold &&
+          targ2.factionId !== a.factionId
+        ) {
+          setFaction(world, targ2, a.factionId, "recruitment");
+        }
+      }
+
+      // 3) Wrap up other actions that have post-completion behavior
       if (act.type === "reproduce" && targ2) {
         if (manhattan(a.cellX, a.cellY, targ2.cellX, targ2.cellY) === 1) {
           const spots = [
@@ -672,7 +687,7 @@
             child.energy = 60;
             child.health = 80;
 
-            // Inherit aggression/cooperation (average + small noise)
+            // Inherit behavioral traits (no relationship graph effects)
             child.aggression = clamp(
               (a.aggression + targ2.aggression) / 2 + rnd(-0.15, 0.15),
               0,
@@ -686,38 +701,14 @@
             child.travelPref =
               Math.random() < 0.5 ? a.travelPref : targ2.travelPref;
 
-            // Child faction: choose randomly from parents' factions, or sole parent's faction
+            // Child faction: pick one parent's faction if any (explicit assign)
             const pa = a.factionId || null;
             const pb = targ2.factionId || null;
             let chosen = null;
             if (pa && pb) chosen = Math.random() < 0.5 ? pa : pb;
             else chosen = pa || pb;
-            if (chosen) {
-              child.factionId = chosen;
-              const f = world.factions.get(chosen);
-              const req = TUNE.factionThreshold + 0.05;
-              if (f) {
-                for (const mid of f.members) {
-                  const m = world.agentsById.get(mid);
-                  if (!m) continue;
-                  setRel(child, mid, Math.max(getRel(child, mid), req));
-                  setRel(m, child.id, Math.max(getRel(m, child.id), req));
-                }
-              } else {
-                const req = TUNE.factionThreshold + 0.05;
-                setRel(child, a.id, Math.max(getRel(child, a.id), req));
-                setRel(a, child.id, Math.max(getRel(a, child.id), req));
-                setRel(child, targ2.id, Math.max(getRel(child, targ2.id), req));
-                setRel(targ2, child.id, Math.max(getRel(targ2, child.id), req));
-              }
-              log(
-                world,
-                "faction",
-                `${child.name} joined faction ${chosen}`,
-                child.id,
-                { factionId: chosen }
-              );
-            }
+            if (chosen) setFaction(world, child, chosen, "birth");
+
             log(
               world,
               "reproduce",
@@ -727,42 +718,8 @@
             );
           }
         }
-      } else if (act.type === "help" && targ2) {
-        // 70% chance to convert recipient to helper's faction, if helper has one
-        if (a.factionId && Math.random() < 0.7) {
-          const fid = a.factionId;
-          const req = TUNE.factionThreshold + 0.05;
-          // Strong tie to helper
-          setRel(targ2, a.id, Math.max(getRel(targ2, a.id), req));
-          setRel(a, targ2.id, Math.max(getRel(a, targ2.id), req));
-          // Gentle ties to a few nearest faction members (not all) to avoid instant giant merges
-          const f = world.factions.get(fid);
-          if (f) {
-            const members = [...f.members]
-              .map((mid) => world.agentsById.get(mid))
-              .filter((m) => m && m.id !== a.id && m.id !== targ2.id)
-              .sort(
-                (m1, m2) =>
-                  manhattan(targ2.cellX, targ2.cellY, m1.cellX, m1.cellY) -
-                  manhattan(targ2.cellX, targ2.cellY, m2.cellX, m2.cellY)
-              )
-              .slice(0, 2);
-            const soft = TUNE.factionThreshold + 0.02;
-            for (const m of members) {
-              setRel(targ2, m.id, Math.max(getRel(targ2, m.id), soft));
-              setRel(m, targ2.id, Math.max(getRel(m, targ2.id), soft));
-            }
-          }
-          log(
-            world,
-            "faction",
-            `${a.name} convinced ${targ2.name} to join ${fid}`,
-            a.id,
-            { to: targ2.id, factionId: fid }
-          );
-          // No immediate recompute; let periodic pass absorb changes
-        }
       }
+
       a.action = null;
     }
   }
@@ -787,9 +744,7 @@
       pathIdx: 0,
       action: null,
       lockMsRemaining: 0,
-      // travel preference: "near" prefers to stay near faction flag, "far" prefers roaming away
       travelPref: Math.random() < 0.5 ? "near" : "far",
-      // behavioral traits
       aggression: Math.random(),
       cooperation: Math.random(),
     };
@@ -881,7 +836,7 @@
       this.walls = /* @__PURE__ */ new Map();
       this.crops = /* @__PURE__ */ new Map();
       this.farms = /* @__PURE__ */ new Map();
-      this.flags = /* @__PURE__ */ new Map();
+      this.flags = /* @__PURE__ */ new Map(); // fid -> {id,factionId,x,y,hp,maxHp}
       this.agents = [];
       this.agentsById = /* @__PURE__ */ new Map();
       this.agentsByCell = /* @__PURE__ */ new Map();
@@ -1001,11 +956,7 @@
     if (!world._lastFactionsDomAt || now - world._lastFactionsDomAt >= 500) {
       factionsList.innerHTML = "";
       for (const [fid, f] of world.factions) {
-        const color =
-          f.color ||
-          FACTION_COLORS[
-            [...world.factions.keys()].indexOf(fid) % FACTION_COLORS.length
-          ];
+        const color = f.color;
         const div = document.createElement("div");
         const members = [...f.members]
           .map((id) => world.agentsById.get(id))
@@ -1134,7 +1085,6 @@
     };
     // initial build (no interval; option C)
     rebuildAgentOptions();
-    // expose to world so the 400ms UI tick can refresh it when counts change
     world._rebuildAgentOptions = rebuildAgentOptions;
 
     agentSelect.addEventListener("change", () => {
@@ -1190,169 +1140,183 @@
   init_spatial();
   init_harvest();
 
-  // Helper for overlap count
-  function _overlapCount(setA, setB) {
-    let c = 0;
-    for (const x of setA) if (setB.has(x)) c++;
-    return c;
+  // ===== Explicit faction helpers (no relationship-based recompute) =====
+  function _nextFactionColor(world) {
+    const used = new Set([...world.factions.values()].map((f) => f.color));
+    for (let i = 0; i < FACTION_COLORS.length; i++) {
+      const col = FACTION_COLORS[i];
+      if (!used.has(col)) return col;
+    }
+    return FACTION_COLORS[world.factions.size % FACTION_COLORS.length];
   }
 
-  function recomputeFactions2(world) {
-    const ids = world.agents.map((a) => a.id);
-    const idx = new Map(ids.map((id, i) => [id, i]));
-    const parent = ids.map((_, i) => i);
-    const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
-    const union = (a, b) => {
-      a = find(a);
-      b = find(b);
-      if (a !== b) parent[b] = a;
-    };
-
-    // Build edges from relationships >= threshold
-    for (const a of world.agents) {
-      for (const [bid, val] of a.relationships) {
-        if (val >= TUNE.factionThreshold && world.agentsById.has(bid))
-          union(idx.get(a.id), idx.get(bid));
-      }
-    }
-
-    // Build components
-    const groupsMap = /* @__PURE__ */ new Map();
-    ids.forEach((id, i) => {
-      const r = find(i);
-      if (!groupsMap.has(r)) groupsMap.set(r, []);
-      groupsMap.get(r).push(id);
+  function _placeFlag(world, fid, members) {
+    if (world.flags.has(fid)) return;
+    const cells = members.map((a) => ({ x: a.cellX, y: a.cellY }));
+    const cx = Math.round(cells.reduce((s, c) => s + c.x, 0) / cells.length);
+    const cy = Math.round(cells.reduce((s, c) => s + c.y, 0) / cells.length);
+    let spot = { x: cx, y: cy };
+    if (isBlocked(world, cx, cy)) spot = randomFreeCell(world);
+    world.flags.set(fid, {
+      id: crypto.randomUUID(),
+      factionId: fid,
+      x: spot.x,
+      y: spot.y,
+      hp: rndi(TUNE.flagHp[0], TUNE.flagHp[1]),
+      maxHp: TUNE.flagHp[1],
     });
-    const comps = [...groupsMap.values()]
-      .map((arr) => new Set(arr))
-      .filter((s) => s.size >= TUNE.factionMinSize);
-
-    // Old factions snapshot
-    const oldFactions = new Map();
-    for (const [fid, f] of world.factions) {
-      oldFactions.set(fid, new Set(f.members));
-    }
-
-    // Greedy match components to existing factions by overlap to keep IDs stable
-    const available = new Set(oldFactions.keys());
-    const assigned = new Map(); // comp index -> fid
-    const compArr = comps.map((s) => s);
-    compArr.sort((a, b) => b.size - a.size);
-
-    const takenFids = new Set();
-    for (const comp of compArr) {
-      let bestFid = null;
-      let bestOverlap = 0;
-      let bestOldSize = 1;
-      for (const fid of available) {
-        const old = oldFactions.get(fid);
-        const ov = _overlapCount(comp, old);
-        if (ov > bestOverlap) {
-          bestOverlap = ov;
-          bestFid = fid;
-          bestOldSize = old.size || 1;
-        }
-      }
-      const compSize = comp.size || 1;
-      const reuse =
-        bestFid &&
-        (bestOverlap / compSize >= 0.6 || bestOverlap / bestOldSize >= 0.6);
-      let useFid = bestFid;
-      if (!reuse) {
-        // New faction id; stable afterwards because we'll reuse by overlap next ticks
-        useFid = "F" + crypto.randomUUID().slice(0, 8);
-      } else {
-        available.delete(bestFid);
-      }
-      assigned.set(comp, useFid);
-      takenFids.add(useFid);
-    }
-
-    // Build new factions map preserving colors where possible
-    const newFactions = /* @__PURE__ */ new Map();
-    let colorIdx = 0;
-    const usedColors = new Map(
-      [...world.factions].map(([fid, f]) => [fid, f.color])
+    log(
+      world,
+      "faction",
+      `Faction ${fid} placed flag @${spot.x},${spot.y}`,
+      null,
+      { factionId: fid }
     );
-    for (const comp of compArr) {
-      const fid = assigned.get(comp);
-      let color = usedColors.get(fid);
-      if (!color) {
-        color = FACTION_COLORS[colorIdx++ % FACTION_COLORS.length];
-      }
-      newFactions.set(fid, { id: fid, members: new Set(comp), color });
-    }
+  }
 
-    // Update agents' factionId organically
-    for (const a of world.agents) {
-      let newFid = null;
-      for (const [fid, f] of newFactions) {
-        if (f.members.has(a.id)) {
-          newFid = fid;
-          break;
-        }
+  function createFaction(world, members /* array of agents */) {
+    const fid = "F" + crypto.randomUUID().slice(0, 8);
+    const color = _nextFactionColor(world);
+    world.factions.set(fid, { id: fid, members: new Set(), color });
+    for (const a of members) {
+      // remove from any old faction first
+      if (a.factionId) {
+        const old = world.factions.get(a.factionId);
+        if (old) old.members.delete(a.id);
       }
-      if (a.factionId !== newFid) {
-        const old = a.factionId;
-        a.factionId = newFid;
-        log(
-          world,
-          "faction",
-          `${a.name} now ${newFid ? "in faction " + newFid : "factionless"}`,
-          a.id,
-          { from: old, to: newFid }
-        );
-      }
+      a.factionId = fid;
+      world.factions.get(fid).members.add(a.id);
     }
+    _placeFlag(world, fid, members);
+    const names = members.map((m) => m.name).join(" & ");
+    log(world, "faction", `${names} founded faction ${fid}`, null, {
+      factionId: fid,
+    });
+    return fid;
+  }
 
-    // Flags: keep existing; only create for factions missing a flag
-    const nextFlags = /* @__PURE__ */ new Map();
-    for (const [fid, f] of newFactions) {
+  function _destroyFactionIfEmpty(world, fid) {
+    const f = world.factions.get(fid);
+    if (!f) return;
+    const aliveCount = [...f.members].filter((id) =>
+      world.agentsById.has(id)
+    ).length;
+    if (aliveCount === 0) {
+      world.factions.delete(fid);
       if (world.flags.has(fid)) {
-        nextFlags.set(fid, world.flags.get(fid));
-        continue; // don't spawn a new one if it already exists
+        world.flags.delete(fid);
+        log(world, "destroy", `Flag ${fid} destroyed`, null, {
+          factionId: fid,
+        });
       }
-      // Place a new flag for newly formed faction only
-      const cells = [...f.members]
-        .map((id) => world.agentsById.get(id))
-        .map((a) => ({ x: a.cellX, y: a.cellY }));
-      const cx = Math.round(cells.reduce((s, c) => s + c.x, 0) / cells.length);
-      const cy = Math.round(cells.reduce((s, c) => s + c.y, 0) / cells.length);
-      let spot = { x: cx, y: cy };
-      if (isBlocked(world, cx, cy)) spot = randomFreeCell(world);
-      nextFlags.set(fid, {
-        id: crypto.randomUUID(),
+      log(world, "faction", `Faction ${fid} disbanded`, null, {
         factionId: fid,
-        x: spot.x,
-        y: spot.y,
-        hp: rndi(TUNE.flagHp[0], TUNE.flagHp[1]),
-        maxHp: TUNE.flagHp[1],
       });
+    }
+  }
+
+  function setFaction(world, agent, newFid, reason = null) {
+    const oldFid = agent.factionId || null;
+    if (oldFid === newFid) return;
+    // remove from old
+    if (oldFid) {
+      const old = world.factions.get(oldFid);
+      if (old) old.members.delete(agent.id);
+    }
+    // add to new
+    agent.factionId = newFid || null;
+    if (newFid) {
+      if (!world.factions.has(newFid)) {
+        // create empty shell if somehow missing (shouldn't happen for recruitment)
+        world.factions.set(newFid, {
+          id: newFid,
+          members: new Set(),
+          color: _nextFactionColor(world),
+        });
+        _placeFlag(world, newFid, [agent]);
+      }
+      world.factions.get(newFid).members.add(agent.id);
+    }
+    // flags for new faction ensured externally (createFaction) or here if shell
+    // logs
+    if (oldFid && !newFid) {
       log(
         world,
         "faction",
-        `Faction ${fid} formed flag @${spot.x},${spot.y}`,
-        null,
-        { factionId: fid }
+        `${agent.name} left faction ${oldFid}${
+          reason ? " (" + reason + ")" : ""
+        }`,
+        agent.id,
+        { from: oldFid, to: null, reason }
+      );
+    } else if (!oldFid && newFid) {
+      log(
+        world,
+        "faction",
+        `${agent.name} joined faction ${newFid}${
+          reason ? " (" + reason + ")" : ""
+        }`,
+        agent.id,
+        { from: null, to: newFid, reason }
+      );
+    } else if (oldFid && newFid) {
+      log(
+        world,
+        "faction",
+        `${agent.name} moved ${oldFid} → ${newFid}${
+          reason ? " (" + reason + ")" : ""
+        }`,
+        agent.id,
+        { from: oldFid, to: newFid, reason }
       );
     }
+    // cleanup old faction if empty
+    if (oldFid) _destroyFactionIfEmpty(world, oldFid);
+  }
 
-    // Log removals for factions that no longer exist
-    const prevFlags = new Set(world.flags.keys());
-    world.flags = nextFlags;
-    for (const fid of prevFlags) {
-      if (!world.flags.has(fid)) {
-        log(world, "destroy", `Flag ${fid} removed`, null, { factionId: fid });
+  // Keep data structures tidy (no relationship-based changes)
+  function reconcileFactions(world) {
+    // Ensure faction member sets match agents' factionId
+    const actual = new Map();
+    for (const a of world.agents) {
+      if (!a.factionId) continue;
+      if (!actual.has(a.factionId)) actual.set(a.factionId, new Set());
+      actual.get(a.factionId).add(a.id);
+    }
+    // Remove empty factions; fix members
+    for (const [fid, f] of [...world.factions]) {
+      const set = actual.get(fid) || new Set();
+      f.members = set;
+      if (set.size === 0) {
+        world.factions.delete(fid);
+        if (world.flags.has(fid)) {
+          world.flags.delete(fid);
+          log(world, "destroy", `Flag ${fid} destroyed`, null, {
+            factionId: fid,
+          });
+        }
       }
     }
-
-    // Store factions
-    world.factions = /* @__PURE__ */ new Map();
-    for (const [fid, f] of newFactions) {
-      world.factions.set(fid, { id: fid, members: f.members, color: f.color });
+    // Add any missing faction shells (in case of corruption)
+    for (const [fid, set] of actual) {
+      if (!world.factions.has(fid)) {
+        world.factions.set(fid, {
+          id: fid,
+          members: set,
+          color: _nextFactionColor(world),
+        });
+      }
+      // Ensure flag exists
+      if (!world.flags.has(fid)) {
+        const members = [...set]
+          .map((id) => world.agentsById.get(id))
+          .filter(Boolean);
+        if (members.length) _placeFlag(world, fid, members);
+      }
     }
   }
 
+  // Helper for free spot
   function randomFreeCell(world) {
     for (let tries = 0; tries < 5e3; tries++) {
       const x = Math.floor(Math.random() * 62);
@@ -1415,6 +1379,11 @@
         world.agentsByCell.delete(key(a.cellX, a.cellY));
         world.agentsById.delete(a.id);
         removedIds.push(a.id);
+        // If in a faction, remove membership immediately
+        if (a.factionId && world.factions.has(a.factionId)) {
+          const f = world.factions.get(a.factionId);
+          f.members.delete(a.id);
+        }
         log(world, "death", `${a.name} died`, a.id, {});
         return false;
       }
@@ -1427,21 +1396,31 @@
         for (const rid of removedIds) a.relationships.delete(rid);
       }
     }
-    // Extra safety: remove any relationship whose id is no longer present
     for (const a of world.agents) {
       for (const rid of [...a.relationships.keys()]) {
         if (!world.agentsById.has(rid)) a.relationships.delete(rid);
       }
     }
 
-    for (const [fid, f] of [...world.flags]) {
-      if (f.hp <= 0 || !world.agents.some((a) => a.factionId === fid)) {
-        world.flags.delete(fid);
-        log(world, "destroy", `Flag ${fid} destroyed`, null, {
+    // Remove flags for factions that have no remaining members
+    for (const [fid, f] of [...world.factions]) {
+      const size = [...f.members].filter((id) =>
+        world.agentsById.has(id)
+      ).length;
+      if (size === 0) {
+        world.factions.delete(fid);
+        if (world.flags.has(fid)) {
+          world.flags.delete(fid);
+          log(world, "destroy", `Flag ${fid} destroyed`, null, {
+            factionId: fid,
+          });
+        }
+        log(world, "faction", `Faction ${fid} disbanded`, null, {
           factionId: fid,
         });
       }
     }
+
     for (const [k, w] of [...world.walls]) {
       if (w.hp <= 0) {
         world.walls.delete(k);
@@ -1476,6 +1455,7 @@
     window.world = world;
     const doRenderLog = () => renderLog(world, dom.logList);
     setupLogFilters(world, dom.logFilters, doRenderLog);
+
     function seedEnvironment() {
       for (let i = 0; i < 4; i++) {
         const x = rndi(5, 56),
@@ -1496,15 +1476,11 @@
         });
       }
     }
-    function spawnAgents(n) {
-      for (let i = 0; i < n; i++) {
-        const { x, y } = randomFreeCell(world);
-      }
-    }
+
     Promise.resolve()
       .then(() => (init_actions(), actions_exports))
       .then(({ addAgentAt: addAgentAt3 }) => {
-        function spawnAgents2(n) {
+        function spawnAgents(n) {
           for (let i = 0; i < n; i++) {
             const { x, y } = randomFreeCell(world);
             addAgentAt3(world, x, y);
@@ -1568,7 +1544,7 @@
           world.speedPct = Number(dom.ranges.rngSpeed.value);
           world.spawnMult = Number(dom.ranges.rngSpawn.value);
           seedEnvironment();
-          spawnAgents2(Number(dom.ranges.rngAgents.value));
+          spawnAgents(Number(dom.ranges.rngAgents.value));
           world.running = true;
           dom.buttons.btnStart.disabled = true;
           dom.buttons.btnPause.disabled = false;
@@ -1648,7 +1624,7 @@
         </div>`;
         }
 
-        // 400ms UI refresh: inspector, log, and (option C) agent dropdown refresh when agent count changes
+        // 400ms UI refresh: inspector, log, and agent dropdown refresh when counts change
         setInterval(() => {
           updateInspector(world, dom.inspector);
           doRenderLog();
@@ -1825,7 +1801,10 @@
 
             levelCheck(world, a);
           }
-          if (world.tick % 25 === 0) recomputeFactions2(world);
+
+          // Periodic housekeeping (no relationship-based regrouping)
+          if (world.tick % 25 === 0) reconcileFactions(world);
+
           applyFlagHealing(world);
           cleanDead(world);
         }
