@@ -252,7 +252,11 @@
     g.set(sK, 0);
     f.set(sK, h(start.x, start.y));
     open.set(sK, [start.x, start.y]);
+    // Safety cap to prevent pathological searches from blowing the frame
+    let expansions = 0;
+    const MAX_EXP = 900; // ~quarter of grid; tune as needed
     while (open.size) {
+      if (++expansions > MAX_EXP) return null;
       let currentKey = null,
         current = null,
         best = Infinity;
@@ -362,7 +366,7 @@
     tryStartAction: () => tryStartAction,
   });
   function planPathTo(world, a, gx, gy) {
-    // Only let whitelisted agents run A* this tick — but do NOT push cooldowns if not allowed
+    // Only let whitelisted agents run A* this tick — do NOT push cooldowns if not allowed
     if (world._pathWhitelist && !world._pathWhitelist.has(a.id)) {
       return; // wait for your RR turn
     }
@@ -414,6 +418,98 @@
     const ag = world.agentsById.get(id);
     if (!ag) return;
     ag.lockMsRemaining = Math.max(ag.lockMsRemaining || 0, ms);
+  }
+
+  // Flow-field helpers to avoid low-food A* stampede
+  const FF_INF = 0xffff;
+  const ffIdx = (x, y) => y * GRID + x;
+
+  function recomputeFoodField(world) {
+    const N = GRID * GRID;
+    if (!world.foodField || world.foodField.length !== N) {
+      world.foodField = new Uint16Array(N);
+    }
+    world.foodField.fill(FF_INF);
+
+    if (world.crops.size === 0) {
+      world._foodFieldTick = world.tick;
+      return;
+    }
+
+    // static-only obstacle check (ignore agents)
+    const staticBlocked = (x, y) => {
+      if (x < 0 || y < 0 || x >= GRID || y >= GRID) return true;
+      const k = key(x, y);
+      if (world.walls.has(k)) return true;
+      if (world.farms.has(k)) return true;
+      if (world.flagCells.has(k)) return true;
+      return false;
+    };
+
+    // FIFO queues (typed arrays)
+    const Nmax = N;
+    const qx = new Int16Array(Nmax);
+    const qy = new Int16Array(Nmax);
+    let head = 0,
+      tail = 0;
+
+    for (const c of world.crops.values()) {
+      const i = ffIdx(c.x, c.y);
+      world.foodField[i] = 0;
+      qx[tail] = c.x;
+      qy[tail] = c.y;
+      tail++;
+    }
+
+    while (head < tail) {
+      const x = qx[head],
+        y = qy[head];
+      head++;
+      const d0 = world.foodField[ffIdx(x, y)];
+      const nbrs = [
+        [x + 1, y],
+        [x - 1, y],
+        [x, y + 1],
+        [x, y - 1],
+      ];
+      for (const [nx, ny] of nbrs) {
+        if (staticBlocked(nx, ny)) continue;
+        const ii = ffIdx(nx, ny);
+        if (world.foodField[ii] > d0 + 1) {
+          world.foodField[ii] = d0 + 1;
+          qx[tail] = nx;
+          qy[tail] = ny;
+          tail++;
+        }
+      }
+    }
+
+    world._foodFieldTick = world.tick;
+  }
+
+  // Try to set a single step toward smaller distance; returns true if stepped
+  function stepTowardFood(world, a) {
+    const here = world.foodField[ffIdx(a.cellX, a.cellY)];
+    if (here === FF_INF) return false;
+    let best = { d: here, x: a.cellX, y: a.cellY };
+    const adj = [
+      [a.cellX + 1, a.cellY],
+      [a.cellX - 1, a.cellY],
+      [a.cellX, a.cellY + 1],
+      [a.cellX, a.cellY - 1],
+    ];
+    for (const [nx, ny] of adj) {
+      if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) continue;
+      if (isBlocked(world, nx, ny, a.id)) continue;
+      const d = world.foodField[ffIdx(nx, ny)];
+      if (d < best.d) best = { d, x: nx, y: ny };
+    }
+    if (best.x === a.cellX && best.y === a.cellY) return false;
+    // take ONE tile without A*
+    a.path = [{ x: best.x, y: best.y }];
+    a.pathIdx = 0;
+    a.goal = null;
+    return true;
   }
 
   // chooser helpers
@@ -801,6 +897,11 @@
       return;
     }
 
+    // Maintain the food flow-field every few ticks (cheap ~ O(grid))
+    if (world.tick - (world._foodFieldTick || 0) >= 5) {
+      recomputeFoodField(world);
+    }
+
     // If ANY adjacent crop, take a single step WITHOUT A* (bypass whitelist/budget)
     const adj = [
       [a.cellX + 1, a.cellY],
@@ -854,7 +955,15 @@
       return;
     }
 
-    // Otherwise: head to nearest crop
+    // If crops are scarce relative to agents, follow the flow-field one step.
+    // This avoids dozens of concurrent long A* searches to the same few crops.
+    const scarcity = world.crops.size / Math.max(1, world.agents.length);
+    if (scarcity < 0.35) {
+      if (stepTowardFood(world, a)) return;
+      // If no gradient (unreachable pocket), fall through to other options.
+    }
+
+    // Otherwise: head to nearest crop (A* is allowed but budget-gated)
     const near = findNearest(world, a, world.crops.values());
     if (near) {
       planPathTo(world, a, near.target.x, near.target.y);
@@ -968,6 +1077,11 @@
       // NEW: round-robin cursor + per-tick whitelist for fair A*
       this._pathRR = 0;
       this._pathWhitelist = new Set();
+
+      // Flow field to nearest crop (Uint16: 0..65534, 65535 = unreachable)
+      this.foodField = new Uint16Array(GRID * GRID);
+      this.foodField.fill(0xffff);
+      this._foodFieldTick = -1; // last recompute tick
     }
   };
 
@@ -2150,8 +2264,13 @@
         function updateTick() {
           world.tick++;
 
-          // refill per-tick A* budget
-          world.pathBudget = world.pathBudgetMax;
+          // Refill per-tick A* budget, but cut it when food is scarce.
+          const scarcity = world.crops.size / Math.max(1, world.agents.length);
+          const budgetThisTick =
+            scarcity < 0.25
+              ? Math.max(6, Math.floor(world.pathBudgetMax * 0.5))
+              : world.pathBudgetMax;
+          world.pathBudget = budgetThisTick;
 
           // NEW: rotate a fair whitelist of agents that may use A* this tick
           world._pathWhitelist.clear();
@@ -2164,7 +2283,7 @@
                 !a.action
             );
             const pool = eligible.length ? eligible : world.agents;
-            const k = Math.min(world.pathBudgetMax || 30, pool.length);
+            const k = Math.min(budgetThisTick || 30, pool.length);
             for (let i = 0; i < k; i++) {
               const idx = (world._pathRR + i) % pool.length;
               world._pathWhitelist.add(pool[idx].id);
