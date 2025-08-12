@@ -233,7 +233,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       for (const a of world.agents) {
         a.ageTicks++;
-        a.health -= 0.01;
+        a.energy -= 0.01;
         a.lockMsRemaining = Math.max(
           0,
           (a.lockMsRemaining || 0) - BASE_TICK_MS
