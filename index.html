@@ -131,8 +131,6 @@
         border: 1px solid #2b316a;
         font-size: 12px;
       }
-
-      /* Lists constrained to prevent overflow */
       .list {
         height: 40vh;
         max-height: 40vh;
@@ -221,6 +219,18 @@
           <button id="btnStart">Start</button>
           <button id="btnPause" class="secondary" disabled>Pause</button>
           <button id="btnResume" class="secondary" disabled>Resume</button>
+        </div>
+
+        <!-- NEW: Save/Load -->
+        <div class="row" style="gap: 8px; margin: 6px 0 6px">
+          <button id="btnSave" class="secondary">Save</button>
+          <button id="btnLoad" class="secondary">Load</button>
+          <input
+            id="fileLoad"
+            type="file"
+            accept="application/json"
+            style="display: none"
+          />
         </div>
 
         <label

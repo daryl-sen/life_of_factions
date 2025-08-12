@@ -58,11 +58,11 @@
         buildFarmChance: 5e-3,
 
         // Factions (explicit, not graph-based)
-        factionThreshold: 0.5, // legacy (still used by UI labels)
+        factionThreshold: 0.5,
         factionMinSize: 2,
-        factionFormRelThreshold: 0.6, // NEW: when two factionless agents interact and rel >= this -> form new faction
-        helpConvertChance: 0.5, // probability when recruiting via help
-        helpConvertRelThreshold: 0.4, // min relationship with recruiter to allow join
+        factionFormRelThreshold: 0.6,
+        helpConvertChance: 0.5,
+        helpConvertRelThreshold: 0.4,
 
         energyLowThreshold: 40,
         foodPlanThreshold: 70,
@@ -77,7 +77,7 @@
       ACTION_DURATIONS = {
         talk: [900, 1800],
         quarrel: [900, 1800],
-        attack: [450, 900], // faster attacks
+        attack: [450, 900],
         heal: [900, 1800],
         help: [900, 1800],
         attack_wall: [1e3, 2e3],
@@ -544,7 +544,6 @@
           return;
         }
       } else {
-        // Ensure non-attack actions only within 1 block
         if (dist !== 1) {
           a.action = null;
           return;
@@ -597,7 +596,6 @@
           to: targ.id,
         });
       } else if (act.type === "help" && targ) {
-        // Transfer some energy
         const high = a.energy > ENERGY_CAP * 0.7;
         const ratio = high ? 0.2 : 0.1;
         const transfer = Math.max(0, a.energy * ratio);
@@ -646,19 +644,17 @@
 
       // Explicit faction logic on completion (no graph-based recompute)
 
-      // 1) Founding a NEW faction: two factionless agents interact and have high enough relationship.
       if (targ2 && !a.factionId && !targ2.factionId) {
         const rel = getRel(a, targ2.id);
         if (
           (act.type === "talk" || act.type === "help" || act.type === "heal") &&
           rel >= TUNE.factionFormRelThreshold &&
-          a.id < targ2.id // guard to avoid double-creating from both agents
+          a.id < targ2.id
         ) {
           createFaction(world, [a, targ2]);
         }
       }
 
-      // 2) Recruiting into EXISTING faction: helper can recruit the target explicitly.
       if (act.type === "help" && targ2 && a.factionId) {
         if (
           Math.random() < TUNE.helpConvertChance &&
@@ -669,7 +665,6 @@
         }
       }
 
-      // 3) Wrap up other actions that have post-completion behavior
       if (act.type === "reproduce" && targ2) {
         if (manhattan(a.cellX, a.cellY, targ2.cellX, targ2.cellY) === 1) {
           const spots = [
@@ -687,7 +682,6 @@
             child.energy = 60;
             child.health = 80;
 
-            // Inherit behavioral traits (no relationship graph effects)
             child.aggression = clamp(
               (a.aggression + targ2.aggression) / 2 + rnd(-0.15, 0.15),
               0,
@@ -701,7 +695,6 @@
             child.travelPref =
               Math.random() < 0.5 ? a.travelPref : targ2.travelPref;
 
-            // Child faction: pick one parent's faction if any (explicit assign)
             const pa = a.factionId || null;
             const pb = targ2.factionId || null;
             let chosen = null;
@@ -867,6 +860,50 @@
     ctx.strokeStyle = stroke;
     ctx.stroke();
   }
+  // NEW: tiny faction pennant shown during actions
+  function drawFactionPennant(ctx, cx, topY, color) {
+    ctx.save();
+    ctx.fillStyle = "#c7c7d2";
+    ctx.fillRect(cx - 1, topY - 6, 2, 7); // small pole
+    ctx.fillStyle = color || "#cccccc";
+    ctx.beginPath();
+    ctx.moveTo(cx + 1, topY - 5);
+    ctx.lineTo(cx + 8, topY - 2);
+    ctx.lineTo(cx + 1, topY + 1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  // NEW: selection star
+  function drawStar(ctx, cx, cy) {
+    const spikes = 5,
+      outer = 6,
+      inner = 3.2;
+    let rot = (Math.PI / 2) * 3;
+    let x = cx,
+      y = cy;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - outer);
+    for (let i = 0; i < spikes; i++) {
+      x = cx + Math.cos(rot) * outer;
+      y = cy + Math.sin(rot) * outer;
+      ctx.lineTo(x, y);
+      rot += Math.PI / spikes;
+      x = cx + Math.cos(rot) * inner;
+      y = cy + Math.sin(rot) * inner;
+      ctx.lineTo(x, y);
+      rot += Math.PI / spikes;
+    }
+    ctx.lineTo(cx, cy - outer);
+    ctx.closePath();
+    ctx.fillStyle = "#ffd166";
+    ctx.strokeStyle = "#7a5f1d";
+    ctx.lineWidth = 1;
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
   function drawTriangle(ctx, x, y) {
     const cx = x + CELL / 2,
       cy = y + CELL / 2;
@@ -929,15 +966,30 @@
         ? world.factions.get(a.factionId)?.color || "#fff"
         : "#6b7280";
       drawAgentCircle(ctx, x, y, CELL / 2 - 3, col);
+
+      // HP bar
       const hpw = Math.max(
         0,
         Math.floor((CELL - 6) * (a.health / a.maxHealth))
       );
       ctx.fillStyle = COLORS.hp;
       ctx.fillRect(x + 3, y + 1, hpw, 2);
+
+      // Low-energy blip
       if (a.energy < 40) {
         ctx.fillStyle = COLORS.energy;
         ctx.fillRect(x + CELL / 2 - 3, y - 5, 6, 3);
+      }
+
+      // NEW: during actions, show faction pennant above
+      if (a.action && a.factionId) {
+        const fcol = world.factions.get(a.factionId)?.color || "#cccccc";
+        drawFactionPennant(ctx, x + CELL / 2, y - 6, fcol);
+      }
+
+      // NEW: selection star above selected agent
+      if (world.selectedId === a.id) {
+        drawStar(ctx, x + CELL / 2, y - 16);
       }
     }
     ctx.restore();
@@ -993,6 +1045,11 @@
     const btnStart = qs("#btnStart"),
       btnPause = qs("#btnPause"),
       btnResume = qs("#btnResume");
+    // NEW: Save/Load and hidden file input
+    const btnSave = qs("#btnSave"),
+      btnLoad = qs("#btnLoad"),
+      fileLoad = qs("#fileLoad");
+
     const rngAgents = qs("#rngAgents"),
       lblAgents = qs("#lblAgents");
     const rngSpeed = qs("#rngSpeed"),
@@ -1016,7 +1073,15 @@
     return {
       canvas,
       hud,
-      buttons: { btnStart, btnPause, btnResume, btnSpawnCrop },
+      buttons: {
+        btnStart,
+        btnPause,
+        btnResume,
+        btnSpawnCrop,
+        btnSave,
+        btnLoad,
+      },
+      fileLoad,
       ranges: { rngAgents, rngSpeed, rngSpawn },
       labels: { lblAgents, lblSpeed, lblSpawn },
       nums: { numAgents, numSpeed, numSpawn },
@@ -1083,7 +1148,6 @@
         agentSelect.appendChild(opt);
       }
     };
-    // initial build (no interval; option C)
     rebuildAgentOptions();
     world._rebuildAgentOptions = rebuildAgentOptions;
 
@@ -1095,7 +1159,6 @@
     agentRow.appendChild(agentSelect);
     logFilters.appendChild(agentRow);
 
-    // Attach listeners to the already-created buttons (no re-declare)
     all.addEventListener("click", () => {
       world.activeLogCats = new Set(LOG_CATS);
       LOG_CATS.forEach(
@@ -1179,7 +1242,6 @@
     const color = _nextFactionColor(world);
     world.factions.set(fid, { id: fid, members: new Set(), color });
     for (const a of members) {
-      // remove from any old faction first
       if (a.factionId) {
         const old = world.factions.get(a.factionId);
         if (old) old.members.delete(a.id);
@@ -1218,16 +1280,13 @@
   function setFaction(world, agent, newFid, reason = null) {
     const oldFid = agent.factionId || null;
     if (oldFid === newFid) return;
-    // remove from old
     if (oldFid) {
       const old = world.factions.get(oldFid);
       if (old) old.members.delete(agent.id);
     }
-    // add to new
     agent.factionId = newFid || null;
     if (newFid) {
       if (!world.factions.has(newFid)) {
-        // create empty shell if somehow missing (shouldn't happen for recruitment)
         world.factions.set(newFid, {
           id: newFid,
           members: new Set(),
@@ -1237,8 +1296,6 @@
       }
       world.factions.get(newFid).members.add(agent.id);
     }
-    // flags for new faction ensured externally (createFaction) or here if shell
-    // logs
     if (oldFid && !newFid) {
       log(
         world,
@@ -1270,20 +1327,16 @@
         { from: oldFid, to: newFid, reason }
       );
     }
-    // cleanup old faction if empty
     if (oldFid) _destroyFactionIfEmpty(world, oldFid);
   }
 
-  // Keep data structures tidy (no relationship-based changes)
   function reconcileFactions(world) {
-    // Ensure faction member sets match agents' factionId
     const actual = new Map();
     for (const a of world.agents) {
       if (!a.factionId) continue;
       if (!actual.has(a.factionId)) actual.set(a.factionId, new Set());
       actual.get(a.factionId).add(a.id);
     }
-    // Remove empty factions; fix members
     for (const [fid, f] of [...world.factions]) {
       const set = actual.get(fid) || new Set();
       f.members = set;
@@ -1297,7 +1350,6 @@
         }
       }
     }
-    // Add any missing faction shells (in case of corruption)
     for (const [fid, set] of actual) {
       if (!world.factions.has(fid)) {
         world.factions.set(fid, {
@@ -1306,7 +1358,6 @@
           color: _nextFactionColor(world),
         });
       }
-      // Ensure flag exists
       if (!world.flags.has(fid)) {
         const members = [...set]
           .map((id) => world.agentsById.get(id))
@@ -1316,7 +1367,6 @@
     }
   }
 
-  // Helper for free spot
   function randomFreeCell(world) {
     for (let tries = 0; tries < 5e3; tries++) {
       const x = Math.floor(Math.random() * 62);
@@ -1379,7 +1429,6 @@
         world.agentsByCell.delete(key(a.cellX, a.cellY));
         world.agentsById.delete(a.id);
         removedIds.push(a.id);
-        // If in a faction, remove membership immediately
         if (a.factionId && world.factions.has(a.factionId)) {
           const f = world.factions.get(a.factionId);
           f.members.delete(a.id);
@@ -1390,7 +1439,6 @@
       return true;
     });
 
-    // Prune relationships pointing to non-existent agents (prevents unbounded Maps)
     if (removedIds.length) {
       for (const a of world.agents) {
         for (const rid of removedIds) a.relationships.delete(rid);
@@ -1402,7 +1450,6 @@
       }
     }
 
-    // Remove flags for factions that have no remaining members
     for (const [fid, f] of [...world.factions]) {
       const size = [...f.members].filter((id) =>
         world.agentsById.has(id)
@@ -1475,6 +1522,188 @@
           maxHp: TUNE.wallHp[1],
         });
       }
+    }
+
+    // NEW: Save/Load helpers
+    function serializeWorld(world2) {
+      const factions = [...world2.factions.values()].map((f) => ({
+        id: f.id,
+        color: f.color,
+        members: [...f.members],
+      }));
+      const flags = [...world2.flags.values()];
+      const walls = [...world2.walls.values()];
+      const farms = [...world2.farms.values()];
+      const crops = [...world2.crops.values()];
+      const agents = world2.agents.map((a) => ({
+        id: a.id,
+        name: a.name,
+        cellX: a.cellX,
+        cellY: a.cellY,
+        health: a.health,
+        maxHealth: a.maxHealth,
+        energy: a.energy,
+        attack: a.attack,
+        level: a.level,
+        ageTicks: a.ageTicks,
+        starvingSeconds: a.starvingSeconds,
+        factionId: a.factionId,
+        relationships: [...a.relationships.entries()],
+        path: a.path ? a.path.slice(a.pathIdx) : null,
+        pathIdx: 0,
+        action: a.action
+          ? {
+              type: a.action.type,
+              remainingMs: a.action.remainingMs,
+              tickCounterMs: a.action.tickCounterMs,
+              payload: a.action.payload || null,
+            }
+          : null,
+        lockMsRemaining: a.lockMsRemaining,
+        travelPref: a.travelPref,
+        aggression: a.aggression,
+        cooperation: a.cooperation,
+      }));
+      return {
+        meta: { version: "1.3.5+save1", savedAt: Date.now() },
+        grid: { CELL, GRID },
+        state: {
+          tick: world2.tick,
+          speedPct: world2.speedPct,
+          spawnMult: world2.spawnMult,
+        },
+        factions,
+        flags,
+        walls,
+        farms,
+        crops,
+        agents,
+        log: { limit: world2.log.limit, arr: world2.log.arr },
+        selectedId: world2.selectedId,
+        activeLogCats: [...world2.activeLogCats],
+        activeLogAgentId: world2.activeLogAgentId || null,
+      };
+    }
+    function exportState(world2) {
+      const blob = new Blob([JSON.stringify(serializeWorld(world2))], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download =
+        "life_of_factions_" +
+        new Date().toISOString().replace(/[:.]/g, "-") +
+        ".json";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        a.remove();
+      }, 0);
+      world2.log.push({
+        t: performance.now(),
+        cat: "info",
+        msg: "State exported",
+        actorId: null,
+        extra: {},
+      });
+      doRenderLog();
+    }
+    function restoreWorld(world2, data) {
+      world2.running = false;
+
+      world2.walls.clear();
+      world2.crops.clear();
+      world2.farms.clear();
+      world2.flags.clear();
+      world2.agents.length = 0;
+      world2.agentsById.clear();
+      world2.agentsByCell.clear();
+      world2.factions.clear();
+
+      world2.tick = data.state?.tick ?? 0;
+      world2.speedPct = data.state?.speedPct ?? world2.speedPct;
+      world2.spawnMult = data.state?.spawnMult ?? world2.spawnMult;
+
+      // rebuild factions
+      for (const f of data.factions || []) {
+        world2.factions.set(f.id, {
+          id: f.id,
+          color: f.color,
+          members: new Set(f.members || []),
+        });
+      }
+      // flags (keyed by factionId)
+      for (const fl of data.flags || []) {
+        world2.flags.set(fl.factionId, { ...fl });
+      }
+      // walls/farms/crops
+      for (const w of data.walls || []) {
+        world2.walls.set(key(w.x, w.y), { ...w });
+      }
+      for (const fm of data.farms || []) {
+        world2.farms.set(key(fm.x, fm.y), { ...fm });
+      }
+      for (const c of data.crops || []) {
+        world2.crops.set(key(c.x, c.y), { ...c });
+      }
+      // agents
+      for (const a of data.agents || []) {
+        const ag = {
+          id: a.id,
+          name: a.name,
+          cellX: a.cellX,
+          cellY: a.cellY,
+          health: a.health,
+          maxHealth: a.maxHealth,
+          energy: a.energy,
+          attack: a.attack,
+          level: a.level,
+          ageTicks: a.ageTicks,
+          starvingSeconds: a.starvingSeconds,
+          factionId: a.factionId || null,
+          relationships: new Map(a.relationships || []),
+          path: a.path || null,
+          pathIdx: a.pathIdx || 0,
+          action: a.action ? { ...a.action } : null,
+          lockMsRemaining: a.lockMsRemaining || 0,
+          travelPref: a.travelPref || "near",
+          aggression: a.aggression ?? Math.random(),
+          cooperation: a.cooperation ?? Math.random(),
+        };
+        // guard: action target must exist
+        if (
+          ag.action &&
+          ag.action.payload?.targetId &&
+          !(data.agents || []).some((x) => x.id === ag.action.payload.targetId)
+        ) {
+          ag.action = null;
+        }
+        world2.agents.push(ag);
+        world2.agentsById.set(ag.id, ag);
+        world2.agentsByCell.set(key(ag.cellX, ag.cellY), ag.id);
+      }
+
+      // logs and filters
+      world2.log = new RingLog((data.log && data.log.limit) || 100);
+      for (const it of data.log?.arr || []) world2.log.push(it);
+      world2.selectedId = data.selectedId || null;
+      world2.activeLogCats = new Set(data.activeLogCats || LOG_CATS);
+      world2.activeLogAgentId = data.activeLogAgentId || null;
+
+      // sanity fixes & UI refresh hooks
+      reconcileFactions(world2);
+      if (world2._rebuildAgentOptions) world2._rebuildAgentOptions();
+      doRenderLog();
+
+      world2.log.push({
+        t: performance.now(),
+        cat: "info",
+        msg: "State loaded",
+        actorId: null,
+        extra: {},
+      });
     }
 
     Promise.resolve()
@@ -1571,6 +1800,35 @@
           const { x, y } = randomFreeCell(world);
           addCrop(world, x, y);
         });
+
+        // NEW: Save/Load bindings
+        dom.buttons.btnSave.addEventListener("click", () => {
+          exportState(world);
+        });
+        dom.buttons.btnLoad.addEventListener("click", () => {
+          dom.fileLoad.click();
+        });
+        dom.fileLoad.addEventListener("change", (e) => {
+          const file = e.target.files && e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            try {
+              const data = JSON.parse(reader.result);
+              restoreWorld(world, data);
+              // keep paused after load
+              dom.buttons.btnPause.disabled = true;
+              dom.buttons.btnResume.disabled = false;
+              dom.buttons.btnStart.disabled = true;
+            } catch (err) {
+              alert("Failed to load save: " + err.message);
+            } finally {
+              dom.fileLoad.value = "";
+            }
+          };
+          reader.readAsText(file);
+        });
+
         dom.canvas.addEventListener("click", (e) => {
           const rect = dom.canvas.getBoundingClientRect();
           const scaleX = dom.canvas.width / rect.width;
@@ -1624,7 +1882,7 @@
         </div>`;
         }
 
-        // 400ms UI refresh: inspector, log, and agent dropdown refresh when counts change
+        // 400ms UI refresh
         setInterval(() => {
           updateInspector(world, dom.inspector);
           doRenderLog();
@@ -1729,13 +1987,12 @@
               (a.lockMsRemaining || 0) - BASE_TICK_MS
             );
 
-            // Priority: if trapped by walls, attack a wall to escape
             if (!a.action && a.lockMsRemaining <= 0) {
               startAttackWallIfTrapped(world, a);
             }
 
-            const energyHigh = a.energy >= ENERGY_CAP * 0.7; // >= 140
-            const energyOkay = a.energy >= ENERGY_CAP * 0.3; // >= 60
+            const energyHigh = a.energy >= ENERGY_CAP * 0.7;
+            const energyOkay = a.energy >= ENERGY_CAP * 0.3;
 
             if (a.energy < TUNE.energyLowThreshold) {
               if (a.action && a.action.type !== "reproduce") a.action = null;
@@ -1766,16 +2023,14 @@
 
                 if (!a.path) {
                   if (!energyOkay) {
-                    // < 30%: prioritize harvesting
                     if (world.crops.has(key(a.cellX, a.cellY))) {
                       harvestAt(world, a, a.cellX, a.cellY);
                     } else {
                       seekFoodWhenHungry(world, a);
                     }
                   } else {
-                    // >= 30%: interactions
                     if (energyHigh) {
-                      considerInteract(world, a); // reproduction possible
+                      considerInteract(world, a);
                     } else {
                       considerInteract(world, a);
                     }
@@ -1802,7 +2057,6 @@
             levelCheck(world, a);
           }
 
-          // Periodic housekeeping (no relationship-based regrouping)
           if (world.tick % 25 === 0) reconcileFactions(world);
 
           applyFlagHealing(world);
@@ -1838,6 +2092,29 @@
           requestAnimationFrame(loop);
         }
         requestAnimationFrame(loop);
+
+        // NEW: auto-pause on blur/hidden
+        function pauseForBlur(reason) {
+          if (world.running) {
+            world.running = false;
+            dom.buttons.btnPause.disabled = true;
+            dom.buttons.btnResume.disabled = false;
+            world.log.push({
+              t: performance.now(),
+              cat: "info",
+              msg: "Paused (" + reason + ")",
+              actorId: null,
+              extra: {},
+            });
+            doRenderLog();
+          }
+        }
+        window.addEventListener("blur", () =>
+          pauseForBlur("window lost focus")
+        );
+        document.addEventListener("visibilitychange", () => {
+          if (document.hidden) pauseForBlur("tab hidden");
+        });
       });
   });
 })();
