@@ -68,7 +68,7 @@
         foodPlanThreshold: 70,
         lowEnergyExploreRange: 14,
         levelCap: 20,
-        maxCrops: 150,
+        maxCrops: 100,
 
         // Reproduction
         reproduction: {
@@ -859,6 +859,9 @@
 
   function addAgentAt(world, x, y) {
     const id = crypto.randomUUID();
+    // random travel preference: near, far, wander (even split)
+    const rp = Math.random();
+    const pref = rp < 1 / 3 ? "near" : rp < 2 / 3 ? "far" : "wander";
     const a = {
       id,
       name: name6(),
@@ -877,7 +880,7 @@
       pathIdx: 0,
       action: null,
       lockMsRemaining: 0,
-      travelPref: Math.random() < 0.5 ? "near" : "far",
+      travelPref: pref,
       aggression: Math.random(),
       cooperation: Math.random(),
       // replan throttle + goal cache
@@ -910,7 +913,8 @@
       [a.cellX, a.cellY - 1],
     ];
     for (const [nx, ny] of adj) {
-      if (world.crops.has(key(nx, ny))) {
+      const k = key(nx, ny);
+      if (world.crops.has(k) && !world.flagCells.has(k)) {
         a.path = [{ x: nx, y: ny }];
         a.pathIdx = 0;
         a.goal = null;
@@ -940,8 +944,6 @@
               Math.abs(p1[1] - goal.y) -
               (Math.abs(p2[0] - goal.x) + Math.abs(p2[1] - goal.y))
           );
-        } else {
-          // keep random step if no farm goal
         }
         pick =
           pick ||
@@ -960,14 +962,31 @@
     const scarcity = world.crops.size / Math.max(1, world.agents.length);
     if (scarcity < 0.35) {
       if (stepTowardFood(world, a)) return;
+
+      // Fallback: when very low energy, allow any free sidestep to break crowd lock
+      if (a.energy < TUNE.energyLowThreshold) {
+        const freeAdj = adj.filter(([x, y]) => !isBlocked(world, x, y, a.id));
+        if (freeAdj.length) {
+          const [nx, ny] = freeAdj[rndi(0, freeAdj.length - 1)];
+          a.path = [{ x: nx, y: ny }];
+          a.pathIdx = 0;
+          a.goal = null;
+          return;
+        }
+      }
       // If no gradient (unreachable pocket), fall through to other options.
     }
 
     // Otherwise: head to nearest crop (A* is allowed but budget-gated)
-    const near = findNearest(world, a, world.crops.values());
-    if (near) {
-      planPathTo(world, a, near.target.x, near.target.y);
-      return;
+    const filteredCrops = [...world.crops.values()].filter(
+      (c) => !world.flagCells.has(key(c.x, c.y))
+    );
+    if (filteredCrops.length) {
+      const near = findNearest(world, a, filteredCrops);
+      if (near) {
+        planPathTo(world, a, near.target.x, near.target.y);
+        return;
+      }
     }
 
     // Fallback: try a farm (A* will be budget-gated)
@@ -1001,7 +1020,12 @@
   function addCrop(world, x, y) {
     if (world.crops.size >= TUNE.maxCrops) return false;
     const k = key(x, y);
-    if (world.crops.has(k) || world.walls.has(k) || world.farms.has(k))
+    if (
+      world.crops.has(k) ||
+      world.walls.has(k) ||
+      world.farms.has(k) ||
+      world.flagCells.has(k)
+    )
       return false;
     world.crops.set(k, { id: crypto.randomUUID(), x, y });
     log(world, "spawn", `crop @${x},${y}`, null, { x, y });
@@ -1064,6 +1088,8 @@
       this.spawnMult = 1;
       this.running = false;
       this.selectedId = null;
+      this.pauseOnBlur = true; // NEW: toggleable pause on blur
+
       // UI throttling/memo
       this._lastFactionsDomAt = 0;
       this._lastAgentCount = 0;
@@ -1149,6 +1175,137 @@
     ctx.closePath();
     ctx.fill();
   }
+
+  // NEW: per-action compact indicator (fast vector glyphs)
+  function drawActionIndicator(ctx, cx, topY, type, factionColor = "#ccc") {
+    ctx.save();
+    // background stem
+    ctx.fillStyle = "#c7c7d2";
+    ctx.fillRect(cx - 1, topY - 6, 2, 7);
+
+    // color by type
+    let fill = "#cccccc",
+      stroke = "#333333";
+    switch (type) {
+      case "attack":
+        fill = "#ff6d7a";
+        break;
+      case "heal":
+        fill = "#60e6a8";
+        break;
+      case "help":
+        fill = "#7bdcff";
+        break;
+      case "talk":
+        fill = "#a5b4fc";
+        break;
+      case "quarrel":
+        fill = "#ffb74d";
+        break;
+      case "reproduce":
+        fill = "#f472b6";
+        break;
+      case "attack_wall":
+        fill = "#cfc08b";
+        break;
+      case "attack_flag":
+        fill = factionColor || "#cccccc";
+        break;
+    }
+    ctx.fillStyle = fill;
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 1;
+
+    // draw simple glyphs 9×8 box to the right of stem
+    const x = cx + 2,
+      y = topY - 5;
+    switch (type) {
+      case "attack": // crossed blades (X)
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + 8, y + 8);
+        ctx.moveTo(x + 8, y);
+        ctx.lineTo(x, y + 8);
+        ctx.strokeStyle = fill;
+        ctx.stroke();
+        break;
+      case "heal": // plus
+        ctx.beginPath();
+        ctx.fillRect(x + 3, y, 2, 8);
+        ctx.fillRect(x, y + 3, 8, 2);
+        break;
+      case "help": // up arrow
+        ctx.beginPath();
+        ctx.moveTo(x + 4, y);
+        ctx.lineTo(x + 4, y + 8);
+        ctx.moveTo(x + 1, y + 3);
+        ctx.lineTo(x + 4, y);
+        ctx.lineTo(x + 7, y + 3);
+        ctx.strokeStyle = fill;
+        ctx.stroke();
+        break;
+      case "talk": // chat bubble
+        ctx.beginPath();
+        ctx.rect(x, y, 8, 6);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(x + 2, y + 6);
+        ctx.lineTo(x + 4, y + 8);
+        ctx.lineTo(x + 4, y + 6);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      case "quarrel": // lightning
+        ctx.beginPath();
+        ctx.moveTo(x + 2, y);
+        ctx.lineTo(x + 6, y + 3);
+        ctx.lineTo(x + 4, y + 3);
+        ctx.lineTo(x + 7, y + 8);
+        ctx.lineTo(x + 1, y + 4);
+        ctx.lineTo(x + 3, y + 4);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      case "reproduce": // heart
+        ctx.beginPath();
+        ctx.moveTo(x + 4, y + 7);
+        ctx.bezierCurveTo(x + 8, y + 4, x + 7, y + 0.5, x + 5, y + 1.2);
+        ctx.bezierCurveTo(x + 4, y + 1.8, x + 4, y + 3, x + 4, y + 3);
+        ctx.bezierCurveTo(x + 4, y + 3, x + 4, y + 1.8, x + 3, y + 1.2);
+        ctx.bezierCurveTo(x + 1, y + 0.5, x + 0, y + 4, x + 4, y + 7);
+        ctx.fill();
+        break;
+      case "attack_wall": // hammer
+        ctx.fillRect(x + 1, y + 1, 6, 2);
+        ctx.fillRect(x + 3, y + 3, 2, 5);
+        break;
+      case "attack_flag": // mini flag colored by faction
+        drawFactionPennant(ctx, cx, topY, factionColor);
+        break;
+      default:
+        ctx.fillRect(x, y, 8, 8);
+    }
+    ctx.restore();
+  }
+
+  // Compact "low energy" icon
+  function drawLowEnergyIcon(ctx, cx, topY) {
+    const w = 6,
+      h = 4;
+    const x = Math.round(cx) - 10; // shift left of center/action glyph
+    const y = Math.round(topY) - 2; // aligns nicely above the head
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x, y); // top-left
+    ctx.lineTo(x + w, y); // top-right
+    ctx.lineTo(x + w / 2, y + h); // bottom apex (downward)
+    ctx.closePath();
+    ctx.fillStyle = "#ff6d7a"; // red
+    ctx.fill();
+    ctx.restore();
+  }
+
   function render(
     world,
     ctx,
@@ -1228,16 +1385,20 @@
       ctx.fillStyle = COLORS.hp;
       ctx.fillRect(x + 3, y + 1, hpw, 2);
 
+      const glyphTop = y - 8;
+      const cx = x + CELL / 2;
+
       // Low-energy blip
-      if (a.energy < 40) {
-        ctx.fillStyle = COLORS.energy;
-        ctx.fillRect(x + CELL / 2 - 3, y - 5, 6, 3);
+      if (a.energy < TUNE.energyLowThreshold) {
+        drawLowEnergyIcon(ctx, cx, glyphTop);
       }
 
-      // during actions, show faction pennant above
-      if (a.action && a.factionId) {
-        const fcol = world.factions.get(a.factionId)?.color || "#cccccc";
-        drawFactionPennant(ctx, x + CELL / 2, y - 6, fcol);
+      // per-action indicator above head (color-coded)
+      if (a.action) {
+        const fcol = a.factionId
+          ? world.factions.get(a.factionId)?.color || "#cccccc"
+          : "#cccccc";
+        drawActionIndicator(ctx, cx, glyphTop, a.action.type, fcol);
       }
 
       // selection star above selected agent
@@ -1652,7 +1813,7 @@
   function maybeSpawnCrops(world) {
     if (world.crops.size >= TUNE.maxCrops) return;
     const attempts = GRID;
-    const base = 6e-3 * world.spawnMult;
+    const base = 6e-4 * world.spawnMult;
     for (let i = 0; i < attempts; i++) {
       if (world.crops.size >= TUNE.maxCrops) break;
       const x = rndi(0, GRID - 1),
@@ -1662,7 +1823,8 @@
         world.crops.has(k) ||
         world.walls.has(k) ||
         world.farms.has(k) ||
-        world.agentsByCell.has(k)
+        world.agentsByCell.has(k) ||
+        world.flagCells.has(k) // ← prevent crops on flags
       )
         continue;
       let prob = base;
@@ -1801,6 +1963,31 @@
       }
       gctx.stroke();
     }
+
+    // NEW: UI toggle for Pause on Focus Loss (append without changing HTML file)
+    (function addPauseToggle() {
+      const controls = document.querySelector(".card.controls");
+      if (!controls) return;
+      const row = document.createElement("div");
+      row.className = "row";
+      const label = document.createElement("label");
+      label.style.display = "flex";
+      label.style.alignItems = "center";
+      label.style.gap = "8px";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.id = "cbPauseOnBlur";
+      cb.checked = world.pauseOnBlur;
+      const span = document.createElement("span");
+      span.textContent = "Pause when unfocused";
+      label.appendChild(cb);
+      label.appendChild(span);
+      row.appendChild(label);
+      controls.appendChild(row);
+      cb.addEventListener("change", () => {
+        world.pauseOnBlur = cb.checked;
+      });
+    })();
 
     function seedEnvironment() {
       for (let i = 0; i < 4; i++) {
@@ -2239,25 +2426,80 @@
               candidates.push({ x: rx, y: ry });
           }
           if (!candidates.length) return;
-          let choice = candidates[rndi(0, candidates.length - 1)];
-          if (a.factionId) {
-            const flag = world2.flags.get(a.factionId);
-            if (flag) {
-              const dist = (c) =>
-                Math.abs(c.x - flag.x) + Math.abs(c.y - flag.y);
-              if (a.travelPref === "near") {
-                choice = candidates.reduce(
-                  (best, c) => (dist(c) < dist(best) ? c : best),
-                  candidates[0]
-                );
-              } else if (a.travelPref === "far") {
-                choice = candidates.reduce(
-                  (best, c) => (dist(c) > dist(best) ? c : best),
-                  candidates[0]
+
+          const centerX = Math.floor(GRID / 2);
+          const centerY = Math.floor(GRID / 2);
+          const distToCenter = (c) =>
+            Math.abs(c.x - centerX) + Math.abs(c.y - centerY);
+
+          let choice = candidates[0];
+
+          if (a.travelPref === "wander") {
+            choice = candidates[rndi(0, candidates.length - 1)];
+          } else if (a.travelPref === "near") {
+            if (a.factionId) {
+              const flag = world2.flags.get(a.factionId);
+              if (flag) {
+                // prefer a small ring around flag and avoid bunching with same-faction members
+                let bestScore = Infinity;
+                for (const c of candidates) {
+                  const d = Math.abs(c.x - flag.x) + Math.abs(c.y - flag.y);
+                  const desired = 4; // ring distance from flag center
+                  // compute small local crowd penalty (radius 2)
+                  let crowd = 0;
+                  for (let dx = -2; dx <= 2; dx++) {
+                    for (let dy = -2; dy <= 2; dy++) {
+                      if (Math.abs(dx) + Math.abs(dy) > 2) continue;
+                      const id = world2.agentsByCell.get(
+                        key(c.x + dx, c.y + dy)
+                      );
+                      if (!id) continue;
+                      const b = world2.agentsById.get(id);
+                      if (b && b.factionId === a.factionId) crowd++;
+                    }
+                  }
+                  const score = Math.abs(d - desired) + crowd * 0.7;
+                  if (score < bestScore) {
+                    bestScore = score;
+                    choice = c;
+                  }
+                }
+              } else {
+                // no flag (shouldn't happen often) — prefer center
+                choice = candidates.reduce((best, c) =>
+                  distToCenter(c) < distToCenter(best) ? c : best
                 );
               }
+            } else {
+              // no faction — prefer center of map
+              choice = candidates.reduce((best, c) =>
+                distToCenter(c) < distToCenter(best) ? c : best
+              );
+            }
+          } else if (a.travelPref === "far") {
+            if (a.factionId) {
+              const flag = world2.flags.get(a.factionId);
+              if (flag) {
+                choice = candidates.reduce((best, c) =>
+                  Math.abs(c.x - flag.x) + Math.abs(c.y - flag.y) >
+                  Math.abs(best.x - flag.x) + Math.abs(best.y - flag.y)
+                    ? c
+                    : best
+                );
+              } else {
+                // no faction — prefer edges (far from center)
+                choice = candidates.reduce((best, c) =>
+                  distToCenter(c) > distToCenter(best) ? c : best
+                );
+              }
+            } else {
+              // no faction — prefer edges
+              choice = candidates.reduce((best, c) =>
+                distToCenter(c) > distToCenter(best) ? c : best
+              );
             }
           }
+
           planPathTo(world2, a, choice.x, choice.y);
         }
 
@@ -2282,7 +2524,14 @@
                 (!a.path || a.pathIdx >= a.path.length) &&
                 !a.action
             );
-            const pool = eligible.length ? eligible : world.agents;
+            // Prioritize hungry agents for A* when there are many contenders
+            let pool;
+            if (eligible.length) {
+              eligible.sort((a, b) => a.energy - b.energy);
+              pool = eligible;
+            } else {
+              pool = world.agents;
+            }
             const k = Math.min(budgetThisTick || 30, pool.length);
             for (let i = 0; i < k; i++) {
               const idx = (world._pathRR + i) % pool.length;
@@ -2433,7 +2682,7 @@
         requestAnimationFrame(loop);
 
         function pauseForBlur(reason) {
-          if (world.running) {
+          if (world.pauseOnBlur && world.running) {
             world.running = false;
             dom.buttons.btnPause.disabled = true;
             dom.buttons.btnResume.disabled = false;
