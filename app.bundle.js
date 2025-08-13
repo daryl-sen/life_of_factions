@@ -34,27 +34,29 @@
       BASE_TICK_MS = 40;
       ENERGY_CAP = 200;
       TUNE = {
-        moveEnergy: 0.1,
+        moveEnergy: 0.12, // +20% move energy cost
         actionCost: {
           talk: 0.4,
           quarrel: 0.8,
           attack: 2.2,
           heal: 3,
           help: 1.6,
-          attack_wall: 1.5,
+          // attack_wall removed
           attack_flag: 2,
           reproduce: 1.2,
         },
         cropGain: 28,
-        starvationSeconds: 18,
+        // starvationSeconds removed in favor of HP drain at 0 energy
+        starveHpPerSec: 1.0, // HP loss/sec when energy == 0
+        regenHpPerSec: 0.5, // HP gain/sec when energy >= 80%
         healAuraRadius: 4,
         healAuraPerTick: 0.6,
         baseDamage: 8,
-        wallHp: [10, 15],
+        // wallHp removed (no building/attacking walls)
         flagHp: [12, 18],
         farmBoostRadius: 3,
         farmEnergyCost: 12,
-        buildWallChance: 2e-4,
+        // buildWallChance removed (agents can't build walls)
         buildFarmChance: 5e-3,
 
         // Factions (explicit, not graph-based)
@@ -85,7 +87,6 @@
         attack: [450, 900],
         heal: [900, 1800],
         help: [900, 1800],
-        attack_wall: [1e3, 2e3],
         attack_flag: [1e3, 2e3],
         reproduce: [2e3, 3200],
       };
@@ -100,6 +101,7 @@
         hp: "#60e6a8",
         energy: "#7bdcff",
         grid: "#1a1e3f",
+        attackLine: "#ff6d7a",
       };
       FACTION_COLORS = [
         "#ff5252",
@@ -117,10 +119,8 @@
         "attack",
         "heal",
         "help",
-        "attack_wall",
-        "attack_flag",
-        "reproduce",
-        "harvest",
+        "reproduce", // ← add this back
+        // "harvest",   // still omitted per your requirement
         "build",
         "destroy",
         "death",
@@ -176,10 +176,34 @@
     },
   });
 
+  function renderLog(world, logList) {
+    const items = world.log.list(world.activeLogCats, world.activeLogAgentId);
+    logList.innerHTML = items
+      .slice(-100)
+      .reverse()
+      .map((it) => {
+        const cls =
+          it.cat === "attack" ||
+          it.cat === "quarrel" ||
+          it.cat === "destroy" ||
+          it.cat === "death"
+            ? "bad"
+            : it.cat === "heal" ||
+              it.cat === "help" ||
+              it.cat === "faction" ||
+              it.cat === "level"
+            ? "good"
+            : "info";
+        return `<div class="logItem"><span class="pill ${cls}">${it.cat}</span>${it.msg}</div>`;
+      })
+      .join("");
+  }
+
   // js/systems/spatial.js
   function isBlocked(world, x, y, ignoreId = null) {
     if (x < 0 || y < 0 || x >= GRID || y >= GRID) return true;
     const k = key(x, y);
+    // walls may still exist in seeded maps; agents just can't build new ones
     if (world.walls.has(k)) return true;
     if (world.farms.has(k)) return true;
     if (world.flagCells.has(k)) return true; // O(1) flag collision
@@ -201,7 +225,7 @@
     if (!crop) return false;
     world.crops.delete(k);
     a.energy = Math.min(ENERGY_CAP, a.energy + TUNE.cropGain);
-    log(world, "harvest", `${a.name} harvested`, a.id, { x, y });
+    // (No harvest logging)
     // Auto-share to faction members within 5 blocks (Manhattan)
     if (a.factionId) {
       const recipients = world.agents.filter(
@@ -252,9 +276,9 @@
     g.set(sK, 0);
     f.set(sK, h(start.x, start.y));
     open.set(sK, [start.x, start.y]);
-    // Safety cap to prevent pathological searches from blowing the frame
+    // Safety cap
     let expansions = 0;
-    const MAX_EXP = 900; // ~quarter of grid; tune as needed
+    const MAX_EXP = 900;
     while (open.size) {
       if (++expansions > MAX_EXP) return null;
       let currentKey = null,
@@ -302,27 +326,7 @@
   });
 
   // js/systems/building.js
-  function tryBuildWall(world, a) {
-    if (Math.random() >= TUNE.buildWallChance) return;
-    const adj = [
-      [a.cellX + 1, a.cellY],
-      [a.cellX - 1, a.cellY],
-      [a.cellX, a.cellY + 1],
-      [a.cellX, a.cellY - 1],
-    ];
-    const free = adj.filter(([x2, y2]) => !isBlocked(world, x2, y2));
-    if (!free.length) return;
-    const [x, y] = free[rndi(0, free.length - 1)];
-    const k = key(x, y);
-    world.walls.set(k, {
-      id: crypto.randomUUID(),
-      x,
-      y,
-      hp: rndi(TUNE.wallHp[0], TUNE.wallHp[1]),
-      maxHp: TUNE.wallHp[1],
-    });
-    log(world, "build", `${a.name} built wall`, a.id, { x, y });
-  }
+  // NOTE: Wall building is removed. Keep only farms.
   function tryBuildFarm(world, a) {
     if (a.energy < TUNE.farmEnergyCost) return;
     if (Math.random() >= TUNE.buildFarmChance) return;
@@ -366,30 +370,24 @@
     tryStartAction: () => tryStartAction,
   });
   function planPathTo(world, a, gx, gy) {
-    // Only let whitelisted agents run A* this tick — do NOT push cooldowns if not allowed
     if (world._pathWhitelist && !world._pathWhitelist.has(a.id)) {
-      return; // wait for your RR turn
+      return;
     }
-
-    // Replan throttle + goal caching
     const cooldown = a.replanAtTick || 0;
     const sameGoal = a.goal && a.goal.x === gx && a.goal.y === gy;
     if (sameGoal && a.path && a.pathIdx < a.path.length) return;
     if (world.tick < cooldown) return;
-
-    // Global per-tick budget to prevent A* stampede — also do NOT push cooldown here
     if (world.pathBudget <= 0) {
-      return; // try again when budget resets next tick
+      return;
     }
     world.pathBudget--;
-
     a.goal = { x: gx, y: gy };
     const path = astar({ x: a.cellX, y: a.cellY }, { x: gx, y: gy }, (x, y) =>
       isBlocked(world, x, y, a.id)
     );
     a.path = path;
     a.pathIdx = 0;
-    a.replanAtTick = world.tick + 6 + rndi(0, 6); // ~0.5s @40ms
+    a.replanAtTick = world.tick + 6 + rndi(0, 6);
   }
   function findNearest(world, a, coll) {
     let best = null,
@@ -436,7 +434,6 @@
       return;
     }
 
-    // static-only obstacle check (ignore agents)
     const staticBlocked = (x, y) => {
       if (x < 0 || y < 0 || x >= GRID || y >= GRID) return true;
       const k = key(x, y);
@@ -446,7 +443,6 @@
       return false;
     };
 
-    // FIFO queues (typed arrays)
     const Nmax = N;
     const qx = new Int16Array(Nmax);
     const qy = new Int16Array(Nmax);
@@ -487,7 +483,6 @@
     world._foodFieldTick = world.tick;
   }
 
-  // Try to set a single step toward smaller distance; returns true if stepped
   function stepTowardFood(world, a) {
     const here = world.foodField[ffIdx(a.cellX, a.cellY)];
     if (here === FF_INF) return false;
@@ -505,14 +500,12 @@
       if (d < best.d) best = { d, x: nx, y: ny };
     }
     if (best.x === a.cellX && best.y === a.cellY) return false;
-    // take ONE tile without A*
     a.path = [{ x: best.x, y: best.y }];
     a.pathIdx = 0;
     a.goal = null;
     return true;
   }
 
-  // chooser helpers
   function chooseAttack(world, a, preferEnemies = false) {
     const candidates = [];
     for (let dx = -2; dx <= 2; dx++) {
@@ -535,14 +528,20 @@
       );
       if (enemies.length) {
         pool = enemies;
-        p = 1; // force attack if any enemy is nearby when food is absent
+        p = 1;
       }
     }
     if (p === undefined) {
       const hasEnemyNearby = candidates.some(
         (b) => a.factionId && b.factionId && a.factionId !== b.factionId
       );
-      p = clamp(a.aggression + (hasEnemyNearby ? 0.25 : 0), 0, 1);
+      // Relationship dampener: strong positive rel cuts attack chance heavily
+      // Use best (closest/most positive) relationship in pool
+      const bestRel = Math.max(
+        ...candidates.map((b) => a.relationships.get(b.id) ?? 0)
+      );
+      const relPenalty = Math.max(0, bestRel) * 0.6; // up to -0.6
+      p = clamp(a.aggression + (hasEnemyNearby ? 0.25 : 0) - relPenalty, 0, 1);
     }
     if (Math.random() >= p) return false;
 
@@ -551,14 +550,17 @@
         a.factionId && b1.factionId && a.factionId !== b1.factionId ? -0.5 : 0;
       const f2 =
         a.factionId && b2.factionId && a.factionId !== b2.factionId ? -0.5 : 0;
+      // Prefer lower relationship as targets
       return getRel(a, b1.id) + f1 - (getRel(a, b2.id) + f2);
     });
     const target = pool[0];
+    // Extra safeguard: if relationship is good, abort most of the time
+    if (getRel(a, target.id) > 0.5 && Math.random() < 0.85) return false;
     if (tryStartAction(a, "attack", { targetId: target.id })) return true;
     return false;
   }
+
   function chooseHelpHealTalk(world, a) {
-    // Only consider neighbors at distance 1
     const adj = [
       [a.cellX + 1, a.cellY],
       [a.cellX - 1, a.cellY],
@@ -578,7 +580,6 @@
     );
     const pHelp = clamp(a.cooperation + (sameFactionNearby ? 0.25 : 0), 0, 1);
 
-    // Try help/heal first according to cooperation
     if (Math.random() < pHelp) {
       const sorted = neighbors.slice().sort((b1, b2) => {
         const same1 =
@@ -608,7 +609,6 @@
       }
     }
 
-    // Else try talk/quarrel (still only at distance 1)
     const targ = neighbors[rndi(0, neighbors.length - 1)];
     const rel = getRel(a, targ.id);
     const pickQuarrel = rel < 0 && Math.random() < 0.5;
@@ -622,18 +622,10 @@
   }
 
   function considerInteract(world, a) {
+    // Don’t consider anything if very low on energy
     if (a.energy < TUNE.energyLowThreshold) return;
 
-    // If there's no food anywhere, prioritize attacking enemies nearby
-    if (
-      world.crops.size < world.agents.length * 0.15 &&
-      a.energy < TUNE.energyLowThreshold
-    ) {
-      if (chooseAttack(world, a, true)) return;
-      // (fall through to other interactions if no enemy in range)
-    }
-
-    // Reproduction attempt first when adjacent partner available
+    // 1) Reproduction attempt comes first when an adjacent partner is available
     for (const [nx, ny] of [
       [a.cellX + 1, a.cellY],
       [a.cellX - 1, a.cellY],
@@ -651,16 +643,17 @@
       ) {
         if (tryStartAction(a, "reproduce", { targetId: b.id })) {
           const dur = a.action.remainingMs,
-            reserve = 4;
+            reserve = 4; // small energy reserve
           a.energy -= reserve;
           b.energy -= reserve;
           lockAgent(world, a.id, dur);
           lockAgent(world, b.id, dur);
-          return;
+          return; // reproduction takes priority this tick
         }
       }
     }
 
+    // 2) Otherwise, normal interactions
     if (chooseAttack(world, a)) return;
     if (chooseHelpHealTalk(world, a)) return;
   }
@@ -700,36 +693,12 @@
         log(world, "attack", `${a.name} hit ${targ.name}`, a.id, {
           to: targ.id,
         });
-
-        // Same-faction infighting: 20% chance lower-level leaves faction
-        if (
-          a.factionId &&
-          targ.factionId &&
-          a.factionId === targ.factionId &&
-          Math.random() < 0.2
-        ) {
-          let quitter = a;
-          if (targ.level < a.level) quitter = targ;
-          else if (targ.level === a.level)
-            quitter = Math.random() < 0.5 ? a : targ;
-          setFaction(world, quitter, null, "infighting");
-        }
-      } else if (act.type === "attack_wall") {
-        const wx = act.payload?.x,
-          wy = act.payload?.y;
-        const w = world.walls.get(key(wx, wy));
-        if (w) {
-          w.hp -= a.attack * 0.35;
-          log(
-            world,
-            "attack_wall",
-            `${a.name} damaged wall @${wx},${wy}`,
-            a.id,
-            { x: wx, y: wy }
-          );
-        } else {
-          a.action = null;
-          return;
+        // Level-up instantly on kill
+        if (targ.health <= 0 && a.level < TUNE.levelCap) {
+          a.level++;
+          a.maxHealth += 8;
+          a.attack += 1.5;
+          log(world, "level", `${a.name} leveled to ${a.level}`, a.id, {});
         }
       } else if (act.type === "heal" && targ) {
         targ.health = Math.min(targ.maxHealth, targ.health + 2);
@@ -783,7 +752,7 @@
         ? world.agentsById.get(act.payload.targetId)
         : null;
 
-      // Explicit faction logic on completion (no graph-based recompute)
+      // Faction forming/joining
       if (targ2 && !a.factionId && !targ2.factionId) {
         const rel = getRel(a, targ2.id);
         if (
@@ -794,7 +763,6 @@
           createFaction(world, [a, targ2]);
         }
       }
-
       if (act.type === "help" && targ2 && a.factionId) {
         if (
           Math.random() < TUNE.helpConvertChance &&
@@ -804,7 +772,6 @@
           setFaction(world, targ2, a.factionId, "recruitment");
         }
       }
-
       if (act.type === "reproduce" && targ2) {
         if (manhattan(a.cellX, a.cellY, targ2.cellX, targ2.cellY) === 1) {
           const spots = [
@@ -821,7 +788,6 @@
             const child = addAgentAt(world, x, y);
             child.energy = 60;
             child.health = 80;
-
             child.aggression = clamp(
               (a.aggression + targ2.aggression) / 2 + rnd(-0.15, 0.15),
               0,
@@ -852,14 +818,12 @@
           }
         }
       }
-
       a.action = null;
     }
   }
 
   function addAgentAt(world, x, y) {
     const id = crypto.randomUUID();
-    // random travel preference: near, far, wander (even split)
     const rp = Math.random();
     const pref = rp < 1 / 3 ? "near" : rp < 2 / 3 ? "far" : "wander";
     const a = {
@@ -873,7 +837,6 @@
       attack: TUNE.baseDamage,
       level: 1,
       ageTicks: 0,
-      starvingSeconds: 0,
       factionId: null,
       relationships: /* @__PURE__ */ new Map(),
       path: null,
@@ -883,7 +846,6 @@
       travelPref: pref,
       aggression: Math.random(),
       cooperation: Math.random(),
-      // replan throttle + goal cache
       replanAtTick: 0,
       goal: null,
     };
@@ -894,18 +856,17 @@
   }
 
   function seekFoodWhenHungry(world, a) {
-    // harvest if standing on a crop
+    // Highest priority: harvest if standing on a crop
     if (world.crops.has(key(a.cellX, a.cellY))) {
       harvestAt(world, a, a.cellX, a.cellY);
       return;
     }
 
-    // Maintain the food flow-field every few ticks (cheap ~ O(grid))
+    // Keep food field fresh
     if (world.tick - (world._foodFieldTick || 0) >= 5) {
       recomputeFoodField(world);
     }
 
-    // If ANY adjacent crop, take a single step WITHOUT A* (bypass whitelist/budget)
     const adj = [
       [a.cellX + 1, a.cellY],
       [a.cellX - 1, a.cellY],
@@ -922,62 +883,20 @@
       }
     }
 
-    // If no crops on the map, avoid A* entirely: take ONE greedy/random step
+    // If NO crops exist: REST (do not move)
     if (world.crops.size === 0) {
-      // prefer stepping toward a farm if any
-      let goal = null,
-        bestD = 1e9;
-      for (const fm of world.farms.values()) {
-        const d = Math.abs(a.cellX - fm.x) + Math.abs(a.cellY - fm.y);
-        if (d < bestD) {
-          bestD = d;
-          goal = fm;
-        }
-      }
-      const stepChoices = adj.filter(([x, y]) => !isBlocked(world, x, y, a.id));
-      if (stepChoices.length) {
-        let pick;
-        if (goal) {
-          stepChoices.sort(
-            (p1, p2) =>
-              Math.abs(p1[0] - goal.x) +
-              Math.abs(p1[1] - goal.y) -
-              (Math.abs(p2[0] - goal.x) + Math.abs(p2[1] - goal.y))
-          );
-        }
-        pick =
-          pick ||
-          stepChoices[0] ||
-          stepChoices[rndi(0, stepChoices.length - 1)];
-        // move one tile WITHOUT A* by setting a 1-step path
-        a.path = [{ x: pick[0], y: pick[1] }];
-        a.pathIdx = 0;
-        a.goal = null;
-      }
+      a.path = null;
+      a.goal = null;
       return;
     }
 
-    // If crops are scarce relative to agents, follow the flow-field one step.
-    // This avoids dozens of concurrent long A* searches to the same few crops.
+    // Crops exist: follow flow-field one step if scarce
     const scarcity = world.crops.size / Math.max(1, world.agents.length);
     if (scarcity < 0.35) {
       if (stepTowardFood(world, a)) return;
-
-      // Fallback: when very low energy, allow any free sidestep to break crowd lock
-      if (a.energy < TUNE.energyLowThreshold) {
-        const freeAdj = adj.filter(([x, y]) => !isBlocked(world, x, y, a.id));
-        if (freeAdj.length) {
-          const [nx, ny] = freeAdj[rndi(0, freeAdj.length - 1)];
-          a.path = [{ x: nx, y: ny }];
-          a.pathIdx = 0;
-          a.goal = null;
-          return;
-        }
-      }
-      // If no gradient (unreachable pocket), fall through to other options.
     }
 
-    // Otherwise: head to nearest crop (A* is allowed but budget-gated)
+    // Otherwise: A* to nearest crop
     const filteredCrops = [...world.crops.values()].filter(
       (c) => !world.flagCells.has(key(c.x, c.y))
     );
@@ -985,34 +904,6 @@
       const near = findNearest(world, a, filteredCrops);
       if (near) {
         planPathTo(world, a, near.target.x, near.target.y);
-        return;
-      }
-    }
-
-    // Fallback: try a farm (A* will be budget-gated)
-    if (world.farms.size) {
-      let best = null,
-        bestD = 1e9;
-      for (const fm of world.farms.values()) {
-        const d = Math.abs(a.cellX - fm.x) + Math.abs(a.cellY - fm.y);
-        if (d < bestD) {
-          bestD = d;
-          best = fm;
-        }
-      }
-      if (best && !isBlocked(world, best.x, best.y, a.id)) {
-        planPathTo(world, a, best.x, best.y);
-        return;
-      }
-    }
-
-    // Last resort: short exploration target (A* will be budgeted)
-    for (let tries = 0; tries < 5; tries++) {
-      const r = TUNE.lowEnergyExploreRange;
-      const rx = clamp(a.cellX + rndi(-r, r), 0, 61);
-      const ry = clamp(a.cellY + rndi(-r, r), 0, 61);
-      if (!isBlocked(world, rx, ry, a.id)) {
-        planPathTo(world, a, rx, ry);
         return;
       }
     }
@@ -1042,7 +933,6 @@
       init_building();
       init_utils();
       getRel = (a, bId) => a.relationships.get(bId) ?? 0;
-      // Relationship setter with decay-to-zero + hard cap
       setRel = (a, bId, val) => {
         val = clamp(val, -1, 1);
         if (Math.abs(val) < 0.02) {
@@ -1063,23 +953,20 @@
     },
   });
 
-  // js/main.js
-  init_constants();
-
   // js/world.js
   init_constants();
   init_utils();
   var World = class {
     constructor() {
-      this.walls = /* @__PURE__ */ new Map();
+      this.walls = /* @__PURE__ */ new Map(); // may exist from seed; no building
       this.crops = /* @__PURE__ */ new Map();
       this.farms = /* @__PURE__ */ new Map();
       this.flags = /* @__PURE__ */ new Map(); // fid -> {id,factionId,x,y,hp,maxHp}
-      this.flagCells = new Set(); // keyed "x,y" for O(1) isBlocked checks
+      this.flagCells = new Set();
       this.agents = [];
       this.agentsById = /* @__PURE__ */ new Map();
       this.agentsByCell = /* @__PURE__ */ new Map();
-      this.factions = /* @__PURE__ */ new Map(); // fid -> {id, members:Set, color}
+      this.factions = /* @__PURE__ */ new Map();
       this.log = new RingLog(100);
       this.activeLogCats = new Set(LOG_CATS);
       this.activeLogAgentId;
@@ -1088,26 +975,23 @@
       this.spawnMult = 1;
       this.running = false;
       this.selectedId = null;
-      this.pauseOnBlur = true; // NEW: toggleable pause on blur
+      this.pauseOnBlur = true;
 
-      // UI throttling/memo
       this._lastFactionsDomAt = 0;
       this._lastAgentCount = 0;
       this._rebuildAgentOptions = null;
       this._lastFactionsSig = "";
-      // A* per-tick budget
+
       this.pathBudgetMax = Number.isFinite(TUNE.pathBudgetPerTick)
         ? TUNE.pathBudgetPerTick
         : 30;
       this.pathBudget = 0;
-      // NEW: round-robin cursor + per-tick whitelist for fair A*
       this._pathRR = 0;
       this._pathWhitelist = new Set();
 
-      // Flow field to nearest crop (Uint16: 0..65534, 65535 = unreachable)
       this.foodField = new Uint16Array(GRID * GRID);
       this.foodField.fill(0xffff);
-      this._foodFieldTick = -1; // last recompute tick
+      this._foodFieldTick = -1;
     }
   };
 
@@ -1176,14 +1060,10 @@
     ctx.fill();
   }
 
-  // NEW: per-action compact indicator (fast vector glyphs)
   function drawActionIndicator(ctx, cx, topY, type, factionColor = "#ccc") {
     ctx.save();
-    // background stem
     ctx.fillStyle = "#c7c7d2";
     ctx.fillRect(cx - 1, topY - 6, 2, 7);
-
-    // color by type
     let fill = "#cccccc",
       stroke = "#333333";
     switch (type) {
@@ -1205,9 +1085,6 @@
       case "reproduce":
         fill = "#f472b6";
         break;
-      case "attack_wall":
-        fill = "#cfc08b";
-        break;
       case "attack_flag":
         fill = factionColor || "#cccccc";
         break;
@@ -1215,12 +1092,10 @@
     ctx.fillStyle = fill;
     ctx.strokeStyle = stroke;
     ctx.lineWidth = 1;
-
-    // draw simple glyphs 9×8 box to the right of stem
     const x = cx + 2,
       y = topY - 5;
     switch (type) {
-      case "attack": // crossed blades (X)
+      case "attack":
         ctx.beginPath();
         ctx.moveTo(x, y);
         ctx.lineTo(x + 8, y + 8);
@@ -1229,12 +1104,12 @@
         ctx.strokeStyle = fill;
         ctx.stroke();
         break;
-      case "heal": // plus
+      case "heal":
         ctx.beginPath();
         ctx.fillRect(x + 3, y, 2, 8);
         ctx.fillRect(x, y + 3, 8, 2);
         break;
-      case "help": // up arrow
+      case "help":
         ctx.beginPath();
         ctx.moveTo(x + 4, y);
         ctx.lineTo(x + 4, y + 8);
@@ -1244,7 +1119,7 @@
         ctx.strokeStyle = fill;
         ctx.stroke();
         break;
-      case "talk": // chat bubble
+      case "talk":
         ctx.beginPath();
         ctx.rect(x, y, 8, 6);
         ctx.fill();
@@ -1255,7 +1130,7 @@
         ctx.closePath();
         ctx.fill();
         break;
-      case "quarrel": // lightning
+      case "quarrel":
         ctx.beginPath();
         ctx.moveTo(x + 2, y);
         ctx.lineTo(x + 6, y + 3);
@@ -1266,7 +1141,7 @@
         ctx.closePath();
         ctx.fill();
         break;
-      case "reproduce": // heart
+      case "reproduce":
         ctx.beginPath();
         ctx.moveTo(x + 4, y + 7);
         ctx.bezierCurveTo(x + 8, y + 4, x + 7, y + 0.5, x + 5, y + 1.2);
@@ -1275,11 +1150,7 @@
         ctx.bezierCurveTo(x + 1, y + 0.5, x + 0, y + 4, x + 4, y + 7);
         ctx.fill();
         break;
-      case "attack_wall": // hammer
-        ctx.fillRect(x + 1, y + 1, 6, 2);
-        ctx.fillRect(x + 3, y + 3, 2, 5);
-        break;
-      case "attack_flag": // mini flag colored by faction
+      case "attack_flag":
         drawFactionPennant(ctx, cx, topY, factionColor);
         break;
       default:
@@ -1288,20 +1159,18 @@
     ctx.restore();
   }
 
-  // Compact "low energy" icon
   function drawLowEnergyIcon(ctx, cx, topY) {
     const w = 6,
       h = 4;
-    const x = Math.round(cx) - 10; // shift left of center/action glyph
-    const y = Math.round(topY) - 2; // aligns nicely above the head
-
+    const x = Math.round(cx) - 10;
+    const y = Math.round(topY) - 2;
     ctx.save();
     ctx.beginPath();
-    ctx.moveTo(x, y); // top-left
-    ctx.lineTo(x + w, y); // top-right
-    ctx.lineTo(x + w / 2, y + h); // bottom apex (downward)
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + w, y);
+    ctx.lineTo(x + w / 2, y + h);
     ctx.closePath();
-    ctx.fillStyle = "#ff6d7a"; // red
+    ctx.fillStyle = "#ff6d7a";
     ctx.fill();
     ctx.restore();
   }
@@ -1316,8 +1185,6 @@
     gridLayer = null
   ) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // draw pre-rendered grid if provided
     if (gridLayer) {
       ctx.drawImage(gridLayer, 0, 0);
     } else {
@@ -1341,14 +1208,17 @@
     ctx.save();
     ctx.translate(OFFSET, OFFSET);
 
+    // crops
     ctx.fillStyle = COLORS.crop;
     for (const c of world.crops.values()) {
       drawTriangle(ctx, c.x * CELL, c.y * CELL);
     }
+    // farms
     for (const f of world.farms.values()) {
       ctx.fillStyle = COLORS.farm;
       ctx.fillRect(f.x * CELL + 2, f.y * CELL + 2, CELL - 4, CELL - 4);
     }
+    // walls (may exist from seed; cannot be built)
     for (const w of world.walls.values()) {
       const dmg = 1 - w.hp / w.maxHp;
       ctx.fillStyle = COLORS.wall;
@@ -1360,6 +1230,7 @@
         ctx.globalAlpha = 1;
       }
     }
+    // flags
     for (const f of world.flags.values()) {
       const faction = world.factions.get(f.factionId);
       const col = faction?.color || "#cccccc";
@@ -1368,6 +1239,11 @@
       ctx.fillStyle = col;
       ctx.fillRect(f.x * CELL + 9, f.y * CELL + 4, CELL - 8, 8);
     }
+
+    // attacking lines pass: draw after agents for clarity
+    const pendingAttackLines = [];
+
+    // agents
     for (const a of world.agents) {
       const x = a.cellX * CELL,
         y = a.cellY * CELL;
@@ -1388,75 +1264,38 @@
       const glyphTop = y - 8;
       const cx = x + CELL / 2;
 
-      // Low-energy blip
       if (a.energy < TUNE.energyLowThreshold) {
         drawLowEnergyIcon(ctx, cx, glyphTop);
       }
 
-      // per-action indicator above head (color-coded)
       if (a.action) {
         const fcol = a.factionId
           ? world.factions.get(a.factionId)?.color || "#cccccc"
           : "#cccccc";
+        if (a.action.type === "attack" && a.action.payload?.targetId) {
+          const t = world.agentsById.get(a.action.payload.targetId);
+          if (t) pendingAttackLines.push([a, t]);
+        }
         drawActionIndicator(ctx, cx, glyphTop, a.action.type, fcol);
       }
 
-      // selection star above selected agent
       if (world.selectedId === a.id) {
         drawStar(ctx, x + CELL / 2, y - 16);
       }
     }
-    ctx.restore();
 
-    hud.textContent = `tick:${world.tick} | fps:${stats.fps.toFixed(
-      0
-    )} | agents:${world.agents.length}`;
-    stats.stAgents.textContent = world.agents.length;
-    stats.stFactions.textContent = world.factions.size;
-    stats.stCrops.textContent = world.crops.size;
-    stats.stFarms.textContent = world.farms.size;
-    stats.stWalls.textContent = world.walls.size;
-    stats.stFlags.textContent = world.flags.size;
-
-    // THROTTLED FACTIONS LIST REBUILD (only on change or every ~2s)
-    const now = performance.now();
-    const sig =
-      world.factions.size +
-      "|" +
-      [...world.factions]
-        .map(([fid, f]) => fid + ":" + f.members.size)
-        .join(",");
-    if (
-      sig !== world._lastFactionsSig ||
-      now - world._lastFactionsDomAt >= 2000
-    ) {
-      factionsList.innerHTML = "";
-      for (const [fid, f] of world.factions) {
-        const color = f.color;
-        const div = document.createElement("div");
-        const members = [...f.members]
-          .map((id) => world.agentsById.get(id))
-          .filter(Boolean);
-        const avgLvl = (
-          members.reduce((s, a) => s + a.level, 0) / (members.length || 1)
-        ).toFixed(1);
-        const flag = world.flags.get(fid);
-        div.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin:6px 0">
-      <div style="width:12px;height:12px;border-radius:3px;background:${color}"></div>
-      <div class="mono" style="flex:1">${fid}</div>
-    </div>
-    <div class="kv">
-      <div class="muted">Members</div><div>${members.length}</div>
-      <div class="muted">Avg level</div><div>${avgLvl}</div>
-      <div class="muted">Flag</div><div>${
-        flag ? `${flag.x},${flag.y} (${flag.hp}/${flag.maxHp})` : "—"
-      }</div>
-    </div>`;
-        factionsList.appendChild(div);
-      }
-      world._lastFactionsDomAt = now;
-      world._lastFactionsSig = sig;
+    // Draw attack lines on top
+    ctx.strokeStyle = COLORS.attackLine;
+    ctx.globalAlpha = 0.7;
+    ctx.lineWidth = 1;
+    for (const [att, tgt] of pendingAttackLines) {
+      ctx.beginPath();
+      ctx.moveTo(att.cellX * CELL + CELL / 2, att.cellY * CELL + CELL / 2);
+      ctx.lineTo(tgt.cellX * CELL + CELL / 2, tgt.cellY * CELL + CELL / 2);
+      ctx.stroke();
     }
+    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   // js/ui.js
@@ -1598,27 +1437,56 @@
       renderLog2();
     });
   }
-  function renderLog(world, logList) {
-    const items = world.log.list(world.activeLogCats, world.activeLogAgentId);
-    logList.innerHTML = items
-      .slice(-100)
-      .reverse()
-      .map((it) => {
-        const cls =
-          it.cat === "attack" ||
-          it.cat === "quarrel" ||
-          it.cat === "destroy" ||
-          it.cat === "death"
-            ? "bad"
-            : it.cat === "heal" ||
-              it.cat === "help" ||
-              it.cat === "faction" ||
-              it.cat === "level"
-            ? "good"
-            : "info";
-        return `<div class="logItem"><span class="pill ${cls}">${it.cat}</span>${it.msg}</div>`;
-      })
-      .join("");
+  function renderHUD(world, hud, stats) {
+    hud.textContent = `tick:${world.tick} | fps:${stats.fps.toFixed(
+      0
+    )} | agents:${world.agents.length}`;
+    stats.stAgents.textContent = world.agents.length;
+    stats.stFactions.textContent = world.factions.size;
+    stats.stCrops.textContent = world.crops.size;
+    stats.stFarms.textContent = world.farms.size;
+    stats.stWalls.textContent = world.walls.size;
+    stats.stFlags.textContent = world.flags.size;
+  }
+  function rebuildFactionsListIfNeeded(world, factionsList) {
+    const now = performance.now();
+    const sig =
+      world.factions.size +
+      "|" +
+      [...world.factions]
+        .map(([fid, f]) => fid + ":" + f.members.size)
+        .join(",");
+    if (
+      sig !== world._lastFactionsSig ||
+      now - world._lastFactionsDomAt >= 2000
+    ) {
+      factionsList.innerHTML = "";
+      for (const [fid, f] of world.factions) {
+        const color = f.color;
+        const div = document.createElement("div");
+        const members = [...f.members]
+          .map((id) => world.agentsById.get(id))
+          .filter(Boolean);
+        const avgLvl = (
+          members.reduce((s, a) => s + a.level, 0) / (members.length || 1)
+        ).toFixed(1);
+        const flag = world.flags.get(fid);
+        div.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin:6px 0">
+      <div style="width:12px;height:12px;border-radius:3px;background:${color}"></div>
+      <div class="mono" style="flex:1">${fid}</div>
+    </div>
+    <div class="kv">
+      <div class="muted">Members</div><div>${members.length}</div>
+      <div class="muted">Avg level</div><div>${avgLvl}</div>
+      <div class="muted">Flag</div><div>${
+        flag ? `${flag.x},${flag.y} (${flag.hp}/${flag.maxHp})` : "—"
+      }</div>
+    </div>`;
+        factionsList.appendChild(div);
+      }
+      world._lastFactionsDomAt = now;
+      world._lastFactionsSig = sig;
+    }
   }
 
   // js/systems/factions.js
@@ -1681,24 +1549,33 @@
     return fid;
   }
 
-  function _destroyFactionIfEmpty(world, fid) {
+  function _disbandFaction(world, fid, reason = "rule: <=1 member") {
+    const f = world.factions.get(fid);
+    if (!f) return;
+    // Clear each member's factionId
+    for (const id of f.members) {
+      const a = world.agentsById.get(id);
+      if (a) a.factionId = null;
+    }
+    world.factions.delete(fid);
+    const flag = world.flags.get(fid);
+    if (flag) {
+      world.flagCells.delete(key(flag.x, flag.y));
+      world.flags.delete(fid);
+      log(world, "destroy", `Flag ${fid} destroyed`, null, { factionId: fid });
+    }
+    log(world, "faction", `Faction ${fid} disbanded (${reason})`, null, {
+      factionId: fid,
+    });
+  }
+
+  function _destroyFactionIfLonely(world, fid) {
     const f = world.factions.get(fid);
     if (!f) return;
     let aliveCount = 0;
     for (const id of f.members) if (world.agentsById.has(id)) aliveCount++;
-    if (aliveCount === 0) {
-      world.factions.delete(fid);
-      if (world.flags.has(fid)) {
-        const flag = world.flags.get(fid);
-        if (flag) world.flagCells.delete(key(flag.x, flag.y));
-        world.flags.delete(fid);
-        log(world, "destroy", `Flag ${fid} destroyed`, null, {
-          factionId: fid,
-        });
-      }
-      log(world, "faction", `Faction ${fid} disbanded`, null, {
-        factionId: fid,
-      });
+    if (aliveCount <= 1) {
+      _disbandFaction(world, fid, "<=1 alive");
     }
   }
 
@@ -1731,6 +1608,7 @@
         agent.id,
         { from: oldFid, to: null, reason }
       );
+      _destroyFactionIfLonely(world, oldFid);
     } else if (!oldFid && newFid) {
       log(
         world,
@@ -1751,8 +1629,8 @@
         agent.id,
         { from: oldFid, to: newFid, reason }
       );
+      _destroyFactionIfLonely(world, oldFid);
     }
-    if (oldFid) _destroyFactionIfEmpty(world, oldFid);
   }
 
   function reconcileFactions(world) {
@@ -1763,24 +1641,7 @@
       actual.get(a.factionId).add(a.id);
     }
 
-    const toDelete = [];
-    for (const [fid, f] of world.factions) {
-      const set = actual.get(fid) || new Set();
-      f.members = set;
-      if (set.size === 0) toDelete.push(fid);
-    }
-    for (const fid of toDelete) {
-      world.factions.delete(fid);
-      if (world.flags.has(fid)) {
-        const flag = world.flags.get(fid);
-        if (flag) world.flagCells.delete(key(flag.x, flag.y));
-        world.flags.delete(fid);
-        log(world, "destroy", `Flag ${fid} destroyed`, null, {
-          factionId: fid,
-        });
-      }
-    }
-
+    // Sync world.factions with actual sets
     for (const [fid, set] of actual) {
       if (!world.factions.has(fid)) {
         world.factions.set(fid, {
@@ -1788,6 +1649,8 @@
           members: set,
           color: _nextFactionColor(world),
         });
+      } else {
+        world.factions.get(fid).members = set;
       }
       if (!world.flags.has(fid)) {
         const members = [...set]
@@ -1795,6 +1658,13 @@
           .filter(Boolean);
         if (members.length) _placeFlag(world, fid, members);
       }
+    }
+
+    // Disband factions with <=1 alive member
+    for (const [fid, f] of [...world.factions]) {
+      let aliveCount = 0;
+      for (const id of f.members) if (world.agentsById.has(id)) aliveCount++;
+      if (aliveCount <= 1) _disbandFaction(world, fid, "reconcile");
     }
   }
 
@@ -1824,7 +1694,7 @@
         world.walls.has(k) ||
         world.farms.has(k) ||
         world.agentsByCell.has(k) ||
-        world.flagCells.has(k) // ← prevent crops on flags
+        world.flagCells.has(k)
       )
         continue;
       let prob = base;
@@ -1882,29 +1752,14 @@
       }
     }
 
-    // Disband empty factions (no cloning)
-    const factionsToDelete = [];
-    for (const [fid, f] of world.factions) {
+    // Disband factions with <=1 alive member
+    for (const [fid, f] of [...world.factions]) {
       let aliveCount = 0;
       for (const id of f.members) if (world.agentsById.has(id)) aliveCount++;
-      if (aliveCount === 0) factionsToDelete.push(fid);
-    }
-    for (const fid of factionsToDelete) {
-      world.factions.delete(fid);
-      const flag = world.flags.get(fid);
-      if (flag) {
-        world.flagCells.delete(key(flag.x, flag.y));
-        world.flags.delete(fid);
-        log(world, "destroy", `Flag ${fid} destroyed`, null, {
-          factionId: fid,
-        });
-      }
-      log(world, "faction", `Faction ${fid} disbanded`, null, {
-        factionId: fid,
-      });
+      if (aliveCount <= 1) _disbandFaction(world, fid, "no members");
     }
 
-    // Clean up destroyed walls (no cloning)
+    // Clean up destroyed walls if any remain from seed
     const wallsToDelete = [];
     for (const [k, w] of world.walls) {
       if (w.hp <= 0) wallsToDelete.push(k);
@@ -1936,17 +1791,33 @@
   init_building();
   init_harvest();
   document.addEventListener("DOMContentLoaded", () => {
-    const dom = bindDom();
-    const ctx = dom.canvas.getContext("2d");
+    const canvas = document.querySelector("#canvas");
+    const hud = document.querySelector("#hud");
+    const factionsList = document.querySelector("#factionsList");
+    const stats = {
+      stAgents: document.querySelector("#stAgents"),
+      stFactions: document.querySelector("#stFactions"),
+      stCrops: document.querySelector("#stCrops"),
+      stFarms: document.querySelector("#stFarms"),
+      stWalls: document.querySelector("#stWalls"),
+      stFlags: document.querySelector("#stFlags"),
+    };
+    const ctx = canvas.getContext("2d");
     const world = new World();
     window.world = world;
-    const doRenderLog = () => renderLog(world, dom.logList);
-    setupLogFilters(world, dom.logFilters, doRenderLog);
 
-    // Pre-render static grid layer to avoid per-frame line drawing
+    // Controls / UI
+    const dom = (function bind() {
+      const b = bindDom();
+      const doRenderLog = () => renderLog(world, b.logList);
+      setupLogFilters(world, b.logFilters, doRenderLog);
+      return { ...b, doRenderLog };
+    })();
+
+    // Pre-render grid
     const gridLayer = document.createElement("canvas");
-    gridLayer.width = dom.canvas.width;
-    gridLayer.height = dom.canvas.height;
+    gridLayer.width = canvas.width;
+    gridLayer.height = canvas.height;
     {
       const gctx = gridLayer.getContext("2d");
       gctx.translate(OFFSET, OFFSET);
@@ -1964,7 +1835,7 @@
       gctx.stroke();
     }
 
-    // NEW: UI toggle for Pause on Focus Loss (append without changing HTML file)
+    // Add pause toggle dynamically
     (function addPauseToggle() {
       const controls = document.querySelector(".card.controls");
       if (!controls) return;
@@ -1984,9 +1855,7 @@
       label.appendChild(span);
       row.appendChild(label);
       controls.appendChild(row);
-      cb.addEventListener("change", () => {
-        world.pauseOnBlur = cb.checked;
-      });
+      cb.addEventListener("change", () => (world.pauseOnBlur = cb.checked));
     })();
 
     function seedEnvironment() {
@@ -1995,22 +1864,10 @@
           y = rndi(5, 56);
         world.farms.set(key(x, y), { id: crypto.randomUUID(), x, y });
       }
-      for (let i = 0; i < 40; i++) {
-        const x = rndi(0, 61),
-          y = rndi(0, 61);
-        const k = key(x, y);
-        if (world.walls.has(k)) continue;
-        world.walls.set(k, {
-          id: crypto.randomUUID(),
-          x,
-          y,
-          hp: rndi(TUNE.wallHp[0], TUNE.wallHp[1]),
-          maxHp: TUNE.wallHp[1],
-        });
-      }
+      // Existing walls can be seeded manually if desired; agents won't build new ones
     }
 
-    // Save/Load helpers
+    // Save/Load helpers (unchanged except we no longer serialize starvingSeconds)
     function serializeWorld(world2) {
       const factions = [...world2.factions.values()].map((f) => ({
         id: f.id,
@@ -2032,7 +1889,6 @@
         attack: a.attack,
         level: a.level,
         ageTicks: a.ageTicks,
-        starvingSeconds: a.starvingSeconds,
         factionId: a.factionId,
         relationships: [...a.relationships.entries()],
         path: a.path ? a.path.slice(a.pathIdx) : null,
@@ -2051,7 +1907,7 @@
         cooperation: a.cooperation,
       }));
       return {
-        meta: { version: "1.3.6-perfcap", savedAt: Date.now() },
+        meta: { version: "1.3.6-rules", savedAt: Date.now() },
         grid: { CELL, GRID },
         state: {
           tick: world2.tick,
@@ -2094,11 +1950,10 @@
         actorId: null,
         extra: {},
       });
-      doRenderLog();
+      dom.doRenderLog();
     }
     function restoreWorld(world2, data) {
       world2.running = false;
-
       world2.walls.clear();
       world2.crops.clear();
       world2.farms.clear();
@@ -2145,7 +2000,6 @@
           attack: a.attack,
           level: a.level,
           ageTicks: a.ageTicks,
-          starvingSeconds: a.starvingSeconds,
           factionId: a.factionId || null,
           relationships: new Map(a.relationships || []),
           path: a.path || null,
@@ -2169,17 +2023,9 @@
         world2.agentsById.set(ag.id, ag);
         world2.agentsByCell.set(key(ag.cellX, ag.cellY), ag.id);
       }
-
-      world2.log = new RingLog((data.log && data.log.limit) || 100);
-      for (const it of data.log?.arr || []) world2.log.push(it);
-      world2.selectedId = data.selectedId || null;
-      world2.activeLogCats = new Set(data.activeLogCats || LOG_CATS);
-      world2.activeLogAgentId = data.activeLogAgentId || null;
-
       reconcileFactions(world2);
       if (world2._rebuildAgentOptions) world2._rebuildAgentOptions();
-      doRenderLog();
-
+      dom.doRenderLog();
       world2.log.push({
         t: performance.now(),
         cat: "info",
@@ -2189,154 +2035,149 @@
       });
     }
 
-    Promise.resolve()
-      .then(() => (init_actions(), actions_exports))
-      .then(({ addAgentAt: addAgentAt3 }) => {
-        function spawnAgents(n) {
-          for (let i = 0; i < n; i++) {
-            const { x, y } = randomFreeCell(world);
-            addAgentAt3(world, x, y);
-          }
-        }
-        const $clamp = (v, min, max) =>
-          isNaN(v) ? min : Math.max(min, Math.min(max, v));
-        dom.ranges.rngAgents.addEventListener("input", () => {
-          dom.labels.lblAgents.textContent = dom.ranges.rngAgents.value;
-          dom.nums.numAgents.value = dom.ranges.rngAgents.value;
-        });
-        dom.ranges.rngSpeed.addEventListener("input", () => {
-          dom.labels.lblSpeed.textContent = dom.ranges.rngSpeed.value + "%";
-          dom.nums.numSpeed.value = dom.ranges.rngSpeed.value;
-          world.speedPct = Number(dom.ranges.rngSpeed.value);
-        });
-        dom.ranges.rngSpawn.addEventListener("input", () => {
-          dom.labels.lblSpawn.textContent =
-            Number(dom.ranges.rngSpawn.value).toFixed(1) + "×";
-          dom.nums.numSpawn.value = dom.ranges.rngSpawn.value;
-          world.spawnMult = Number(dom.ranges.rngSpawn.value);
-        });
-        dom.nums.numAgents.addEventListener("input", () => {
-          const v = $clamp(Number(dom.nums.numAgents.value), 20, 300);
-          dom.nums.numAgents.value = v;
-          dom.ranges.rngAgents.value = v;
-          dom.labels.lblAgents.textContent = v;
-        });
-        dom.nums.numSpeed.addEventListener("input", () => {
-          const v = $clamp(Number(dom.nums.numSpeed.value), 5, 300);
-          dom.nums.numSpeed.value = v;
-          dom.ranges.rngSpeed.value = v;
-          dom.labels.lblSpeed.textContent = v + "%";
-          world.speedPct = v;
-        });
-        dom.nums.numSpawn.addEventListener("input", () => {
-          let v = Number(dom.nums.numSpawn.value);
-          v = $clamp(v, 0.1, 5);
-          dom.nums.numSpawn.value = v;
-          dom.ranges.rngSpawn.value = v;
-          dom.labels.lblSpawn.textContent = v.toFixed(1) + "×";
-          world.spawnMult = v;
-        });
-        dom.buttons.btnStart.addEventListener("click", () => {
-          if (world.running) return;
-          world.walls.clear();
-          world.crops.clear();
-          world.farms.clear();
-          world.flags.clear();
-          world.flagCells.clear();
-          world.agents.length = 0;
-          world.agentsById.clear();
-          world.agentsByCell.clear();
-          world.factions.clear();
-          world.log = new world.log.constructor(100);
-          world.tick = 0;
-          world.selectedId = null;
-          world.activeLogCats = /* @__PURE__ */ new Set([
-            ...world.activeLogCats.values(),
-          ]);
-          setupLogFilters(world, dom.logFilters, doRenderLog);
-          world.speedPct = Number(dom.ranges.rngSpeed.value);
-          world.spawnMult = Number(dom.ranges.rngSpawn.value);
-          seedEnvironment();
-          spawnAgents(Number(dom.ranges.rngAgents.value));
-          world.running = true;
-          dom.buttons.btnStart.disabled = true;
-          dom.buttons.btnPause.disabled = false;
-          dom.buttons.btnResume.disabled = true;
-          world.log.push({
-            t: performance.now(),
-            cat: "info",
-            msg: "Simulation started",
-            actorId: null,
-            extra: {},
-          });
-        });
-        dom.buttons.btnPause.addEventListener("click", () => {
-          world.running = false;
-          dom.buttons.btnPause.disabled = true;
-          dom.buttons.btnResume.disabled = false;
-        });
-        dom.buttons.btnResume.addEventListener("click", () => {
-          world.running = true;
-          dom.buttons.btnPause.disabled = false;
-          dom.buttons.btnResume.disabled = true;
-        });
-        dom.buttons.btnSpawnCrop.addEventListener("click", () => {
+    // Controls
+    (function wireControls() {
+      const { buttons, ranges, labels, nums } = dom;
+      function spawnAgents(n) {
+        for (let i = 0; i < n; i++) {
           const { x, y } = randomFreeCell(world);
-          addCrop(world, x, y);
+          addAgentAt(world, x, y);
+        }
+      }
+      const $clamp = (v, min, max) =>
+        isNaN(v) ? min : Math.max(min, Math.min(max, v));
+      ranges.rngAgents.addEventListener("input", () => {
+        labels.lblAgents.textContent = ranges.rngAgents.value;
+        nums.numAgents.value = ranges.rngAgents.value;
+      });
+      ranges.rngSpeed.addEventListener("input", () => {
+        labels.lblSpeed.textContent = ranges.rngSpeed.value + "%";
+        nums.numSpeed.value = ranges.rngSpeed.value;
+        world.speedPct = Number(ranges.rngSpeed.value);
+      });
+      ranges.rngSpawn.addEventListener("input", () => {
+        labels.lblSpawn.textContent =
+          Number(ranges.rngSpawn.value).toFixed(1) + "×";
+        nums.numSpawn.value = ranges.rngSpawn.value;
+        world.spawnMult = Number(ranges.rngSpawn.value);
+      });
+      nums.numAgents.addEventListener("input", () => {
+        const v = $clamp(Number(nums.numAgents.value), 20, 300);
+        nums.numAgents.value = v;
+        ranges.rngAgents.value = v;
+        labels.lblAgents.textContent = v;
+      });
+      nums.numSpeed.addEventListener("input", () => {
+        const v = $clamp(Number(nums.numSpeed.value), 5, 300);
+        nums.numSpeed.value = v;
+        ranges.rngSpeed.value = v;
+        labels.lblSpeed.textContent = v + "%";
+        world.speedPct = v;
+      });
+      nums.numSpawn.addEventListener("input", () => {
+        let v = Number(nums.numSpawn.value);
+        v = $clamp(v, 0.1, 5);
+        nums.numSpawn.value = v;
+        ranges.rngSpawn.value = v;
+        labels.lblSpawn.textContent = v.toFixed(1) + "×";
+        world.spawnMult = v;
+      });
+      buttons.btnStart.addEventListener("click", () => {
+        if (world.running) return;
+        world.walls.clear();
+        world.crops.clear();
+        world.farms.clear();
+        world.flags.clear();
+        world.flagCells.clear();
+        world.agents.length = 0;
+        world.agentsById.clear();
+        world.agentsByCell.clear();
+        world.factions.clear();
+        world.log = new world.log.constructor(100);
+        world.tick = 0;
+        world.selectedId = null;
+        world.activeLogCats = /* @__PURE__ */ new Set([
+          ...world.activeLogCats.values(),
+        ]);
+        setupLogFilters(world, dom.logFilters, dom.doRenderLog);
+        world.speedPct = Number(ranges.rngSpeed.value);
+        world.spawnMult = Number(ranges.rngSpawn.value);
+        seedEnvironment();
+        spawnAgents(Number(ranges.rngAgents.value));
+        world.running = true;
+        buttons.btnStart.disabled = true;
+        buttons.btnPause.disabled = false;
+        buttons.btnResume.disabled = true;
+        world.log.push({
+          t: performance.now(),
+          cat: "info",
+          msg: "Simulation started",
+          actorId: null,
+          extra: {},
         });
-
-        dom.buttons.btnSave.addEventListener("click", () => {
-          exportState(world);
-        });
-        dom.buttons.btnLoad.addEventListener("click", () => {
-          dom.fileLoad.click();
-        });
-        dom.fileLoad.addEventListener("change", (e) => {
-          const file = e.target.files && e.target.files[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = () => {
-            try {
-              const data = JSON.parse(reader.result);
-              restoreWorld(world, data);
-              dom.buttons.btnPause.disabled = true;
-              dom.buttons.btnResume.disabled = false;
-              dom.buttons.btnStart.disabled = true;
-            } catch (err) {
-              alert("Failed to load save: " + err.message);
-            } finally {
-              dom.fileLoad.value = "";
-            }
-          };
-          reader.readAsText(file);
-        });
-
-        dom.canvas.addEventListener("click", (e) => {
-          const rect = dom.canvas.getBoundingClientRect();
-          const scaleX = dom.canvas.width / rect.width;
-          const scaleY = dom.canvas.height / rect.height;
-          const px = (e.clientX - rect.left) * scaleX - OFFSET;
-          const py = (e.clientY - rect.top) * scaleY - OFFSET;
-          const x = Math.floor(px / 16),
-            y = Math.floor(py / 16);
-          if (x < 0 || y < 0 || x >= 62 || y >= 62) return;
-          const id = world.agentsByCell.get(key(x, y));
-          world.selectedId = id || null;
-          updateInspector(world, dom.inspector);
-        });
-        function updateInspector(world2, el) {
-          if (!world2.selectedId) {
-            el.innerHTML =
-              '<div class="muted">Click an agent on the canvas.</div>';
-            return;
+      });
+      buttons.btnPause.addEventListener("click", () => {
+        world.running = false;
+        buttons.btnPause.disabled = true;
+        buttons.btnResume.disabled = false;
+      });
+      buttons.btnResume.addEventListener("click", () => {
+        world.running = true;
+        buttons.btnPause.disabled = false;
+        buttons.btnResume.disabled = true;
+      });
+      buttons.btnSpawnCrop.addEventListener("click", () => {
+        const { x, y } = randomFreeCell(world);
+        addCrop(world, x, y);
+      });
+      buttons.btnSave.addEventListener("click", () => exportState(world));
+      buttons.btnLoad.addEventListener("click", () => dom.fileLoad.click());
+      dom.fileLoad.addEventListener("change", (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const data = JSON.parse(reader.result);
+            restoreWorld(world, data);
+            buttons.btnPause.disabled = true;
+            buttons.btnResume.disabled = false;
+            buttons.btnStart.disabled = true;
+          } catch (err) {
+            alert("Failed to load save: " + err.message);
+          } finally {
+            dom.fileLoad.value = "";
           }
-          const a = world2.agentsById.get(world2.selectedId);
-          if (!a) {
-            el.innerHTML = '<div class="muted">(agent gone)</div>';
-            return;
-          }
-          const relCount = a.relationships.size;
-          el.innerHTML = `
+        };
+        reader.readAsText(file);
+      });
+      canvas.addEventListener("click", (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const px = (e.clientX - rect.left) * scaleX - OFFSET;
+        const py = (e.clientY - rect.top) * scaleY - OFFSET;
+        const x = Math.floor(px / 16),
+          y = Math.floor(py / 16);
+        if (x < 0 || y < 0 || x >= 62 || y >= 62) return;
+        const id = world.agentsByCell.get(key(x, y));
+        world.selectedId = id || null;
+        updateInspector(world, document.querySelector("#inspector"));
+      });
+    })();
+
+    function updateInspector(world2, el) {
+      if (!world2.selectedId) {
+        el.innerHTML = '<div class="muted">Click an agent on the canvas.</div>';
+        return;
+      }
+      const a = world2.agentsById.get(world2.selectedId);
+      if (!a) {
+        el.innerHTML = '<div class="muted">(agent gone)</div>';
+        return;
+      }
+      const relCount = a.relationships.size;
+      el.innerHTML = `
         <div class="kv">
           <div class="muted">Name</div><div class="mono">${a.name}</div>
           <div class="muted">Faction</div><div>${a.factionId || "—"}</div>
@@ -2362,346 +2203,321 @@
             a.action ? (a.action.remainingMs / 1e3).toFixed(1) + "s" : "—"
           }</div>
         </div>`;
+    }
+
+    // 400ms UI refresh
+    setInterval(() => {
+      updateInspector(world, document.querySelector("#inspector"));
+      renderHUD(world, hud, statsWithFps);
+      dom.doRenderLog();
+      if (world._rebuildAgentOptions) {
+        if (world._lastAgentCount !== world.agents.length) {
+          world._rebuildAgentOptions();
+          world._lastAgentCount = world.agents.length;
         }
+      }
+      rebuildFactionsListIfNeeded(world, factionsList);
+    }, 400);
 
-        // 400ms UI refresh
-        setInterval(() => {
-          updateInspector(world, dom.inspector);
-          doRenderLog();
-          if (world._rebuildAgentOptions) {
-            if (world._lastAgentCount !== world.agents.length) {
-              world._rebuildAgentOptions();
-              world._lastAgentCount = world.agents.length;
-            }
-          }
-        }, 400);
+    let lastTs = 0,
+      acc = 0,
+      fps = 0,
+      fpsAcc = 0,
+      fpsCount = 0;
+    const statsWithFps = new Proxy(stats, {
+      get(target, prop) {
+        if (prop === "fps") return fps;
+        return target[prop];
+      },
+    });
 
-        let lastTs = 0,
-          acc = 0,
-          fps = 0,
-          fpsAcc = 0,
-          fpsCount = 0;
+    function isTrappedByWalls(world2, a) {
+      const adj = [
+        [a.cellX + 1, a.cellY],
+        [a.cellX - 1, a.cellY],
+        [a.cellX, a.cellY + 1],
+        [a.cellX, a.cellY - 1],
+      ];
+      for (const [nx, ny] of adj) {
+        if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) return false;
+        if (!world2.walls.has(key(nx, ny))) return false;
+      }
+      return true;
+    }
 
-        function isTrappedByWalls(world2, a) {
-          const adj = [
-            [a.cellX + 1, a.cellY],
-            [a.cellX - 1, a.cellY],
-            [a.cellX, a.cellY + 1],
-            [a.cellX, a.cellY - 1],
-          ];
-          for (const [nx, ny] of adj) {
-            if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) return false;
-            if (!world2.walls.has(key(nx, ny))) return false;
-          }
-          return true;
-        }
+    function biasedRoam(world2, a) {
+      const range = 6;
+      const candidates = [];
+      for (let i = 0; i < 6; i++) {
+        const rx = Math.max(0, Math.min(61, a.cellX + rndi(-range, range)));
+        const ry = Math.max(0, Math.min(61, a.cellY + rndi(-range, range)));
+        if (!isBlocked(world2, rx, ry, a.id)) candidates.push({ x: rx, y: ry });
+      }
+      if (!candidates.length) return;
 
-        function startAttackWallIfTrapped(world2, a) {
-          if (!isTrappedByWalls(world2, a)) return false;
-          const neighbors = [
-            [a.cellX + 1, a.cellY],
-            [a.cellX - 1, a.cellY],
-            [a.cellX, a.cellY + 1],
-            [a.cellX, a.cellY - 1],
-          ];
-          const walls = neighbors.filter(([nx, ny]) =>
-            world2.walls.has(key(nx, ny))
-          );
-          if (!walls.length) return false;
-          const [wx, wy] = walls[rndi(0, walls.length - 1)];
-          if (tryStartAction(a, "attack_wall", { x: wx, y: wy })) {
-            lockAgent(world2, a.id, a.action.remainingMs);
-            return true;
-          }
-          return false;
-        }
+      const centerX = Math.floor(GRID / 2);
+      const centerY = Math.floor(GRID / 2);
+      const distToCenter = (c) =>
+        Math.abs(c.x - centerX) + Math.abs(c.y - centerY);
 
-        function biasedRoam(world2, a) {
-          const range = 6;
-          const candidates = [];
-          for (let i = 0; i < 6; i++) {
-            const rx = Math.max(0, Math.min(61, a.cellX + rndi(-range, range)));
-            const ry = Math.max(0, Math.min(61, a.cellY + rndi(-range, range)));
-            if (!isBlocked(world2, rx, ry, a.id))
-              candidates.push({ x: rx, y: ry });
-          }
-          if (!candidates.length) return;
+      let choice = candidates[0];
 
-          const centerX = Math.floor(GRID / 2);
-          const centerY = Math.floor(GRID / 2);
-          const distToCenter = (c) =>
-            Math.abs(c.x - centerX) + Math.abs(c.y - centerY);
-
-          let choice = candidates[0];
-
-          if (a.travelPref === "wander") {
-            choice = candidates[rndi(0, candidates.length - 1)];
-          } else if (a.travelPref === "near") {
-            if (a.factionId) {
-              const flag = world2.flags.get(a.factionId);
-              if (flag) {
-                // prefer a small ring around flag and avoid bunching with same-faction members
-                let bestScore = Infinity;
-                for (const c of candidates) {
-                  const d = Math.abs(c.x - flag.x) + Math.abs(c.y - flag.y);
-                  const desired = 4; // ring distance from flag center
-                  // compute small local crowd penalty (radius 2)
-                  let crowd = 0;
-                  for (let dx = -2; dx <= 2; dx++) {
-                    for (let dy = -2; dy <= 2; dy++) {
-                      if (Math.abs(dx) + Math.abs(dy) > 2) continue;
-                      const id = world2.agentsByCell.get(
-                        key(c.x + dx, c.y + dy)
-                      );
-                      if (!id) continue;
-                      const b = world2.agentsById.get(id);
-                      if (b && b.factionId === a.factionId) crowd++;
-                    }
-                  }
-                  const score = Math.abs(d - desired) + crowd * 0.7;
-                  if (score < bestScore) {
-                    bestScore = score;
-                    choice = c;
-                  }
+      if (a.travelPref === "wander") {
+        choice = candidates[rndi(0, candidates.length - 1)];
+      } else if (a.travelPref === "near") {
+        if (a.factionId) {
+          const flag = world2.flags.get(a.factionId);
+          if (flag) {
+            let bestScore = Infinity;
+            for (const c of candidates) {
+              const d = Math.abs(c.x - flag.x) + Math.abs(c.y - flag.y);
+              const desired = 4;
+              let crowd = 0;
+              for (let dx = -2; dx <= 2; dx++) {
+                for (let dy = -2; dy <= 2; dy++) {
+                  if (Math.abs(dx) + Math.abs(dy) > 2) continue;
+                  const id = world2.agentsByCell.get(key(c.x + dx, c.y + dy));
+                  if (!id) continue;
+                  const b = world2.agentsById.get(id);
+                  if (b && b.factionId === a.factionId) crowd++;
                 }
-              } else {
-                // no flag (shouldn't happen often) — prefer center
-                choice = candidates.reduce((best, c) =>
-                  distToCenter(c) < distToCenter(best) ? c : best
-                );
               }
-            } else {
-              // no faction — prefer center of map
-              choice = candidates.reduce((best, c) =>
-                distToCenter(c) < distToCenter(best) ? c : best
-              );
-            }
-          } else if (a.travelPref === "far") {
-            if (a.factionId) {
-              const flag = world2.flags.get(a.factionId);
-              if (flag) {
-                choice = candidates.reduce((best, c) =>
-                  Math.abs(c.x - flag.x) + Math.abs(c.y - flag.y) >
-                  Math.abs(best.x - flag.x) + Math.abs(best.y - flag.y)
-                    ? c
-                    : best
-                );
-              } else {
-                // no faction — prefer edges (far from center)
-                choice = candidates.reduce((best, c) =>
-                  distToCenter(c) > distToCenter(best) ? c : best
-                );
+              const score = Math.abs(d - desired) + crowd * 0.7;
+              if (score < bestScore) {
+                bestScore = score;
+                choice = c;
               }
-            } else {
-              // no faction — prefer edges
-              choice = candidates.reduce((best, c) =>
-                distToCenter(c) > distToCenter(best) ? c : best
-              );
             }
-          }
-
-          planPathTo(world2, a, choice.x, choice.y);
-        }
-
-        function updateTick() {
-          world.tick++;
-
-          // Refill per-tick A* budget, but cut it when food is scarce.
-          const scarcity = world.crops.size / Math.max(1, world.agents.length);
-          const budgetThisTick =
-            scarcity < 0.25
-              ? Math.max(6, Math.floor(world.pathBudgetMax * 0.5))
-              : world.pathBudgetMax;
-          world.pathBudget = budgetThisTick;
-
-          // NEW: rotate a fair whitelist of agents that may use A* this tick
-          world._pathWhitelist.clear();
-          const n = world.agents.length;
-          if (n > 0) {
-            const eligible = world.agents.filter(
-              (a) =>
-                (a.lockMsRemaining || 0) <= 0 &&
-                (!a.path || a.pathIdx >= a.path.length) &&
-                !a.action
+          } else {
+            choice = candidates.reduce((best, c) =>
+              distToCenter(c) < distToCenter(best) ? c : best
             );
-            // Prioritize hungry agents for A* when there are many contenders
-            let pool;
-            if (eligible.length) {
-              eligible.sort((a, b) => a.energy - b.energy);
-              pool = eligible;
-            } else {
-              pool = world.agents;
-            }
-            const k = Math.min(budgetThisTick || 30, pool.length);
-            for (let i = 0; i < k; i++) {
-              const idx = (world._pathRR + i) % pool.length;
-              world._pathWhitelist.add(pool[idx].id);
-            }
-            world._pathRR = (world._pathRR + k) % pool.length;
           }
-
-          maybeSpawnCrops(world);
-
-          // mark who is under attack without allocating a Set each tick
-          for (const b of world.agents) b._underAttack = false;
-          for (const b of world.agents) {
-            if (
-              b.action &&
-              b.action.type === "attack" &&
-              b.action.payload?.targetId
-            ) {
-              const t = world.agentsById.get(b.action.payload.targetId);
-              if (t) t._underAttack = true;
-            }
-          }
-
-          for (const a of world.agents) {
-            a.ageTicks++;
-            a.energy -= 0.01;
-            a.lockMsRemaining = Math.max(
-              0,
-              (a.lockMsRemaining || 0) - BASE_TICK_MS
-            );
-
-            if (!a.action && a.lockMsRemaining <= 0) {
-              startAttackWallIfTrapped(world, a);
-            }
-
-            const energyHigh = a.energy >= ENERGY_CAP * 0.7;
-            const energyOkay = a.energy >= ENERGY_CAP * 0.3;
-
-            if (a.energy < TUNE.energyLowThreshold) {
-              if (a.action && a.action.type !== "reproduce") a.action = null;
-            }
-
-            if (a.action) {
-              processAction(world, a, BASE_TICK_MS);
-            } else {
-              const locked = a.lockMsRemaining > 0 && !a._underAttack;
-              if (!locked) {
-                if (a.path && a.pathIdx < a.path.length) {
-                  const step = a.path[a.pathIdx];
-                  if (!isBlocked(world, step.x, step.y, a.id)) {
-                    world.agentsByCell.delete(key(a.cellX, a.cellY));
-                    a.cellX = step.x;
-                    a.cellY = step.y;
-                    world.agentsByCell.set(key(a.cellX, a.cellY), a.id);
-                    a.pathIdx++;
-                    a.energy -= TUNE.moveEnergy;
-                    if (world.crops.has(key(a.cellX, a.cellY)))
-                      harvestAt(world, a, a.cellX, a.cellY);
-                  } else {
-                    a.path = null;
-                  }
-                } else {
-                  a.path = null;
-                }
-
-                if (!a.path) {
-                  if (!energyOkay) {
-                    if (world.crops.has(key(a.cellX, a.cellY))) {
-                      harvestAt(world, a, a.cellX, a.cellY);
-                    } else {
-                      seekFoodWhenHungry(world, a);
-                    }
-                  } else {
-                    if (energyHigh) {
-                      considerInteract(world, a);
-                    } else {
-                      considerInteract(world, a);
-                    }
-                    if (!a.path && !a.action) {
-                      biasedRoam(world, a);
-                    }
-                  }
-                }
-
-                if (Math.random() < 0.02) tryBuildWall(world, a);
-                if (a.energy >= 120 && Math.random() < 0.01)
-                  tryBuildFarm(world, a);
-              }
-            }
-
-            if (a.energy <= 0) {
-              a.starvingSeconds += BASE_TICK_MS / 1e3;
-              if (a.starvingSeconds > TUNE.starvationSeconds) a.health = 0;
-            } else {
-              a.starvingSeconds = 0;
-            }
-            a.energy = Math.min(ENERGY_CAP, a.energy);
-
-            levelCheck(world, a);
-          }
-
-          if (world.tick % 25 === 0) reconcileFactions(world);
-
-          applyFlagHealing(world);
-          cleanDead(world);
-        }
-
-        const MAX_STEPS = 8; // cap fixed steps per frame to avoid spiral-of-death
-        function loop(ts) {
-          if (!lastTs) lastTs = ts;
-          const dt = ts - lastTs;
-          lastTs = ts;
-
-          fpsAcc += dt;
-          fpsCount++;
-          if (fpsAcc >= 500) {
-            fps = 1000 / (fpsAcc / fpsCount);
-            fpsAcc = 0;
-            fpsCount = 0;
-          }
-
-          if (world.running) {
-            const effTick = BASE_TICK_MS / (world.speedPct / 100);
-            acc += dt;
-            let steps = 0;
-            while (acc >= effTick && steps < MAX_STEPS) {
-              updateTick();
-              acc -= effTick;
-              steps++;
-            }
-            if (steps === MAX_STEPS) {
-              // drop backlog to keep UI responsive
-              acc = 0;
-            }
-          }
-
-          render(
-            world,
-            ctx,
-            dom.canvas,
-            dom.hud,
-            { fps, ...dom.statsEls },
-            dom.factionsList,
-            gridLayer
+        } else {
+          choice = candidates.reduce((best, c) =>
+            distToCenter(c) < distToCenter(best) ? c : best
           );
-          requestAnimationFrame(loop);
         }
-        requestAnimationFrame(loop);
-
-        function pauseForBlur(reason) {
-          if (world.pauseOnBlur && world.running) {
-            world.running = false;
-            dom.buttons.btnPause.disabled = true;
-            dom.buttons.btnResume.disabled = false;
-            world.log.push({
-              t: performance.now(),
-              cat: "info",
-              msg: "Paused (" + reason + ")",
-              actorId: null,
-              extra: {},
-            });
-            doRenderLog();
+      } else if (a.travelPref === "far") {
+        if (a.factionId) {
+          const flag = world2.flags.get(a.factionId);
+          if (flag) {
+            choice = candidates.reduce((best, c) =>
+              Math.abs(c.x - flag.x) + Math.abs(c.y - flag.y) >
+              Math.abs(best.x - flag.x) + Math.abs(best.y - flag.y)
+                ? c
+                : best
+            );
+          } else {
+            choice = candidates.reduce((best, c) =>
+              distToCenter(c) > distToCenter(best) ? c : best
+            );
           }
+        } else {
+          choice = candidates.reduce((best, c) =>
+            distToCenter(c) > distToCenter(best) ? c : best
+          );
         }
-        window.addEventListener("blur", () =>
-          pauseForBlur("window lost focus")
+      }
+
+      planPathTo(world2, a, choice.x, choice.y);
+    }
+
+    function updateTick() {
+      world.tick++;
+
+      // Refill A* budget (reduced when food is scarce)
+      const scarcity = world.crops.size / Math.max(1, world.agents.length);
+      const budgetThisTick =
+        scarcity < 0.25
+          ? Math.max(6, Math.floor(world.pathBudgetMax * 0.5))
+          : world.pathBudgetMax;
+      world.pathBudget = budgetThisTick;
+
+      // whitelist for fair A*
+      world._pathWhitelist.clear();
+      const n = world.agents.length;
+      if (n > 0) {
+        const eligible = world.agents.filter(
+          (a) =>
+            (a.lockMsRemaining || 0) <= 0 &&
+            (!a.path || a.pathIdx >= a.path.length) &&
+            !a.action
         );
-        document.addEventListener("visibilitychange", () => {
-          if (document.hidden) pauseForBlur("tab hidden");
+        let pool;
+        if (eligible.length) {
+          eligible.sort((a, b) => a.energy - b.energy);
+          pool = eligible;
+        } else {
+          pool = world.agents;
+        }
+        const k = Math.min(budgetThisTick || 30, pool.length);
+        for (let i = 0; i < k; i++) {
+          const idx = (world._pathRR + i) % pool.length;
+          world._pathWhitelist.add(pool[idx].id);
+        }
+        world._pathRR = (world._pathRR + k) % pool.length;
+      }
+
+      maybeSpawnCrops(world);
+
+      // mark under-attack
+      for (const b of world.agents) b._underAttack = false;
+      for (const b of world.agents) {
+        if (
+          b.action &&
+          b.action.type === "attack" &&
+          b.action.payload?.targetId
+        ) {
+          const t = world.agentsById.get(b.action.payload.targetId);
+          if (t) t._underAttack = true;
+        }
+      }
+
+      for (const a of world.agents) {
+        a.ageTicks++;
+        // baseline energy decay
+        a.energy -= 0.01;
+        // movement energy handled during step
+        a.lockMsRemaining = Math.max(
+          0,
+          (a.lockMsRemaining || 0) - BASE_TICK_MS
+        );
+
+        if (!a.action && a.lockMsRemaining <= 0) {
+          // no wall-breaking behavior anymore
+        }
+
+        const energyHigh = a.energy >= ENERGY_CAP * 0.8; // 80%
+        const energyOkay = a.energy >= ENERGY_CAP * 0.3;
+
+        // cancel non-reproduction actions when very low energy
+        if (a.energy < TUNE.energyLowThreshold) {
+          if (a.action && a.action.type !== "reproduce") a.action = null;
+        }
+
+        if (a.action) {
+          processAction(world, a, BASE_TICK_MS);
+        } else {
+          const locked = a.lockMsRemaining > 0 && !a._underAttack;
+          if (!locked) {
+            if (a.path && a.pathIdx < a.path.length) {
+              const step = a.path[a.pathIdx];
+              if (!isBlocked(world, step.x, step.y, a.id)) {
+                world.agentsByCell.delete(key(a.cellX, a.cellY));
+                a.cellX = step.x;
+                a.cellY = step.y;
+                world.agentsByCell.set(key(a.cellX, a.cellY), a.id);
+                a.pathIdx++;
+                a.energy -= TUNE.moveEnergy; // +20% applied via constant
+                if (world.crops.has(key(a.cellX, a.cellY)))
+                  harvestAt(world, a, a.cellX, a.cellY);
+              } else {
+                a.path = null;
+              }
+            } else {
+              a.path = null;
+            }
+
+            if (!a.path) {
+              if (a.energy < TUNE.energyLowThreshold) {
+                // low energy: REST if no crops; otherwise seek food
+                if (world.crops.size === 0) {
+                  // rest: do nothing (no movement)
+                } else {
+                  if (world.crops.has(key(a.cellX, a.cellY))) {
+                    harvestAt(world, a, a.cellX, a.cellY);
+                  } else {
+                    seekFoodWhenHungry(world, a);
+                  }
+                }
+              } else {
+                // normal behavior
+                considerInteract(world, a);
+                if (!a.path && !a.action) {
+                  biasedRoam(world, a);
+                }
+              }
+            }
+
+            if (a.energy >= 120 && Math.random() < 0.01) tryBuildFarm(world, a);
+          }
+        }
+
+        // clamp energy to [0, ENERGY_CAP]
+        if (a.energy < 0) a.energy = 0;
+        if (a.energy > ENERGY_CAP) a.energy = ENERGY_CAP;
+
+        // HP drain when energy == 0
+        if (a.energy === 0) {
+          a.health -= (TUNE.starveHpPerSec * BASE_TICK_MS) / 1000;
+        }
+        // HP regen when energy >= 80%
+        if (energyHigh) {
+          a.health = Math.min(
+            a.maxHealth,
+            a.health + (TUNE.regenHpPerSec * BASE_TICK_MS) / 1000
+          );
+        }
+      }
+
+      if (world.tick % 25 === 0) reconcileFactions(world);
+
+      applyFlagHealing(world);
+      cleanDead(world);
+    }
+
+    const MAX_STEPS = 8;
+    function loop(ts) {
+      if (!lastTs) lastTs = ts;
+      const dt = ts - lastTs;
+      lastTs = ts;
+
+      fpsAcc += dt;
+      fpsCount++;
+      if (fpsAcc >= 500) {
+        fps = 1000 / (fpsAcc / fpsCount);
+        fpsAcc = 0;
+        fpsCount = 0;
+      }
+
+      if (world.running) {
+        const effTick = BASE_TICK_MS / (world.speedPct / 100);
+        acc += dt;
+        let steps = 0;
+        while (acc >= effTick && steps < MAX_STEPS) {
+          updateTick();
+          acc -= effTick;
+          steps++;
+        }
+        if (steps === MAX_STEPS) {
+          acc = 0;
+        }
+      }
+
+      render(world, ctx, canvas, hud, statsWithFps, factionsList, gridLayer);
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    function pauseForBlur(reason) {
+      if (world.pauseOnBlur && world.running) {
+        world.running = false;
+        document.querySelector("#btnPause").disabled = true;
+        document.querySelector("#btnResume").disabled = false;
+        world.log.push({
+          t: performance.now(),
+          cat: "info",
+          msg: "Paused (" + reason + ")",
+          actorId: null,
+          extra: {},
         });
-      });
+        dom.doRenderLog();
+      }
+    }
+    window.addEventListener("blur", () => pauseForBlur("window lost focus"));
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) pauseForBlur("tab hidden");
+    });
   });
 })();
