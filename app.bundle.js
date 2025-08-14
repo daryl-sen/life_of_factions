@@ -63,9 +63,6 @@
         maxCrops: 100,
         reproduction: { relationshipThreshold: 0.1, relationshipEnergy: 85 },
         pathBudgetPerTick: 30,
-        chaseRange: 6,
-        lowHpFleePct: 0.25,
-        recoverHpPctStopFlee: 0.33,
       };
       ACTION_DURATIONS = {
         talk: [900, 1800],
@@ -219,36 +216,13 @@
         for (const m of recips) m.energy = Math.min(ENERGY_CAP, m.energy + per);
       }
     }
-    // trigger chasing if others were heading to this crop
-    triggerChaseOnHarvest(world, a, x, y);
     return true;
   }
   log = (world, cat, msg, actorId = null, extra = {}) => {
     world.log.push({ t: performance.now(), cat, msg, actorId, extra });
   };
 
-  
-  function triggerChaseOnHarvest(world, harvester, x, y) {
-    const chRange = TUNE.chaseRange || 6;
-    for (const m of world.agents) {
-      if (m.id === harvester.id) continue;
-      const sameFaction = harvester.factionId && m.factionId && harvester.factionId === m.factionId;
-      if (sameFaction) continue;
-      const goingFor =
-        (m.goal && m.goal.x === x && m.goal.y === y) ||
-        (m.path && m.path.length && m.path[m.path.length - 1].x === x && m.path[m.path.length - 1].y === y);
-      if (!goingFor) continue;
-      const d = Math.abs(m.cellX - harvester.cellX) + Math.abs(m.cellY - harvester.cellY);
-      if (d <= chRange) {
-        m._chasingId = harvester.id;
-        m._chaseCause = 'harvest';
-        m.goal = null;
-        m.path = null;
-        log(world, 'info', `${m.name} started chasing ${harvester.name} (harvest)`, m.id, { targetId: harvester.id });
-      }
-    }
-  }
-/* ====== A* pathfinding (unchanged) ====== */
+  /* ====== A* pathfinding (unchanged) ====== */
   function astar(start, goal, isBlocked2) {
     const h = (x, y) => Math.abs(x - goal.x) + Math.abs(y - goal.y);
     const open = new Map(),
@@ -346,15 +320,14 @@
     seekFoodWhenHungry: () => seekFoodWhenHungry,
     setRel: () => setRel,
   });
-  function planPathTo(world, a, gx, gy, opts = {}) {
-    const force = opts && opts.force === true;
-    if (!force && world._pathWhitelist && !world._pathWhitelist.has(a.id)) return;
+  function planPathTo(world, a, gx, gy) {
+    if (world._pathWhitelist && !world._pathWhitelist.has(a.id)) return;
     const cooldown = a.replanAtTick || 0;
     const sameGoal = a.goal && a.goal.x === gx && a.goal.y === gy;
     if (sameGoal && a.path && a.pathIdx < a.path.length) return;
     if (world.tick < cooldown) return;
-    if (!force && world.pathBudget <= 0) return;
-    if (!force) world.pathBudget--;
+    if (world.pathBudget <= 0) return;
+    world.pathBudget--;
     a.goal = { x: gx, y: gy };
     const path = astar({ x: a.cellX, y: a.cellY }, { x: gx, y: gy }, (x, y) =>
       isBlocked(world, x, y, a.id)
@@ -511,28 +484,10 @@
     });
     const target = pool[0];
     if (getRel(a, target.id) > 0.5 && Math.random() < 0.85) return false;
-    if (tryStartAction(a, "attack", { targetId: target.id })) { onAttackStarted(world, a, target); return true; }
+    if (tryStartAction(a, "attack", { targetId: target.id })) return true;
     return false;
   }
-  
-  function onAttackStarted(world, attacker, defender) {
-    if (!defender || !defender.factionId) return;
-    if (attacker.factionId && attacker.factionId === defender.factionId) return;
-    const chRange = TUNE.chaseRange || 6;
-    for (const ally of world.agents) {
-      if (ally.id === defender.id) continue;
-      if (ally.factionId !== defender.factionId) continue;
-      const d = Math.abs(ally.cellX - defender.cellX) + Math.abs(ally.cellY - defender.cellY);
-      if (d <= chRange) {
-        ally._chasingId = attacker.id;
-        ally._chaseCause = 'retaliate';
-        ally.goal = null;
-        ally.path = null;
-        log(world, 'info', `${ally.name} is retaliating against ${attacker.name}`, ally.id, { targetId: attacker.id });
-      }
-    }
-  }
-function chooseHelpHealTalk(world, a) {
+  function chooseHelpHealTalk(world, a) {
     const adj = [
       [a.cellX + 1, a.cellY],
       [a.cellX - 1, a.cellY],
@@ -1938,11 +1893,9 @@ function chooseHelpHealTalk(world, a) {
         travelPref: a.travelPref,
         aggression: a.aggression,
         cooperation: a.cooperation,
-        _chasingId: a._chasingId || null,
-        _fleeing: !!a._fleeing,
       }));
       return {
-        meta: { version: "2.10.1-war", savedAt: Date.now() },
+        meta: { version: "1.4.3-camera+ui", savedAt: Date.now() },
         grid: { CELL, GRID },
         state: {
           tick: world2.tick,
@@ -2042,8 +1995,6 @@ function chooseHelpHealTalk(world, a) {
           cooperation: a.cooperation ?? Math.random(),
           replanAtTick: 0,
           goal: null,
-          _chasingId: a._chasingId || null,
-          _fleeing: !!a._fleeing,
         };
         if (
           ag.action &&
@@ -2212,10 +2163,12 @@ function chooseHelpHealTalk(world, a) {
       <div class="muted">Travel Pref</div><div>${a.travelPref}</div>
       <div class="muted">Aggression</div><div>${a.aggression.toFixed(2)}</div>
       <div class="muted">Cooperation</div><div>${a.cooperation.toFixed(2)}</div>
-      <div class="muted">Action</div><div>${a.action ? a.action.type : "—"}</div>
-      <div class="muted">Remaining</div><div>${a.action ? (a.action.remainingMs / 1000).toFixed(1) + "s" : "—"}</div>
-      <div class="muted">Fleeing</div><div>${a._fleeing ? "yes" : "no"}</div>
-      <div class="muted">Chasing</div><div>${a._chasingId ? (world2.agentsById.get(a._chasingId)?.name || a._chasingId.slice(0,4)) : "—"}</div>
+      <div class="muted">Action</div><div>${
+        a.action ? a.action.type : "—"
+      }</div>
+      <div class="muted">Remaining</div><div>${
+        a.action ? (a.action.remainingMs / 1000).toFixed(1) + "s" : "—"
+      }</div>
     </div>`;
     }
 
@@ -2408,26 +2361,6 @@ function chooseHelpHealTalk(world, a) {
         if (!a.action && a.lockMsRemaining <= 0) {
           /* noop */
         }
-
-        // Low-HP flee behavior
-        const hpRatio = a.health / a.maxHealth;
-        if (a.factionId) {
-          const flag = world.flags.get(a.factionId);
-          if (flag) {
-            if (hpRatio <= (TUNE.lowHpFleePct || 0.25)) {
-              if (!a._fleeing) {
-                a._fleeing = true;
-                log(world, 'info', `${a.name} is fleeing to flag`, a.id, {});
-              }
-              a._chasingId = null;
-              a.action = null;
-              planPathTo(world, a, flag.x, flag.y, { force: true });
-            } else if (a._fleeing && hpRatio >= (TUNE.recoverHpPctStopFlee || 0.33)) {
-              a._fleeing = false;
-              log(world, 'info', `${a.name} stopped fleeing`, a.id, {});
-            }
-          }
-        }
         const energyHigh = a.energy >= ENERGY_CAP * 0.8;
         if (a.energy < TUNE.energyLowThreshold) {
           if (a.action && a.action.type !== "reproduce") a.action = null;
@@ -2437,24 +2370,6 @@ function chooseHelpHealTalk(world, a) {
         } else {
           const locked = a.lockMsRemaining > 0 && !a._underAttack;
           if (!locked) {
-            // Chasing behavior
-            if (!a._fleeing && a._chasingId && a.energy >= TUNE.energyLowThreshold) {
-              const targ = world.agentsById.get(a._chasingId);
-              if (!targ) {
-                a._chasingId = null;
-              } else {
-                const distCh = Math.abs(a.cellX - targ.cellX) + Math.abs(a.cellY - targ.cellY);
-                if (distCh <= 2) {
-                  if (tryStartAction(a, "attack", { targetId: targ.id })) {
-                    onAttackStarted(world, a, targ);
-                    lockAgent(world, a.id, a.action.remainingMs);
-                  }
-                } else {
-                  planPathTo(world, a, targ.cellX, targ.cellY, { force: true });
-                }
-              }
-            }
-
             if (a.path && a.pathIdx < a.path.length) {
               const step = a.path[a.pathIdx];
               if (!isBlocked(world, step.x, step.y, a.id)) {
@@ -2482,7 +2397,8 @@ function chooseHelpHealTalk(world, a) {
                   else seekFoodWhenHungry(world, a);
                 }
               } else {
-                if (!a._fleeing && !a._chasingId) { considerInteract(world, a); if (!a.path && !a.action) biasedRoam(world, a); }
+                considerInteract(world, a);
+                if (!a.path && !a.action) biasedRoam(world, a);
               }
             }
             if (a.energy >= 120 && Math.random() < 0.01) tryBuildFarm(world, a);
