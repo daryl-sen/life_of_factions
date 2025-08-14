@@ -3,7 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Life of Factions — v1.3.5 (Move-Then-Plan)</title>
+    <title>
+      Life of Factions — v1.4.3 (Camera, Dual Panels, NavPad, Grid Toggle)
+    </title>
     <style>
       :root {
         --bg: #0f1220;
@@ -26,7 +28,87 @@
         background: linear-gradient(180deg, #0e1020, #0b0e1a);
         color: var(--text);
         font: 14px/1.4 system-ui, Segoe UI, Roboto, Inter, Arial;
+        overflow: hidden; /* true fullscreen */
       }
+
+      /* Fullscreen canvas */
+      #canvas {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        display: block;
+        background: #0b0e1a;
+      }
+
+      /* Tiny HUD for ticks/fps */
+      #hud {
+        position: fixed;
+        left: 10px;
+        top: 10px;
+        background: rgba(10, 12, 25, 0.7);
+        backdrop-filter: blur(6px);
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid #2b316a;
+        font-size: 12px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", monospace;
+        pointer-events: none;
+        z-index: 20;
+      }
+
+      /* Two top-right UI buttons */
+      #uiButtons {
+        position: fixed;
+        right: 12px;
+        top: 12px;
+        display: flex;
+        gap: 8px;
+        z-index: 30;
+      }
+      #uiButtons button {
+        cursor: pointer;
+        background: #1e7fd6;
+        border: 0;
+        color: white;
+        padding: 8px 12px;
+        border-radius: 10px;
+        font-weight: 600;
+        box-shadow: 0 3px 0 #115493;
+      }
+      #uiButtons button.min {
+        background: #2a2f66;
+        box-shadow: 0 3px 0 #1b1f4b;
+      }
+
+      /* Overlay panels (each can own full height) */
+      .overlay {
+        position: fixed;
+        right: 12px;
+        top: 56px;
+        bottom: 12px;
+        width: min(380px, 96vw);
+        display: none; /* closed by default */
+        flex-direction: column;
+        gap: 12px;
+        z-index: 25;
+      }
+      .overlay.open {
+        display: flex;
+      }
+
+      .card {
+        background: linear-gradient(180deg, var(--panel), var(--panel-2));
+        border: 1px solid #262b55;
+        border-radius: 14px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+        padding: 12px;
+        min-height: 0;
+        height: 100%; /* let a single card take full height */
+        overflow: auto;
+      }
+
       h1 {
         font-size: 18px;
         margin: 0 0 6px;
@@ -36,21 +118,7 @@
         margin: 0 0 6px;
         color: var(--muted);
       }
-      .app {
-        display: grid;
-        grid-template-columns: 320px 1fr 340px;
-        gap: 12px;
-        padding: 12px;
-        height: 100%;
-      }
-      .card {
-        background: linear-gradient(180deg, var(--panel), var(--panel-2));
-        border: 1px solid #262b55;
-        border-radius: 14px;
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
-        padding: 12px;
-        min-height: 0;
-      }
+
       .controls label {
         display: block;
         margin: 10px 0 4px;
@@ -93,6 +161,7 @@
         opacity: 0.5;
         cursor: not-allowed;
       }
+
       .stats {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
@@ -109,31 +178,12 @@
         font-weight: 800;
         font-size: 18px;
       }
-      canvas {
-        width: 100%;
-        height: 100%;
-        display: block;
-        background: #0b0e1a;
-        border-radius: 14px;
-        border: 1px solid #262b55;
-      }
-      .canvasWrap {
-        position: relative;
-      }
-      .hud {
-        position: absolute;
-        left: 8px;
-        top: 8px;
-        background: rgba(10, 12, 25, 0.7);
-        backdrop-filter: blur(6px);
-        padding: 6px 8px;
-        border-radius: 8px;
-        border: 1px solid #2b316a;
-        font-size: 12px;
-      }
+
       .list {
-        height: 40vh;
-        max-height: 40vh;
+        height: calc(
+          100% - 220px
+        ); /* leave room for section headers/inspector */
+        max-height: none;
         overflow: auto;
         border: 1px solid #2b316a;
         border-radius: 10px;
@@ -208,12 +258,63 @@
         overflow-wrap: anywhere;
         word-break: break-word;
       }
+
+      /* On-screen navigation pad */
+      .navpad {
+        position: fixed;
+        left: 12px;
+        bottom: 12px;
+        z-index: 26;
+        display: grid;
+        grid-template-columns: repeat(3, 40px);
+        grid-template-rows: repeat(3, 40px);
+        gap: 6px;
+        background: rgba(10, 12, 25, 0.35);
+        backdrop-filter: blur(6px);
+        padding: 8px;
+        border-radius: 12px;
+        border: 1px solid #2b316a;
+      }
+      .navpad button {
+        background: #2a2f66;
+        border: 1px solid #1b1f4b;
+        border-radius: 8px;
+        color: var(--text);
+        font-weight: 700;
+        font-size: 16px;
+      }
+      .navpad .wide {
+        grid-column: span 3;
+      }
+      .list.compact {
+        height: 40vh;
+        max-height: 40vh;
+      }
     </style>
   </head>
   <body>
-    <div class="app">
+    <canvas id="canvas"></canvas>
+    <div id="hud">tick:0 | fps:0</div>
+
+    <!-- Two UI buttons -->
+    <div id="uiButtons">
+      <button id="btnUIControls" class="min" title="Open Controls">
+        Controls UI
+      </button>
+      <button id="btnUIInfo" class="min" title="Open Inspector/Log">
+        Inspector UI
+      </button>
+    </div>
+
+    <!-- Panel 1: Controls (full height) -->
+    <div class="overlay" id="overlayControls">
       <div class="card controls">
-        <h1>Life of Factions</h1>
+        <div class="row" style="gap: 8px; margin: 0 0 10px">
+          <h1 style="margin: 0; flex: 1">Life of Factions</h1>
+          <button id="btnMinimizeControls" class="secondary" style="flex: 0">
+            Minimize
+          </button>
+        </div>
         <h2>Simulation Controls</h2>
         <div class="row" style="gap: 8px; margin: 8px 0 6px">
           <button id="btnStart">Start</button>
@@ -221,7 +322,6 @@
           <button id="btnResume" class="secondary" disabled>Resume</button>
         </div>
 
-        <!-- NEW: Save/Load -->
         <div class="row" style="gap: 8px; margin: 6px 0 6px">
           <button id="btnSave" class="secondary">Save</button>
           <button id="btnLoad" class="secondary">Load</button>
@@ -302,6 +402,20 @@
           <button id="btnSpawnCrop" class="secondary">Spawn Crop</button>
         </div>
 
+        <div class="row" style="margin-top: 8px">
+          <label style="display: flex; align-items: center; gap: 8px">
+            <input type="checkbox" id="cbPauseOnBlur" checked />
+            <span>Pause when unfocused</span>
+          </label>
+        </div>
+
+        <div class="row" style="margin-top: 6px">
+          <label style="display: flex; align-items: center; gap: 8px">
+            <input type="checkbox" id="cbDrawGrid" checked />
+            <span>Draw grid</span>
+          </label>
+        </div>
+
         <h2 style="margin-top: 12px">Stats</h2>
         <div class="stats" id="stats">
           <div class="stat">
@@ -329,17 +443,21 @@
             <div class="n" id="stFlags">0</div>
           </div>
         </div>
-
         <h2 style="margin-top: 12px">Factions</h2>
-        <div class="list" id="factionsList"></div>
+        <div class="list compact" id="factionsList"></div>
       </div>
+    </div>
 
-      <div class="card canvasWrap">
-        <canvas id="canvas" width="1000" height="1000"></canvas>
-        <div class="hud mono" id="hud">tick:0 | fps:0</div>
-      </div>
-
+    <!-- Panel 2: Inspector + Event Log (full height) -->
+    <div class="overlay" id="overlayInfo">
       <div class="card">
+        <div class="row" style="gap: 8px; margin: 0 0 10px">
+          <h1 style="margin: 0; flex: 1">Inspector & Event Log</h1>
+          <button id="btnMinimizeInfo" class="secondary" style="flex: 0">
+            Minimize
+          </button>
+        </div>
+
         <h2>Inspector</h2>
         <div id="inspector">
           <div class="muted">Click an agent on the canvas.</div>
@@ -350,6 +468,64 @@
         <div class="list" id="logList"></div>
       </div>
     </div>
+
+    <!-- On-screen pan/zoom pad -->
+    <div class="navpad" id="navPad" aria-label="Navigation pad">
+      <div></div>
+      <button id="btnPanUp" title="Pan up">↑</button>
+      <div></div>
+
+      <button id="btnPanLeft" title="Pan left">←</button>
+      <button id="btnPanDown" title="Pan down">↓</button>
+      <button id="btnPanRight" title="Pan right">→</button>
+
+      <button id="btnZoomOut" class="wide" title="Zoom out">−</button>
+      <button id="btnZoomIn" class="wide" title="Zoom in">+</button>
+    </div>
+
     <script src="./app.bundle.js"></script>
+    <script>
+      // Panel toggles (independent; each can occupy full height)
+      const overlayControls = document.getElementById("overlayControls");
+      const overlayInfo = document.getElementById("overlayInfo");
+      const btnControls = document.getElementById("btnUIControls");
+      const btnInfo = document.getElementById("btnUIInfo");
+      const btnMinControls = document.getElementById("btnMinimizeControls");
+      const btnMinInfo = document.getElementById("btnMinimizeInfo");
+
+      function setBtnState(btn, label, open) {
+        btn.textContent = open ? `✕ Close ${label}` : `${label} UI`;
+        btn.classList.toggle("min", !open);
+      }
+      function openPanel(panel, btn, label) {
+        panel.classList.add("open");
+        setBtnState(btn, label, true);
+      }
+      function closePanel(panel, btn, label) {
+        panel.classList.remove("open");
+        setBtnState(btn, label, false);
+      }
+      function toggle(panel, btn, label) {
+        if (panel.classList.contains("open")) closePanel(panel, btn, label);
+        else openPanel(panel, btn, label);
+      }
+
+      btnControls?.addEventListener("click", () =>
+        toggle(overlayControls, btnControls, "Controls")
+      );
+      btnInfo?.addEventListener("click", () =>
+        toggle(overlayInfo, btnInfo, "Inspector")
+      );
+      btnMinControls?.addEventListener("click", () =>
+        closePanel(overlayControls, btnControls, "Controls")
+      );
+      btnMinInfo?.addEventListener("click", () =>
+        closePanel(overlayInfo, btnInfo, "Inspector")
+      );
+
+      // Start with both minimized
+      closePanel(overlayControls, btnControls, "Controls");
+      closePanel(overlayInfo, btnInfo, "Inspector");
+    </script>
   </body>
 </html>
