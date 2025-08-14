@@ -39,7 +39,7 @@
           heal: 3,
           help: 1.6,
           attack_flag: 2,
-          reproduce: 1.2,
+          reproduce: 3,
         },
         cropGain: 28,
         starveHpPerSec: 1.0,
@@ -57,8 +57,6 @@
         helpConvertChance: 0.5,
         helpConvertRelThreshold: 0.4,
         energyLowThreshold: 40,
-        foodPlanThreshold: 70,
-        lowEnergyExploreRange: 14,
         levelCap: 20,
         maxCrops: 100,
         reproduction: { relationshipThreshold: 0.1, relationshipEnergy: 85 },
@@ -320,14 +318,13 @@
     seekFoodWhenHungry: () => seekFoodWhenHungry,
     setRel: () => setRel,
   });
-  function planPathTo(world, a, gx, gy) {
-    if (world._pathWhitelist && !world._pathWhitelist.has(a.id)) return;
-    const cooldown = a.replanAtTick || 0;
-    const sameGoal = a.goal && a.goal.x === gx && a.goal.y === gy;
-    if (sameGoal && a.path && a.pathIdx < a.path.length) return;
-    if (world.tick < cooldown) return;
-    if (world.pathBudget <= 0) return;
-    world.pathBudget--;
+  function planPathTo(world, a, gx, gy, force = false) {
+    if (!force) {
+      if (world._pathWhitelist && !world._pathWhitelist.has(a.id)) return;
+      if (world.tick < (a.replanAtTick || 0)) return;
+      if (world.pathBudget <= 0) return;
+      world.pathBudget--;
+    }
     a.goal = { x: gx, y: gy };
     const path = astar({ x: a.cellX, y: a.cellY }, { x: gx, y: gy }, (x, y) =>
       isBlocked(world, x, y, a.id)
@@ -545,7 +542,9 @@
     return false;
   }
   function considerInteract(world, a) {
-    if (a.energy < TUNE.energyLowThreshold) return;
+    if (a.energy < TUNE.energyLowThreshold) {
+      chooseAttack(world, a, true);
+    }
     for (const [nx, ny] of [
       [a.cellX + 1, a.cellY],
       [a.cellX - 1, a.cellY],
@@ -578,7 +577,7 @@
   function processAction(world, a, dtMs) {
     if (!a.action) return;
     const act = a.action;
-    if (a.energy < TUNE.energyLowThreshold && act.type !== "reproduce") {
+    if (a.energy < TUNE.energyLowThreshold && act.type !== "attack") {
       a.action = null;
       return;
     }
@@ -607,6 +606,14 @@
       act.tickCounterMs = 0;
       if (act.type === "attack" && targ) {
         targ.health -= a.attack * 0.4;
+        if (a.factionId === targ.factionId) {
+          // dangerous, retaliation
+          Math.random() < 0.3
+            ? (targ.factionId = null)
+            : chooseAttack(world, targ, false);
+        }
+        setRel(a, targ.id, getRel(a, targ.id) - 0.2);
+
         log(world, "attack", `${a.name} hit ${targ.name}`, a.id, {
           to: targ.id,
         });
@@ -671,8 +678,7 @@
         const rel = getRel(a, targ2.id);
         if (
           (act.type === "talk" || act.type === "help" || act.type === "heal") &&
-          rel >= TUNE.factionFormRelThreshold &&
-          a.id < targ2.id
+          rel >= TUNE.factionFormRelThreshold
         ) {
           createFaction(world, [a, targ2]);
         }
@@ -703,12 +709,12 @@
             child.energy = 60;
             child.health = 80;
             child.aggression = clamp(
-              (a.aggression + targ2.aggression) / 2 + rnd(-0.15, 0.15),
+              (a.aggression + targ2.aggression) / 2,
               0,
               1
             );
             child.cooperation = clamp(
-              (a.cooperation + targ2.cooperation) / 2 + rnd(-0.15, 0.15),
+              (a.cooperation + targ2.cooperation) / 2,
               0,
               1
             );
@@ -787,11 +793,6 @@
         a.goal = null;
         return;
       }
-    }
-    if (world.crops.size === 0) {
-      a.path = null;
-      a.goal = null;
-      return;
     }
     const scarcity = world.crops.size / Math.max(1, world.agents.length);
     if (scarcity < 0.35) {
@@ -1675,19 +1676,19 @@
       if (w) log(world, "destroy", `Wall @${w.x},${w.y} destroyed`, null, {});
     }
   }
-  function levelCheck(world, a) {
-    if (a.level >= TUNE.levelCap) return;
-    if (a.energy > ENERGY_CAP * 0.7) {
-      a.level++;
-      if (a.level > TUNE.levelCap) a.level = TUNE.levelCap;
-      if (a.level <= TUNE.levelCap) {
-        a.maxHealth += 8;
-        a.attack += 1.5;
-        a.energy = Math.min(ENERGY_CAP, 140);
-        log(world, "level", `${a.name} leveled to ${a.level}`, a.id, {});
-      }
-    }
-  }
+  // function levelCheck(world, a) {
+  //   if (a.level >= TUNE.levelCap) return;
+  //   if (a.energy > ENERGY_CAP * 0.7) {
+  //     a.level++;
+  //     if (a.level > TUNE.levelCap) a.level = TUNE.levelCap;
+  //     if (a.level <= TUNE.levelCap) {
+  //       a.maxHealth += 8;
+  //       a.attack += 1.5;
+  //       a.energy = Math.min(ENERGY_CAP, 140);
+  //       log(world, "level", `${a.name} leveled to ${a.level}`, a.id, {});
+  //     }
+  //   }
+  // }
 
   /* ===== main.js ===== */
   init_constants();
@@ -2221,19 +2222,19 @@
       rebuildFactionsListIfNeeded(world, factionsList);
     }, 400);
 
-    function isTrappedByWalls(world2, a) {
-      const adj = [
-        [a.cellX + 1, a.cellY],
-        [a.cellX - 1, a.cellY],
-        [a.cellX, a.cellY + 1],
-        [a.cellX, a.cellY - 1],
-      ];
-      for (const [nx, ny] of adj) {
-        if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) return false;
-        if (!world2.walls.has(key(nx, ny))) return false;
-      }
-      return true;
-    }
+    // function isTrappedByWalls(world2, a) {
+    //   const adj = [
+    //     [a.cellX + 1, a.cellY],
+    //     [a.cellX - 1, a.cellY],
+    //     [a.cellX, a.cellY + 1],
+    //     [a.cellX, a.cellY - 1],
+    //   ];
+    //   for (const [nx, ny] of adj) {
+    //     if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) return false;
+    //     if (!world2.walls.has(key(nx, ny))) return false;
+    //   }
+    //   return true;
+    // }
     function biasedRoam(world2, a) {
       const range = 6;
       const candidates = [];
@@ -2361,9 +2362,8 @@
         if (!a.action && a.lockMsRemaining <= 0) {
           /* noop */
         }
-        const energyHigh = a.energy >= ENERGY_CAP * 0.8;
         if (a.energy < TUNE.energyLowThreshold) {
-          if (a.action && a.action.type !== "reproduce") a.action = null;
+          if (a.action && a.action.type !== "attack") a.action = null;
         }
         if (a.action) {
           processAction(world, a, BASE_TICK_MS);
@@ -2389,8 +2389,8 @@
             }
             if (!a.path) {
               if (a.energy < TUNE.energyLowThreshold) {
-                if (world.crops.size === 0) {
-                  /* rest */
+                if (Math.random() < 0.4) {
+                  considerInteract(world, a);
                 } else {
                   if (world.crops.has(key(a.cellX, a.cellY)))
                     harvestAt(world, a, a.cellX, a.cellY);
@@ -2409,7 +2409,7 @@
         if (a.energy === 0) {
           a.health -= (TUNE.starveHpPerSec * BASE_TICK_MS) / 1000;
         }
-        if (energyHigh) {
+        if (a.energy >= ENERGY_CAP * 0.8) {
           a.health = Math.min(
             a.maxHealth,
             a.health + (TUNE.regenHpPerSec * BASE_TICK_MS) / 1000
