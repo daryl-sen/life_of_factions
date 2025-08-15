@@ -113,7 +113,7 @@
   });
 
   /* ====== utils.js ====== */
-  var rnd, rndi, clamp, key, fromKey, manhattan, name6, RingLog;
+  var rnd, rndi, clamp, key, fromKey, manhattan, RingLog;
   var init_utils = __esm({
     "utils.js"() {
       rnd = (a, b) => Math.random() * (b - a) + a;
@@ -125,12 +125,30 @@
         return { x, y };
       };
       manhattan = (ax, ay, bx, by) => Math.abs(ax - bx) + Math.abs(ay - by);
-      name6 = () =>
-        Array.from({ length: 6 }, () =>
-          Math.random() < 0.5
-            ? String.fromCharCode(65 + rndi(0, 25))
-            : String(rndi(0, 9))
-        ).join("");
+      generatePronounceableString = (length) => {
+        const consonants = "BCDFGHJKLMNPQRSTVWXYZ";
+        const vowels = "AEIOU";
+        let result = "";
+
+        // Determine the starting character type randomly
+        let startWithConsonant = Math.random() < 0.5;
+
+        for (let i = 0; i < length; i++) {
+          if (
+            (i % 2 === 0 && startWithConsonant) ||
+            (i % 2 !== 0 && !startWithConsonant)
+          ) {
+            // Add a consonant
+            result += consonants.charAt(
+              Math.floor(Math.random() * consonants.length)
+            );
+          } else {
+            // Add a vowel
+            result += vowels.charAt(Math.floor(Math.random() * vowels.length));
+          }
+        }
+        return result;
+      };
       RingLog = class {
         constructor(limit = 100) {
           this.limit = limit;
@@ -746,7 +764,7 @@
     const pref = rp < 1 / 3 ? "near" : rp < 2 / 3 ? "far" : "wander";
     const a = {
       id,
-      name: name6(),
+      name: generatePronounceableString(6),
       cellX: x,
       cellY: y,
       health: 100,
@@ -1465,7 +1483,7 @@
     );
   }
   function createFaction(world, members) {
-    const fid = "F" + crypto.randomUUID().slice(0, 8);
+    const fid = generatePronounceableString(6);
     const color = _nextFactionColor(world);
     world.factions.set(fid, { id: fid, members: new Set(), color });
     for (const a of members) {
