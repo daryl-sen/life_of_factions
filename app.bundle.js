@@ -201,6 +201,7 @@
     if (!crop) return false;
     world.crops.delete(k);
     a.energy = Math.min(ENERGY_CAP, a.energy + TUNE.cropGain);
+    levelCheck(world, a);
     if (a.factionId) {
       const recips = world.agents.filter(
         (m) =>
@@ -1251,6 +1252,8 @@
       numSpeed = qs("#numSpeed"),
       numSpawn = qs("#numSpawn");
     const btnSpawnCrop = qs("#btnSpawnCrop");
+    const btnDrawWalls = qs("#btnDrawWalls");
+    const btnEraseWalls = qs("#btnEraseWalls");
     const stAgents = qs("#stAgents"),
       stFactions = qs("#stFactions"),
       stCrops = qs("#stCrops"),
@@ -1271,6 +1274,8 @@
         btnPause,
         btnResume,
         btnSpawnCrop,
+        btnDrawWalls,
+        btnEraseWalls,
         btnSave,
         btnLoad,
       },
@@ -1676,19 +1681,19 @@
       if (w) log(world, "destroy", `Wall @${w.x},${w.y} destroyed`, null, {});
     }
   }
-  // function levelCheck(world, a) {
-  //   if (a.level >= TUNE.levelCap) return;
-  //   if (a.energy > ENERGY_CAP * 0.7) {
-  //     a.level++;
-  //     if (a.level > TUNE.levelCap) a.level = TUNE.levelCap;
-  //     if (a.level <= TUNE.levelCap) {
-  //       a.maxHealth += 8;
-  //       a.attack += 1.5;
-  //       a.energy = Math.min(ENERGY_CAP, 140);
-  //       log(world, "level", `${a.name} leveled to ${a.level}`, a.id, {});
-  //     }
-  //   }
-  // }
+  function levelCheck(world, a) {
+    if (a.level >= TUNE.levelCap) return;
+    if (a.energy > ENERGY_CAP * 0.7) {
+      a.level++;
+      if (a.level > TUNE.levelCap) a.level = TUNE.levelCap;
+      if (a.level <= TUNE.levelCap) {
+        a.maxHealth += 8;
+        a.attack += 1.5;
+        a.energy = Math.min(ENERGY_CAP, 140);
+        log(world, "level", `${a.name} leveled to ${a.level}`, a.id, {});
+      }
+    }
+  }
 
   /* ===== main.js ===== */
   init_constants();
@@ -1698,6 +1703,21 @@
     // World
     const world = new World();
     window.world = world;
+    // Wall paint mode state
+    world.paintMode = "none"; // "none" | "draw" | "erase"
+
+    // Helpers to toggle paint mode and reflect UI state
+    const { btnDrawWalls, btnEraseWalls } = dom.buttons;
+    function setPaintMode(mode) {
+      const next = world.paintMode === mode ? "none" : mode;
+      world.paintMode = next;
+      if (btnDrawWalls)
+        btnDrawWalls.classList.toggle("toggled", next === "draw");
+      if (btnEraseWalls)
+        btnEraseWalls.classList.toggle("toggled", next === "erase");
+    }
+    btnDrawWalls?.addEventListener("click", () => setPaintMode("draw"));
+    btnEraseWalls?.addEventListener("click", () => setPaintMode("erase"));
 
     // Pause & Grid toggles
     if (dom.pauseChk) {
@@ -1745,6 +1765,54 @@
       lastX = 0,
       lastY = 0,
       allowDrag = false;
+    // Painting state
+    let painting = false;
+    let lastPaintKey = null;
+
+    function paintAtEvent(e) {
+      const rect = canvas.getBoundingClientRect();
+      const sx = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const sy = (e.clientY - rect.top) * (canvas.height / rect.height);
+      const wpos = screenToWorld(camera, sx, sy);
+      const x = Math.floor(wpos.x / CELL),
+        y = Math.floor(wpos.y / CELL);
+      if (x < 0 || y < 0 || x >= GRID || y >= GRID) return;
+      const k = key(x, y);
+      if (k === lastPaintKey) return;
+      lastPaintKey = k;
+      if (world.paintMode === "draw") {
+        if (
+          !world.walls.has(k) &&
+          !world.farms.has(k) &&
+          !world.flagCells.has(k) &&
+          !world.crops.has(k) &&
+          !world.agentsByCell.has(k)
+        ) {
+          const id =
+            typeof crypto !== "undefined" && crypto.randomUUID
+              ? crypto.randomUUID()
+              : "w_" + Math.random().toString(36).slice(2);
+          world.walls.set(k, { id, x, y, hp: 12, maxHp: 12 });
+          if (typeof log === "function")
+            try {
+              log(world, "build", `Wall @${x},${y} (user)`, null, { x, y });
+            } catch {}
+        }
+      } else if (world.paintMode === "erase") {
+        if (world.walls.has(k)) {
+          const w = world.walls.get(k);
+          world.walls.delete(k);
+          if (typeof log === "function")
+            try {
+              log(world, "destroy", `Wall @${x},${y} removed (user)`, null, {
+                x,
+                y,
+              });
+            } catch {}
+        }
+      }
+    }
+
     function setAllowDrag(e) {
       allowDrag =
         e.buttons === 2 ||
@@ -1757,6 +1825,10 @@
         dragging = true;
         lastX = e.clientX;
         lastY = e.clientY;
+      } else if (e.button === 0 && !allowDrag && world.paintMode !== "none") {
+        painting = true;
+        lastPaintKey = null;
+        paintAtEvent(e);
       }
     });
     canvas.addEventListener("contextmenu", (e) => {
@@ -1770,10 +1842,14 @@
         panBy(camera, -dx, -dy);
         lastX = e.clientX;
         lastY = e.clientY;
+      } else if (painting && e.buttons & 1 && world.paintMode !== "none") {
+        paintAtEvent(e);
       }
     });
     canvas.addEventListener("pointerup", () => {
       dragging = false;
+      painting = false;
+      lastPaintKey = null;
     });
     canvas.addEventListener(
       "wheel",
@@ -2222,19 +2298,6 @@
       rebuildFactionsListIfNeeded(world, factionsList);
     }, 400);
 
-    // function isTrappedByWalls(world2, a) {
-    //   const adj = [
-    //     [a.cellX + 1, a.cellY],
-    //     [a.cellX - 1, a.cellY],
-    //     [a.cellX, a.cellY + 1],
-    //     [a.cellX, a.cellY - 1],
-    //   ];
-    //   for (const [nx, ny] of adj) {
-    //     if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) return false;
-    //     if (!world2.walls.has(key(nx, ny))) return false;
-    //   }
-    //   return true;
-    // }
     function biasedRoam(world2, a) {
       const range = 6;
       const candidates = [];

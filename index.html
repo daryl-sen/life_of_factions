@@ -3,9 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>
-      Life of Factions — v2.10.1
-    </title>
+    <title>Life of Factions — v2.10.2</title>
     <style>
       :root {
         --bg: #0f1220;
@@ -44,8 +42,8 @@
       /* Tiny HUD for ticks/fps */
       #hud {
         position: fixed;
-        left: 10px;
-        top: 10px;
+        right: 10px;
+        bottom: 10px;
         background: rgba(10, 12, 25, 0.7);
         backdrop-filter: blur(6px);
         padding: 6px 8px;
@@ -92,7 +90,7 @@
         display: none; /* closed by default */
         flex-direction: column;
         gap: 12px;
-        z-index: 25;
+        z-index: 30;
       }
       .overlay.open {
         display: flex;
@@ -262,8 +260,8 @@
       /* On-screen navigation pad */
       .navpad {
         position: fixed;
-        left: 12px;
-        bottom: 12px;
+        right: 12px;
+        bottom: 52px;
         z-index: 26;
         display: grid;
         grid-template-columns: repeat(3, 40px);
@@ -289,6 +287,10 @@
       .list.compact {
         height: 40vh;
         max-height: 40vh;
+      }
+
+      button.toggled {
+        outline: 2px solid var(--accent);
       }
     </style>
   </head>
@@ -398,8 +400,18 @@
           />
         </div>
 
-        <div class="row" style="margin-top: 8px">
+        <div class="row" style="margin-top: 8px; gap: 6px">
           <button id="btnSpawnCrop" class="secondary">Spawn Crop</button>
+          <button id="btnDrawWalls" class="secondary" title="Draw walls (LMB)">
+            Draw Walls
+          </button>
+          <button
+            id="btnEraseWalls"
+            class="secondary"
+            title="Erase walls (LMB)"
+          >
+            Erase Walls
+          </button>
         </div>
 
         <div class="row" style="margin-top: 8px">
