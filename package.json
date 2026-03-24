@@ -1,0 +1,8 @@
+{
+  "name": "life-of-factions",
+  "version": "2.10.2",
+  "private": true,
+  "scripts": {
+    "serve": "npx serve ."
+  }
+}
