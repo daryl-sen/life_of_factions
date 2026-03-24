@@ -1,5 +1,4 @@
-import { CELL, GRID, COLORS, TUNE, WORLD_PX } from './constants.js';
-import { clamp } from './utils.js';
+import { CELL, GRID, COLORS, TUNE } from './constants.js';
 
 function drawAgentCircle(ctx, x, y, radius, stroke) {
   ctx.beginPath();
@@ -181,62 +180,10 @@ function drawLowEnergyIcon(ctx, cx, topY) {
   ctx.restore();
 }
 
-/** Camera & transforms */
-export function makeCamera() {
-  return { x: 0, y: 0, scale: 1, min: 0.25, max: 4 };
-}
-
-export function setCanvasSize(canvas) {
-  const dpr = Math.max(1, window.devicePixelRatio || 1);
-  const w = Math.floor(window.innerWidth * dpr);
-  const h = Math.floor(window.innerHeight * dpr);
-  canvas.width = w;
-  canvas.height = h;
-  canvas.style.width = "100vw";
-  canvas.style.height = "100vh";
-  return { w, h, dpr };
-}
-
-export function fitScaleForCanvas(canvas) {
-  return Math.min(canvas.width / WORLD_PX, canvas.height / WORLD_PX);
-}
-
-export function screenToWorld(camera, sx, sy) {
-  return { x: sx / camera.scale + camera.x, y: sy / camera.scale + camera.y };
-}
-
-export function zoomAt(camera, sx, sy, factor) {
-  const w = screenToWorld(camera, sx, sy);
-  const newScale = clamp(camera.scale * factor, camera.min, camera.max);
-  camera.scale = newScale;
-  camera.x = w.x - sx / camera.scale;
-  camera.y = w.y - sy / camera.scale;
-}
-
-export function panBy(camera, dx, dy) {
-  camera.x += dx / camera.scale;
-  camera.y += dy / camera.scale;
-  // clamp to world bounds with a bit of slack
-  const slack = 40;
-  camera.x = clamp(
-    camera.x,
-    -slack,
-    WORLD_PX + slack - window.innerWidth / camera.scale
-  );
-  camera.y = clamp(
-    camera.y,
-    -slack,
-    WORLD_PX + slack - window.innerHeight / camera.scale
-  );
-}
-
-/** Main world renderer using camera.setTransform */
-export function render(world, ctx, canvas, hud, stats, factionsList, camera) {
-  // clear to background
+export function render(world, ctx, canvas, camera) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // world-space
   ctx.setTransform(
     camera.scale,
     0,
@@ -246,7 +193,6 @@ export function render(world, ctx, canvas, hud, stats, factionsList, camera) {
     -camera.y * camera.scale
   );
 
-  // grid (toggleable)
   if (world.drawGrid) {
     ctx.save();
     ctx.strokeStyle = COLORS.grid;
@@ -266,18 +212,15 @@ export function render(world, ctx, canvas, hud, stats, factionsList, camera) {
     ctx.restore();
   }
 
-  // crops
   ctx.fillStyle = COLORS.crop;
   for (const c of world.crops.values())
     drawTriangle(ctx, c.x * CELL, c.y * CELL);
 
-  // farms
   for (const f of world.farms.values()) {
     ctx.fillStyle = COLORS.farm;
     ctx.fillRect(f.x * CELL + 2, f.y * CELL + 2, CELL - 4, CELL - 4);
   }
 
-  // walls
   for (const w of world.walls.values()) {
     const dmg = 1 - w.hp / w.maxHp;
     ctx.fillStyle = COLORS.wall;
@@ -290,7 +233,6 @@ export function render(world, ctx, canvas, hud, stats, factionsList, camera) {
     }
   }
 
-  // flags
   for (const f of world.flags.values()) {
     const faction = world.factions.get(f.factionId);
     const col = faction?.color || "#cccccc";
@@ -300,10 +242,8 @@ export function render(world, ctx, canvas, hud, stats, factionsList, camera) {
     ctx.fillRect(f.x * CELL + 9, f.y * CELL + 4, CELL - 8, 8);
   }
 
-  // pending attack lines
   const pendingAttackLines = [];
 
-  // agents
   for (const a of world.agents) {
     const x = a.cellX * CELL,
       y = a.cellY * CELL;
@@ -312,7 +252,6 @@ export function render(world, ctx, canvas, hud, stats, factionsList, camera) {
       ? world.factions.get(a.factionId)?.color || "#fff"
       : "#6b7280";
     drawAgentCircle(ctx, x, y, CELL / 2 - 3, col);
-    // hp
     const hpw = Math.max(
       0,
       Math.floor((CELL - 6) * (a.health / a.maxHealth))
@@ -336,7 +275,6 @@ export function render(world, ctx, canvas, hud, stats, factionsList, camera) {
     if (world.selectedId === a.id) drawStar(ctx, x + CELL / 2, y - 16);
   }
 
-  // attack lines on top
   ctx.strokeStyle = COLORS.attackLine;
   ctx.globalAlpha = 0.7;
   ctx.lineWidth = 1 / camera.scale;
@@ -348,6 +286,5 @@ export function render(world, ctx, canvas, hud, stats, factionsList, camera) {
   }
   ctx.globalAlpha = 1;
 
-  // reset for HUD/UI drawing if needed
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
