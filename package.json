@@ -1,0 +1,14 @@
+{
+  "name": "life-of-factions",
+  "version": "2.10.2",
+  "private": true,
+  "scripts": {
+    "dev": "esbuild src/main.js --bundle --outfile=app.bundle.js --format=iife --sourcemap --watch",
+    "build": "esbuild src/main.js --bundle --outfile=app.bundle.js --format=iife",
+    "serve": "npx serve .",
+    "deploy": "npm run build && git add app.bundle.js && echo 'Bundle staged. Commit and push to deploy.'"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
