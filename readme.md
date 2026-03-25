@@ -1,196 +1,139 @@
-# Welcome to **Life of Factions**
+# Life of Factions
 
-A cozy-chaotic little world plays itself on a 62×62 grid. Tiny agents wander, chat, help, quarrel, build, farm, fall in love, have kids, form factions, and sometimes… start fights. Your role isn’t to micromanage—it's to **set the stage**, hit **Start**, and enjoy the story that unfolds.
+A zero-player, real-time 2D sandbox simulation. Autonomous agents live on a 62x62 grid — gathering food, forming factions, reproducing, building, and fighting. The simulation is "cozy-chaotic": designed to produce emergent stories, not follow a script.
 
-Visit https://daryl-sen.github.io/life_of_factions/ to start now!
+**[Play it live](https://daryl-sen.github.io/life_of_factions/)**
 
-Note: This is a proof of concept for a bigger project later on. Stay tuned!
+## What happens
 
----
+- Agents roam the grid, harvest crops for energy, and build farms
+- Positive interactions build relationships that lead to factions
+- Factions place flags that heal nearby members
+- Agents reproduce when relationships and energy are high enough
+- Combat breaks out based on aggression traits and faction rivalries
+- Children inherit traits from both parents
+- Agents level up, gaining health and attack power
+- Factions disband when membership drops too low
 
-## 1) What You’ll See On Screen
+No two runs play out the same way.
 
-**Canvas (middle):** The world. Each agent is a small circle with a colored border:
+## Setup
 
-* **Border color** = the agent’s faction color (gray border if they don’t have one yet).
-* **Green triangles** = crops (food!).
-* **Yellow squares** = farms.
-* **Purple-ish blocks** = walls.
-* **Little flags** = faction spawn points.
+```bash
+npm install
+npm run build
+npx serve .
+```
 
-**Over an agent’s head:**
+Open `http://localhost:3000`. See [setup.md](setup.md) for the full testing checklist.
 
-* **Tiny red ▼** = low energy—this agent is hungry or tired.
-* **Mini glyphs** show what they’re doing:
+## Tech stack
 
-  * **+** healing, 🗨 chat/talk, ⚡ quarrel, ✖ attack, ❤ reproduce, 🪵 hammering walls, 🚩 attacking a flag (color matches the faction being targeted).
-* **HP bar** (thin green bar) = health. When it empties, that agent dies.
+- **TypeScript** with strict mode
+- **esbuild** for bundling
+- **Canvas 2D** for rendering
+- Static deployment on **GitHub Pages**
 
-**HUD (top-left of the canvas):** Tick counter, FPS, and totals for agents, factions, crops, farms, walls, flags.
+## Architecture
 
-**Event Log (right):** A live feed of what’s happening—talks, help, heals, fights, births, building, deaths, faction news.
+Domain-driven design with 8 bounded contexts:
 
-**Inspector (right, above the log):** Click any agent on the canvas to see their name, faction, level, HP, energy, traits, and current action.
+```
+src/
+  main.ts                          # Entry point
+  shared/                          # Types, constants, utilities, pathfinding
+  domains/
+    world/                         # Grid, spatial state, food field BFS
+    agent/                         # Agent class, relationships, factory
+    action/                        # Action processing, interaction decisions
+    faction/                       # Faction class, membership management
+    simulation/                    # Tick loop, roaming, crop/farm/harvest logic
+    rendering/                     # Canvas renderer, camera, emoji cache
+    ui/                            # DOM binding, inspector, log, controls
+    persistence/                   # Save/load serialization
+```
 
----
-
-## 2) Your Controls (Left Panel)
-
-**Start / Pause / Resume**
-
-* **Start** initializes a fresh world with your chosen settings.
-* **Pause** to freeze time. **Resume** to continue.
-
-**Starting Agents**
-Choose how many agents spawn at the beginning (20–300). Fewer agents = a calmer start.
-
-**Speed**
-Slow the world down to watch sweet moments unfold, or speed it up to see big stories develop.
-
-**Crop Spawn Multiplier**
-More crops means less famine and gentler politics; fewer crops means scarcity, stress, and fights.
-
-**Spawn Crop**
-Instantly add a random new crop.
-
-**Save / Load**
-Save a snapshot of your world to a file and load it later. Great for creating your favorite “world seeds.”
-
-**(Auto-added) Pause When Unfocused**
-A simple checkbox that stops the simulation when you switch tabs/windows, so you don’t miss the drama.
-
-**Event Log Filters**
-Toggle categories (talk, help, attack, etc.). Pick a specific **Agent** from the dropdown to follow their personal story.
+See [CLAUDE.md](CLAUDE.md) for detailed architecture docs and contribution guidelines.
 
 ---
 
-## 3) How Agents Live
+## Player Guide
 
-**Energy**
-Energy slowly ticks down as time passes and when agents move or act. Eating crops restores energy. If someone stays at zero energy too long, they **starve**.
+### What you'll see on screen
 
-**Health (HP)**
-Damaged in fights or when under attack. Heals near their faction’s flag (a gentle “aura”), or when another agent heals them. If HP hits zero, the agent dies.
+**Canvas (middle):** The world. Each agent is a small circle with a colored border (faction color, or gray if unaffiliated). Crops, farms, walls, and faction flags populate the grid.
 
-**Levels**
-Well-fed agents can level up: more max HP, stronger attacks. There’s a level cap to keep things fair.
+**Over an agent's head:**
+- **Tiny red triangle** = low energy
+- **HP bar** (thin green bar) = health. When it empties, the agent dies.
 
-**Personalities**
-Every agent has a mix of **aggression** (more likely to attack) and **cooperation** (more likely to help or heal), plus a travel style (linger near base, roam far, or wander).
+**HUD (top-left):** Tick counter, FPS, and totals for agents, factions, crops, farms, walls, flags.
 
----
+**Event Log (right):** A live feed of talks, fights, births, building, deaths, and faction news.
 
-## 4) How They Interact
+**Inspector (right, above the log):** Click any agent to see their name, faction, level, HP, energy, traits, and current action.
 
-**Talking & Quarreling**
-Hanging out boosts or bruises relationships. Friendly chats tend to warm things up; quarrels cool them down.
+### Controls
 
-**Helping & Healing**
-Kind agents share energy or patch up wounds—especially with faction mates nearby. Sometimes a helpful gesture persuades someone to **join a faction**.
+| Control | Action |
+|---------|--------|
+| **Start** | Initialize a fresh world |
+| **Pause / Resume** | Freeze or continue time |
+| **Speed slider** | Adjust simulation rate |
+| **Crop Spawn Multiplier** | Control crop spawn frequency |
+| **Spawn Crop** | Instantly add a random crop |
+| **Draw / Erase Walls** | Paint or remove obstacles |
+| **Save / Load** | Export or restore state as JSON |
+| **Pause When Unfocused** | Auto-pause when switching tabs |
+| **Scroll / two-finger** | Pan the map |
+| **Ctrl+scroll / pinch** | Zoom in and out |
+| **Click an agent** | Open the inspector |
+| **Log filter pills** | Toggle event categories |
+| **Agent dropdown** | Follow one agent's story in the log |
 
-**Attacking**
-When tempers flare (or food is scarce), agents may attack those nearby—especially members of rival factions. Infighting can happen, too, and the weaker participant sometimes **quits the faction** in frustration.
+### How agents live
 
-**Walls & Farms**
+**Energy** slowly ticks down and is restored by eating crops. Zero energy for too long means starvation.
 
-* **Walls** block movement. Trapped agents will try to break a wall to escape.
-* **Farms** make nearby crops more likely to appear. Building farms costs energy, so agents usually do it when they’re doing well.
+**Health (HP)** is damaged in fights. Heals near their faction's flag or when another agent heals them. HP hitting zero means death.
 
-**Reproduction**
-When two compatible, well-fed, neighboring agents like each other enough, they may have a child. Kids inherit a blend of their parents’ tendencies.
+**Levels:** Well-fed agents level up, gaining max HP and attack power (capped).
 
----
+**Personalities:** Every agent has **aggression**, **cooperation**, and a travel style (near base, far, or wander).
 
-## 5) Factions & Flags
+### How they interact
 
-**Founding a Faction**
-Two unfactioned friends who get along really well may decide to found a new faction. A **flag** appears for them.
+- **Talking & Quarreling** — builds or hurts relationships
+- **Helping & Healing** — shares energy or patches wounds, especially with faction mates. Can recruit outsiders to join a faction
+- **Attacking** — triggered by aggression, scarcity, or faction rivalry. Infighting can cause agents to leave their faction
+- **Farms** — make nearby crops more likely to spawn. Costs energy to build
+- **Walls** — block movement. Agents try to break walls when trapped
+- **Reproduction** — two compatible, well-fed, neighboring agents with good relations may have a child who inherits blended traits
 
-**Flags Matter**
-The flag is home turf. Being near your own flag slowly heals you. Rival agents may try to damage or destroy a flag during conflict.
+### Factions & flags
 
-**Joining, Leaving, Switching**
-Helpful acts can recruit outsiders. Infighting or bad blood can push members to leave. Whole factions can fade away if their members die.
+Two unfactioned friends who get along well enough will found a faction and place a **flag**. Being near your flag heals you. Rivals may attack it. Factions grow through recruitment and shrink through death or infighting.
 
----
+### Reading the drama
 
-## 6) Reading the Drama
+**Prosperity:** lots of crops, few red triangles, friendly logs (talk/help/heal/reproduce).
 
-**Signs of Prosperity**
+**Trouble:** many red triangles, empty HP bars, frequent attacks, agents clustering without eating.
 
-* Lots of crops & farms
-* Few red ▼ icons
-* Healthy HP bars
-* Friendly logs: talk / help / heal / reproduce
+**Quick fixes:** spawn crops to break a famine, lower speed to follow tense scenes, raise the crop multiplier for a gentler world, or start with fewer agents.
 
-**Signs of Trouble**
+### First-run mini tour
 
-* Many red ▼ icons and empty HP bars
-* Frequent quarrels and attacks
-* Agents clustering but not eating (increase crop spawn a bit!)
-
-**Quick Fixes You Can Try**
-
-* Tap **Spawn Crop** to break a famine.
-* Lower **Speed** to follow a tense scene.
-* Increase **Crop Spawn Multiplier** for a gentler world.
-* Start with fewer agents to reduce early chaos.
-
----
-
-## 7) A First-Run Mini Tour
-
-1. Set **Starting Agents** to \~40.
-2. Set **Speed** around 50–80% for a relaxed pace.
-3. Keep **Crop Spawn** at 1.0× for a balanced ecosystem.
-4. Click **Start** and watch.
-5. Click an agent to open the **Inspector**—track their energy, HP, and current action.
-6. In **Event Log**, select that agent in the **Agent** dropdown to follow their storyline.
-7. When you spot the first **flag**, hover there to watch quiet healing and faction life.
-
-Try nudging **Crop Spawn** up if you want cozier vibes, or down if you’re craving drama.
+1. Set starting agents to ~40
+2. Set speed around 50-80%
+3. Keep crop spawn at 1.0x
+4. Click **Start** and watch
+5. Click an agent to open the **Inspector**
+6. Select that agent in the log's **Agent** dropdown to follow their story
+7. When the first flag appears, watch the quiet healing and faction life unfold
 
 ---
 
-## 8) Frequently Asked Questions
+## License
 
-**Do agents die?**
-Yes—usually from starvation (long zero energy) or from losing too many fights.
-
-**Can I make peace?**
-You can’t order anyone around, but more crops mean fewer reasons to fight, and cooperative personalities tend to mellow things out.
-
-**What makes new factions appear?**
-Strong friendships between unfactioned agents. Watch for a celebratory log entry when a new flag pops up.
-
-**How can I follow one character’s arc?**
-Click them on the canvas, then choose them in the log’s **Agent** dropdown. You’ll see their conversations, assists, duels, and big life moments.
-
-**My world got grim—what now?**
-Slow it down, spawn a few crops, or start a fresh run with more starting food. You can always **Save** happy worlds and return later.
-
----
-
-## 9) Little Legends to Watch For
-
-* A soft-hearted healer keeping a faction alive near the flag.
-* A restless wanderer who discovers new farmland and changes the food economy.
-* Star-crossed neighbors who chat, help, heal… and eventually welcome a child.
-* A faction torn by infighting, only to reform under a calmer banner.
-
-Every run tells a different tale—some cozy, some chaotic, all emergent.
-
----
-
-## 10) Quick Reference (Cheat Sheet)
-
-* **Red ▼** = low energy (find crops!).
-* **Green bar** = health.
-* **Glyphs** = current action (✖ attack, + heal, ❤ reproduce, 🗨 talk, ⚡ quarrel, 🪵 wall work, 🚩 flag attack).
-* **Flags** heal nearby allies; enemies sometimes target them.
-* **More crops** → calmer world. **Scarcity** → conflict.
-* **Save/Load** your favorite worlds. **Pause/Resume** anytime.
-
----
-
-### Have fun—and tell me about the most dramatic run you witness! 👀
+Private project.
