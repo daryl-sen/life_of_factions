@@ -1,26 +1,90 @@
-import { CELL, GRID, COLORS, TUNE } from './constants.js';
+import { CELL, GRID, COLORS, TUNE, AGENT_EMOJIS, WORLD_EMOJIS } from './constants.js';
 
-function drawAgentCircle(ctx, x, y, radius, stroke) {
+const emojiCache = new Map();
+
+function getEmojiCanvas(emoji) {
+  if (emojiCache.has(emoji)) return emojiCache.get(emoji);
+  // Render emoji large, then find its actual pixel bounds
+  const pad = 64;
+  const fontSize = 48;
+  const tmp = document.createElement("canvas");
+  tmp.width = pad * 2;
+  tmp.height = pad * 2;
+  const tc = tmp.getContext("2d");
+  tc.font = `${fontSize}px serif`;
+  tc.textAlign = "center";
+  tc.textBaseline = "middle";
+  tc.fillText(emoji, pad, pad);
+
+  // Scan for actual pixel bounds
+  const imgData = tc.getImageData(0, 0, tmp.width, tmp.height);
+  const d = imgData.data;
+  let top = tmp.height, bottom = 0, left = tmp.width, right = 0;
+  for (let py = 0; py < tmp.height; py++) {
+    for (let px = 0; px < tmp.width; px++) {
+      if (d[(py * tmp.width + px) * 4 + 3] > 10) {
+        if (py < top) top = py;
+        if (py > bottom) bottom = py;
+        if (px < left) left = px;
+        if (px > right) right = px;
+      }
+    }
+  }
+
+  const w = right - left + 1;
+  const h = bottom - top + 1;
+  const trimmed = document.createElement("canvas");
+  trimmed.width = w;
+  trimmed.height = h;
+  trimmed.getContext("2d").drawImage(tmp, left, top, w, h, 0, 0, w, h);
+  const entry = { canvas: trimmed, w, h };
+  emojiCache.set(emoji, entry);
+  return entry;
+}
+
+const tintCache = new Map();
+
+function getTintedEmoji(emoji, color) {
+  const key = emoji + color;
+  if (tintCache.has(key)) return tintCache.get(key);
+  const src = getEmojiCanvas(emoji);
+  const c = document.createElement("canvas");
+  c.width = src.w;
+  c.height = src.h;
+  const cx = c.getContext("2d");
+  cx.drawImage(src.canvas, 0, 0);
+  cx.globalCompositeOperation = "source-in";
+  cx.fillStyle = color;
+  cx.fillRect(0, 0, c.width, c.height);
+  const entry = { canvas: c, w: src.w, h: src.h };
+  tintCache.set(key, entry);
+  return entry;
+}
+
+function drawCellEmoji(ctx, cellX, cellY, emoji, size = CELL - 2) {
+  const { canvas: ec, w, h } = getEmojiCanvas(emoji);
+  const scale = Math.min(size / w, size / h);
+  const dw = w * scale;
+  const dh = h * scale;
+  const x = cellX * CELL;
+  const y = cellY * CELL;
+  ctx.drawImage(ec, x + (CELL - dw) / 2, y + (CELL - dh) / 2, dw, dh);
+}
+
+function drawAgentEmoji(ctx, x, y, radius, stroke, emoji) {
   ctx.beginPath();
-  ctx.arc(x + CELL / 2, y + CELL / 2, radius, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.arc(x + CELL / 2, y + CELL / 2, radius + 1, 0, Math.PI * 2);
   ctx.lineWidth = 2;
   ctx.strokeStyle = stroke;
   ctx.stroke();
-}
 
-function drawFactionPennant(ctx, cx, topY, color) {
-  ctx.save();
-  ctx.fillStyle = "#c7c7d2";
-  ctx.fillRect(cx - 1, topY - 6, 2, 7);
-  ctx.fillStyle = color || "#cccccc";
-  ctx.beginPath();
-  ctx.moveTo(cx + 1, topY - 5);
-  ctx.lineTo(cx + 8, topY - 2);
-  ctx.lineTo(cx + 1, topY + 1);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
+  const { canvas: ec, w, h } = getEmojiCanvas(emoji);
+  const drawSize = CELL - 4;
+  // Scale to fit while preserving aspect ratio
+  const scale = Math.min(drawSize / w, drawSize / h);
+  const dw = w * scale;
+  const dh = h * scale;
+  ctx.drawImage(ec, x + (CELL - dw) / 2, y + (CELL - dh) / 2, dw, dh);
 }
 
 function drawStar(ctx, cx, cy) {
@@ -63,105 +127,6 @@ function drawTriangle(ctx, x, y) {
   ctx.lineTo(cx + r * 0.866, cy + r * 0.5);
   ctx.closePath();
   ctx.fill();
-}
-
-function drawActionIndicator(ctx, cx, topY, type, factionColor = "#ccc") {
-  ctx.save();
-  ctx.fillStyle = "#c7c7d2";
-  ctx.fillRect(cx - 1, topY - 6, 2, 7);
-  let fill = "#cccccc",
-    stroke = "#333333";
-  switch (type) {
-    case "attack":
-      fill = "#ff6d7a";
-      break;
-    case "heal":
-      fill = "#60e6a8";
-      break;
-    case "help":
-      fill = "#7bdcff";
-      break;
-    case "talk":
-      fill = "#a5b4fc";
-      break;
-    case "quarrel":
-      fill = "#ffb74d";
-      break;
-    case "reproduce":
-      fill = "#f472b6";
-      break;
-    case "attack_flag":
-      fill = factionColor || "#cccccc";
-      break;
-  }
-  ctx.fillStyle = fill;
-  ctx.strokeStyle = stroke;
-  ctx.lineWidth = 1;
-  const x = cx + 2,
-    y = topY - 5;
-  switch (type) {
-    case "attack":
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + 8, y + 8);
-      ctx.moveTo(x + 8, y);
-      ctx.lineTo(x, y + 8);
-      ctx.strokeStyle = fill;
-      ctx.stroke();
-      break;
-    case "heal":
-      ctx.beginPath();
-      ctx.fillRect(x + 3, y, 2, 8);
-      ctx.fillRect(x, y + 3, 8, 2);
-      break;
-    case "help":
-      ctx.beginPath();
-      ctx.moveTo(x + 4, y);
-      ctx.lineTo(x + 4, y + 8);
-      ctx.moveTo(x + 1, y + 3);
-      ctx.lineTo(x + 4, y);
-      ctx.lineTo(x + 7, y + 3);
-      ctx.strokeStyle = fill;
-      ctx.stroke();
-      break;
-    case "talk":
-      ctx.beginPath();
-      ctx.rect(x, y, 8, 6);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(x + 2, y + 6);
-      ctx.lineTo(x + 4, y + 8);
-      ctx.lineTo(x + 4, y + 6);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    case "quarrel":
-      ctx.beginPath();
-      ctx.moveTo(x + 2, y);
-      ctx.lineTo(x + 6, y + 3);
-      ctx.lineTo(x + 4, y + 3);
-      ctx.lineTo(x + 7, y + 8);
-      ctx.lineTo(x + 1, y + 4);
-      ctx.lineTo(x + 3, y + 4);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    case "reproduce":
-      ctx.beginPath();
-      ctx.moveTo(x + 4, y + 7);
-      ctx.bezierCurveTo(x + 8, y + 4, x + 7, y + 0.5, x + 5, y + 1.2);
-      ctx.bezierCurveTo(x + 4, y + 1.8, x + 4, y + 3, x + 4, y + 3);
-      ctx.bezierCurveTo(x + 4, y + 3, x + 4, y + 1.8, x + 3, y + 1.2);
-      ctx.bezierCurveTo(x + 1, y + 0.5, x + 0, y + 4, x + 4, y + 7);
-      ctx.fill();
-      break;
-    case "attack_flag":
-      drawFactionPennant(ctx, cx, topY, factionColor);
-      break;
-    default:
-      ctx.fillRect(x, y, 8, 8);
-  }
-  ctx.restore();
 }
 
 function drawLowEnergyIcon(ctx, cx, topY) {
@@ -212,34 +177,30 @@ export function render(world, ctx, canvas, camera) {
     ctx.restore();
   }
 
-  ctx.fillStyle = COLORS.crop;
   for (const c of world.crops.values())
-    drawTriangle(ctx, c.x * CELL, c.y * CELL);
+    drawCellEmoji(ctx, c.x, c.y, WORLD_EMOJIS.crop);
 
-  for (const f of world.farms.values()) {
-    ctx.fillStyle = COLORS.farm;
-    ctx.fillRect(f.x * CELL + 2, f.y * CELL + 2, CELL - 4, CELL - 4);
-  }
+  for (const f of world.farms.values())
+    drawCellEmoji(ctx, f.x, f.y, WORLD_EMOJIS.farm);
 
   for (const w of world.walls.values()) {
     const dmg = 1 - w.hp / w.maxHp;
-    ctx.fillStyle = COLORS.wall;
-    ctx.fillRect(w.x * CELL + 1, w.y * CELL + 1, CELL - 2, CELL - 2);
-    if (dmg > 0) {
-      ctx.fillStyle = COLORS.wallDam;
-      ctx.globalAlpha = Math.min(0.7, Math.max(0, dmg));
-      ctx.fillRect(w.x * CELL + 1, w.y * CELL + 1, CELL - 2, CELL - 2);
-      ctx.globalAlpha = 1;
-    }
+    const alpha = dmg > 0 ? 1 - Math.min(0.7, dmg) : 1;
+    ctx.globalAlpha = alpha;
+    drawCellEmoji(ctx, w.x, w.y, WORLD_EMOJIS.wall);
+    ctx.globalAlpha = 1;
   }
 
   for (const f of world.flags.values()) {
     const faction = world.factions.get(f.factionId);
     const col = faction?.color || "#cccccc";
-    ctx.fillStyle = COLORS.flagPole;
-    ctx.fillRect(f.x * CELL + 6, f.y * CELL + 2, 3, CELL - 4);
-    ctx.fillStyle = col;
-    ctx.fillRect(f.x * CELL + 9, f.y * CELL + 4, CELL - 8, 8);
+    const { canvas: ec, w, h } = getTintedEmoji(WORLD_EMOJIS.flag, col);
+    const scale = Math.min((CELL - 2) / w, (CELL - 2) / h);
+    const dw = w * scale;
+    const dh = h * scale;
+    const x = f.x * CELL;
+    const y = f.y * CELL;
+    ctx.drawImage(ec, x + (CELL - dw) / 2, y + (CELL - dh) / 2, dw, dh);
   }
 
   const pendingAttackLines = [];
@@ -247,11 +208,12 @@ export function render(world, ctx, canvas, camera) {
   for (const a of world.agents) {
     const x = a.cellX * CELL,
       y = a.cellY * CELL;
-    ctx.fillStyle = COLORS.agentFill;
     const col = a.factionId
       ? world.factions.get(a.factionId)?.color || "#fff"
       : "#6b7280";
-    drawAgentCircle(ctx, x, y, CELL / 2 - 3, col);
+    const actionType = a.action?.type;
+    const emoji = AGENT_EMOJIS[actionType] || (a.path ? AGENT_EMOJIS.move : AGENT_EMOJIS.idle);
+    drawAgentEmoji(ctx, x, y, CELL / 2 - 3, col, emoji);
     const hpw = Math.max(
       0,
       Math.floor((CELL - 6) * (a.health / a.maxHealth))
@@ -263,14 +225,10 @@ export function render(world, ctx, canvas, camera) {
     if (a.energy < TUNE.energyLowThreshold)
       drawLowEnergyIcon(ctx, cx, glyphTop);
     if (a.action) {
-      const fcol = a.factionId
-        ? world.factions.get(a.factionId)?.color || "#cccccc"
-        : "#cccccc";
       if (a.action.type === "attack" && a.action.payload?.targetId) {
         const t = world.agentsById.get(a.action.payload.targetId);
         if (t) pendingAttackLines.push([a, t]);
       }
-      drawActionIndicator(ctx, cx, glyphTop, a.action.type, fcol);
     }
     if (world.selectedId === a.id) drawStar(ctx, x + CELL / 2, y - 16);
   }
