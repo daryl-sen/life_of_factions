@@ -1,0 +1,49 @@
+import { TUNE, LOG_CATS } from '../../shared/constants';
+import { RingLog } from '../../shared/utils';
+import type { LogCategory, PaintMode } from '../../shared/types';
+import type { Agent } from '../agent/agent';
+import type { Faction } from '../faction/faction';
+import { Grid } from './grid';
+import { FoodField } from './food-field';
+
+export class World {
+  readonly grid: Grid = new Grid();
+  readonly foodField: FoodField = new FoodField();
+
+  agents: Agent[] = [];
+  readonly agentsById: Map<string, Agent> = new Map();
+  readonly factions: Map<string, Faction> = new Map();
+
+  log: RingLog = new RingLog(200);
+  activeLogCats: Set<LogCategory> = new Set(LOG_CATS);
+  activeLogAgentId: string | null = null;
+
+  tick = 0;
+  speedPct = 50;
+  spawnMult = 1;
+  running = false;
+  selectedId: string | null = null;
+  paintMode: PaintMode = 'none';
+  pauseOnBlur = false;
+  drawGrid = false;
+
+  pathBudgetMax: number = Number.isFinite(TUNE.pathBudgetPerTick)
+    ? TUNE.pathBudgetPerTick
+    : 30;
+  pathBudget = 0;
+  _pathRR = 0;
+  readonly _pathWhitelist: Set<string> = new Set();
+
+  _lastFactionsDomAt = 0;
+  _lastAgentCount = 0;
+  _rebuildAgentOptions: (() => void) | null = null;
+  _lastFactionsSig = '';
+
+  // Convenience accessors that delegate to grid
+  get walls() { return this.grid.walls; }
+  get crops() { return this.grid.crops; }
+  get farms() { return this.grid.farms; }
+  get flags() { return this.grid.flags; }
+  get flagCells() { return this.grid.flagCells; }
+  get agentsByCell() { return this.grid.agentsByCell; }
+}
