@@ -206,8 +206,11 @@ export function render(world, ctx, canvas, camera) {
   const pendingAttackLines = [];
 
   for (const a of world.agents) {
-    const x = a.cellX * CELL,
-      y = a.cellY * CELL;
+    const t = a.lerpT != null ? a.lerpT : 1;
+    const lx = (a.prevCellX != null ? a.prevCellX : a.cellX) + (a.cellX - (a.prevCellX != null ? a.prevCellX : a.cellX)) * t;
+    const ly = (a.prevCellY != null ? a.prevCellY : a.cellY) + (a.cellY - (a.prevCellY != null ? a.prevCellY : a.cellY)) * t;
+    const x = lx * CELL,
+      y = ly * CELL;
     const col = a.factionId
       ? world.factions.get(a.factionId)?.color || "#fff"
       : "#6b7280";
@@ -226,8 +229,8 @@ export function render(world, ctx, canvas, camera) {
       drawLowEnergyIcon(ctx, cx, glyphTop);
     if (a.action) {
       if (a.action.type === "attack" && a.action.payload?.targetId) {
-        const t = world.agentsById.get(a.action.payload.targetId);
-        if (t) pendingAttackLines.push([a, t]);
+        const t2 = world.agentsById.get(a.action.payload.targetId);
+        if (t2) pendingAttackLines.push([a, t2]);
       }
     }
     if (world.selectedId === a.id) drawStar(ctx, x + CELL / 2, y - 16);
@@ -237,9 +240,15 @@ export function render(world, ctx, canvas, camera) {
   ctx.globalAlpha = 0.7;
   ctx.lineWidth = 1 / camera.scale;
   for (const [att, tgt] of pendingAttackLines) {
+    const at = att.lerpT != null ? att.lerpT : 1;
+    const ax = ((att.prevCellX ?? att.cellX) + (att.cellX - (att.prevCellX ?? att.cellX)) * at) * CELL + CELL / 2;
+    const ay = ((att.prevCellY ?? att.cellY) + (att.cellY - (att.prevCellY ?? att.cellY)) * at) * CELL + CELL / 2;
+    const tt = tgt.lerpT != null ? tgt.lerpT : 1;
+    const tx = ((tgt.prevCellX ?? tgt.cellX) + (tgt.cellX - (tgt.prevCellX ?? tgt.cellX)) * tt) * CELL + CELL / 2;
+    const ty = ((tgt.prevCellY ?? tgt.cellY) + (tgt.cellY - (tgt.prevCellY ?? tgt.cellY)) * tt) * CELL + CELL / 2;
     ctx.beginPath();
-    ctx.moveTo(att.cellX * CELL + CELL / 2, att.cellY * CELL + CELL / 2);
-    ctx.lineTo(tgt.cellX * CELL + CELL / 2, tgt.cellY * CELL + CELL / 2);
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(tx, ty);
     ctx.stroke();
   }
   ctx.globalAlpha = 1;

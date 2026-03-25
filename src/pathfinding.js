@@ -78,7 +78,7 @@ export function planPathTo(world, a, gx, gy, force = false) {
   );
   a.path = path;
   a.pathIdx = 0;
-  a.replanAtTick = world.tick + 6 + rndi(0, 6);
+  a.replanAtTick = world.tick + 1 + rndi(0, 1);
 }
 
 export function findNearest(world, a, coll) {

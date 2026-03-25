@@ -1,7 +1,7 @@
 export const CELL = 16;
 export const GRID = 62;
 export const WORLD_PX = GRID * CELL;
-export const BASE_TICK_MS = 40;
+export const BASE_TICK_MS = 250;
 export const ENERGY_CAP = 200;
 export const TUNE = {
   moveEnergy: 0.12,
@@ -18,12 +18,12 @@ export const TUNE = {
   starveHpPerSec: 1.0,
   regenHpPerSec: 0.5,
   healAuraRadius: 4,
-  healAuraPerTick: 0.6,
+  healAuraPerTick: 3.75,
   baseDamage: 8,
   flagHp: [12, 18],
   farmBoostRadius: 3,
   farmEnergyCost: 12,
-  buildFarmChance: 5e-3,
+  buildFarmChance: 3.125e-2,
   factionThreshold: 0.5,
   factionMinSize: 2,
   factionFormRelThreshold: 0.6,

@@ -129,7 +129,7 @@ export function updateTick(world) {
 
   for (const a of world.agents) {
     a.ageTicks++;
-    a.energy -= 0.01;
+    a.energy -= 0.0625;
     a.lockMsRemaining = Math.max(
       0,
       (a.lockMsRemaining || 0) - BASE_TICK_MS
@@ -148,6 +148,9 @@ export function updateTick(world) {
         if (a.path && a.pathIdx < a.path.length) {
           const step = a.path[a.pathIdx];
           if (!isBlocked(world, step.x, step.y, a.id)) {
+            a.prevCellX = a.cellX;
+            a.prevCellY = a.cellY;
+            a.lerpT = 0;
             world.agentsByCell.delete(key(a.cellX, a.cellY));
             a.cellX = step.x;
             a.cellY = step.y;
@@ -192,7 +195,7 @@ export function updateTick(world) {
     }
   }
 
-  if (world.tick % 25 === 0) reconcileFactions(world);
+  if (world.tick % 4 === 0) reconcileFactions(world);
   applyFlagHealing(world);
   cleanDead(world);
 }

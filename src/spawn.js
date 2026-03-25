@@ -23,7 +23,7 @@ export function addCrop(world, x, y) {
 export function maybeSpawnCrops(world) {
   if (world.crops.size >= TUNE.maxCrops) return;
   const attempts = GRID;
-  const base = 6e-4 * world.spawnMult;
+  const base = 3.75e-3 * world.spawnMult;
   for (let i = 0; i < attempts; i++) {
     if (world.crops.size >= TUNE.maxCrops) break;
     const x = rndi(0, GRID - 1),

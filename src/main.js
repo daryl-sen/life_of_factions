@@ -128,6 +128,13 @@ document.addEventListener("DOMContentLoaded", () => {
         steps++;
       }
       if (steps === MAX_STEPS) acc = 0;
+      // Advance movement interpolation for all agents
+      const lerpDelta = dt / (BASE_TICK_MS / (world.speedPct / 100));
+      for (const a of world.agents) {
+        if (a.lerpT < 1) {
+          a.lerpT = Math.min(1, a.lerpT + lerpDelta);
+        }
+      }
     }
     render(world, ctx, canvas, camera);
     requestAnimationFrame(loop);
