@@ -85,8 +85,8 @@
   };
   var WORLD_EMOJIS = {
     crops: ["\u{1F33F}", "\u{1F331}", "\u{1F340}", "\u{1F33E}", "\u{1F955}", "\u{1F345}", "\u{1FADB}"],
-    farm: "\u{1F33B}",
-    wall: "\u{1F9F1}",
+    farm: "\u{1F3E1}",
+    wall: "\u{1FAA8}",
     flag: "\u{1F6A9}"
   };
   var LOG_CATS = [
@@ -108,7 +108,7 @@
   // package.json
   var package_default = {
     name: "life-of-factions",
-    version: "3.1.0",
+    version: "3.1.1",
     private: true,
     scripts: {
       build: "esbuild src/main.ts --bundle --outfile=dist/app.js",
