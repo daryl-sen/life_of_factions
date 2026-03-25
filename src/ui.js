@@ -1,4 +1,5 @@
 import { LOG_CATS, AGENT_EMOJIS } from './constants.js';
+import { getIdleEmoji } from './utils.js';
 
 const PAGE_LOAD_TIME = Date.now() - performance.now();
 
@@ -292,7 +293,7 @@ export function updateInspector(world, el) {
 
   const actionType = a.action?.type;
   const emoji =
-    AGENT_EMOJIS[actionType] || (a.path ? AGENT_EMOJIS.move : AGENT_EMOJIS.idle);
+    AGENT_EMOJIS[actionType] || (a.path ? AGENT_EMOJIS.move : getIdleEmoji(a));
   const factionColor = a.factionId
     ? world.factions.get(a.factionId)?.color || "#888"
     : null;

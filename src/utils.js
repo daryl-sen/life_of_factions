@@ -57,6 +57,12 @@ export class RingLog {
     });
   }
 }
+export const getIdleEmoji = (a) => {
+  if (a.energy <= 20) return "🤤";
+  if (a.health <= 30) return "🤕";
+  if (a.energy >= 80) return "🤩";
+  return "🙂";
+};
 export const log = (world, cat, msg, actorId = null, extra = {}) => {
   world.log.push({ t: performance.now(), cat, msg, actorId, extra });
 };
