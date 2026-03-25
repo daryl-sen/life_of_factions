@@ -1,4 +1,4 @@
-# Life of Factions — Technical Specification (v1.3.5, 2025-08-11)
+# Emoji Life — Technical Specification (v1.3.5, 2025-08-11)
 
 ## Purpose
 

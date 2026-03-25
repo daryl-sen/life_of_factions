@@ -107,7 +107,7 @@
 
   // package.json
   var package_default = {
-    name: "life-of-factions",
+    name: "emoji-life",
     version: "3.1.1",
     private: true,
     scripts: {
@@ -2143,7 +2143,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "life_of_factions_" + (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-") + ".json";
+      a.download = "emoji_life_" + (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-") + ".json";
       document.body.appendChild(a);
       a.click();
       setTimeout(() => {
@@ -2347,7 +2347,7 @@
 
   // src/main.ts
   document.addEventListener("DOMContentLoaded", () => {
-    document.title = `Life of Factions \u2014 v${VERSION}`;
+    document.title = `Emoji Life \u2014 v${VERSION}`;
     const versionEl = document.querySelector(".sidebar-version");
     if (versionEl) versionEl.textContent = `V${VERSION}`;
     const dom = UIManager.bindDom();

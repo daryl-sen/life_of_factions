@@ -1,8 +1,8 @@
-# Life of Factions - Agent Behavior Documentation
+# Emoji Life - Agent Behavior Documentation
 
 ## Overview
 
-Life of Factions is a zero-player, real-time 2D sandbox simulation where autonomous agents ("little people") live on a 62×62 grid world. Agents gather resources, interact socially, form factions, reproduce, build structures, and fight over territory.
+Emoji Life is a zero-player, real-time 2D sandbox simulation where autonomous agents ("little people") live on a 62×62 grid world. Agents gather resources, interact socially, form factions, reproduce, build structures, and fight over territory.
 
 ## Key Concepts
 

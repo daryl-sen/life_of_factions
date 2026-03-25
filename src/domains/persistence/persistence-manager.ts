@@ -74,7 +74,7 @@ export class PersistenceManager {
     const a = document.createElement('a');
     a.href = url;
     a.download =
-      'life_of_factions_' +
+      'emoji_life_' +
       new Date().toISOString().replace(/[:.]/g, '-') +
       '.json';
     document.body.appendChild(a);

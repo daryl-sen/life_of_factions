@@ -9,7 +9,7 @@ import { Controls } from './domains/ui/controls';
 import { SimulationEngine } from './domains/simulation';
 
 document.addEventListener('DOMContentLoaded', () => {
-  document.title = `Life of Factions — v${VERSION}`;
+  document.title = `Emoji Life — v${VERSION}`;
   const versionEl = document.querySelector('.sidebar-version');
   if (versionEl) versionEl.textContent = `V${VERSION}`;
 

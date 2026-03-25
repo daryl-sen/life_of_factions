@@ -1,8 +1,8 @@
-# CLAUDE.md — Life of Factions
+# CLAUDE.md — Emoji Life
 
 ## Project Overview
 
-Life of Factions is a zero-player, real-time 2D sandbox simulation deployed to GitHub Pages. Autonomous agents live on a 62x62 grid, gathering food, forming factions, reproducing, building, and fighting. The simulation is "cozy-chaotic" — designed to produce emergent stories, not follow a script.
+Emoji Life is a zero-player, real-time 2D sandbox simulation deployed to GitHub Pages. Autonomous agents live on a 62x62 grid, gathering food, forming factions, reproducing, building, and fighting. The simulation is "cozy-chaotic" — designed to produce emergent stories, not follow a script.
 
 **Live site:** https://daryl-sen.github.io/life_of_factions/
 **Version:** 3.0.0

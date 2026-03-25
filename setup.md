@@ -1,4 +1,4 @@
-# Setup & Testing — Life of Factions
+# Setup & Testing — Emoji Life
 
 ## Prerequisites
 

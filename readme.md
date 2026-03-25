@@ -1,4 +1,4 @@
-# Life of Factions
+# Emoji Life
 
 A zero-player, real-time 2D sandbox simulation. Autonomous agents live on a 62x62 grid — gathering food, forming factions, reproducing, building, and fighting. The simulation is "cozy-chaotic": designed to produce emergent stories, not follow a script.
 
