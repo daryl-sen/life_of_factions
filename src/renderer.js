@@ -178,7 +178,7 @@ export function render(world, ctx, canvas, camera) {
   }
 
   for (const c of world.crops.values())
-    drawCellEmoji(ctx, c.x, c.y, WORLD_EMOJIS.crop);
+    drawCellEmoji(ctx, c.x, c.y, c.emoji || WORLD_EMOJIS.crops[0]);
 
   for (const f of world.farms.values())
     drawCellEmoji(ctx, f.x, f.y, WORLD_EMOJIS.farm);

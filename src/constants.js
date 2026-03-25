@@ -81,7 +81,7 @@ export const AGENT_EMOJIS = {
   attack_flag: "⚔️",
 };
 export const WORLD_EMOJIS = {
-  crop: "🌿",
+  crops: ["🌿", "🌱", "🍀", "🌾", "🥕", "🍅", "🫛"],
   farm: "🌻",
   wall: "🧱",
   flag: "🚩",
