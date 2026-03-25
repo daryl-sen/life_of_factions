@@ -1,4 +1,5 @@
 import type { ILogEntry, LogCategory } from './types';
+import { IDLE_EMOJIS } from './constants';
 
 export const rnd = (a: number, b: number): number => Math.random() * (b - a) + a;
 export const rndi = (a: number, b: number): number => Math.floor(rnd(a, b + 1));
@@ -62,10 +63,10 @@ export class RingLog {
 }
 
 export const getIdleEmoji = (a: { energy: number; health: number }): string => {
-  if (a.energy <= 20) return '🤤';
-  if (a.health <= 30) return '🤕';
-  if (a.energy >= 80) return '🤩';
-  return '🙂';
+  if (a.energy <= 20) return IDLE_EMOJIS.lowEnergy;
+  if (a.health <= 30) return IDLE_EMOJIS.lowHealth;
+  if (a.energy >= 80) return IDLE_EMOJIS.highEnergy;
+  return IDLE_EMOJIS.default;
 };
 
 export const log = (

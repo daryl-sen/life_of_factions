@@ -75,23 +75,25 @@ export const FACTION_COLORS: readonly string[] = [
 ];
 
 export const AGENT_EMOJIS: Record<string, string> = {
-  idle: '🙂',
-  move: '🫨',
   talk: '😄',
   quarrel: '😤',
   attack: '😡',
   heal: '🤗',
   help: '🫢',
   reproduce: '😍',
-  harvest: '🌾',
-  build_farm: '🔨',
-  attack_flag: '⚔️',
+};
+
+export const IDLE_EMOJIS = {
+  lowEnergy: '🤤',
+  lowHealth: '🤕',
+  highEnergy: '😀',
+  default: '🙂',
 };
 
 export const WORLD_EMOJIS = {
   crops: ['🌿', '🌱', '🍀', '🌾', '🥕', '🍅', '🫛'],
-  farm: '🌻',
-  wall: '🧱',
+  farm: '🏡',
+  wall: '🪨',
   flag: '🚩',
 } as const;
 

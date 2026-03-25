@@ -305,7 +305,7 @@ export class UIManager {
 
     const actionType = a.action?.type;
     const emoji =
-      AGENT_EMOJIS[actionType as string] || (a.path ? AGENT_EMOJIS.move : getIdleEmoji(a));
+      AGENT_EMOJIS[actionType as string] || getIdleEmoji(a);
     const factionColor = a.factionId
       ? world.factions.get(a.factionId)?.color || '#888'
       : null;
