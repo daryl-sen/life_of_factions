@@ -70,17 +70,18 @@
     "#8d6e63"
   ];
   var AGENT_EMOJIS = {
-    idle: "\u{1F642}",
-    move: "\u{1FAE8}",
     talk: "\u{1F604}",
     quarrel: "\u{1F624}",
     attack: "\u{1F621}",
     heal: "\u{1F917}",
     help: "\u{1FAE2}",
-    reproduce: "\u{1F60D}",
-    harvest: "\u{1F33E}",
-    build_farm: "\u{1F528}",
-    attack_flag: "\u2694\uFE0F"
+    reproduce: "\u{1F60D}"
+  };
+  var IDLE_EMOJIS = {
+    lowEnergy: "\u{1F924}",
+    lowHealth: "\u{1F915}",
+    highEnergy: "\u{1F600}",
+    default: "\u{1F642}"
   };
   var WORLD_EMOJIS = {
     crops: ["\u{1F33F}", "\u{1F331}", "\u{1F340}", "\u{1F33E}", "\u{1F955}", "\u{1F345}", "\u{1FADB}"],
@@ -169,10 +170,10 @@
     }
   };
   var getIdleEmoji = (a) => {
-    if (a.energy <= 20) return "\u{1F924}";
-    if (a.health <= 30) return "\u{1F915}";
-    if (a.energy >= 80) return "\u{1F929}";
-    return "\u{1F642}";
+    if (a.energy <= 20) return IDLE_EMOJIS.lowEnergy;
+    if (a.health <= 30) return IDLE_EMOJIS.lowHealth;
+    if (a.energy >= 80) return IDLE_EMOJIS.highEnergy;
+    return IDLE_EMOJIS.default;
   };
   var log = (world, cat, msg, actorId = null, extra = {}) => {
     world.log.push({ t: performance.now(), cat, msg, actorId, extra });
@@ -541,14 +542,11 @@
         const y = ly * CELL;
         const col = agent.factionId ? world.factions.get(agent.factionId)?.color || "#fff" : "#6b7280";
         const actionType = agent.action?.type;
-        const emoji = AGENT_EMOJIS[actionType] || (agent.path ? AGENT_EMOJIS.move : getIdleEmoji(agent));
+        const emoji = AGENT_EMOJIS[actionType] || getIdleEmoji(agent);
         this._drawAgentEmoji(ctx, x, y, CELL / 2 - 3, col, emoji);
         const hpw = Math.max(0, Math.floor((CELL - 6) * (agent.health / agent.maxHealth)));
         ctx.fillStyle = COLORS.hp;
-        ctx.fillRect(x + 3, y + 1, hpw, 2);
-        if (agent.energy < TUNE.energyLowThreshold) {
-          this._drawLowEnergyIcon(ctx, x + CELL / 2, y - 8);
-        }
+        ctx.fillRect(x + 3, y - 4, hpw, 2);
         if (agent.action?.type === "attack" && agent.action.payload?.targetId) {
           const t2 = world.agentsById.get(agent.action.payload.targetId);
           if (t2) attackLines.push([agent, t2]);
@@ -592,20 +590,6 @@
       ctx.lineWidth = 1;
       ctx.fill();
       ctx.stroke();
-      ctx.restore();
-    }
-    _drawLowEnergyIcon(ctx, cx, topY) {
-      const w = 6, h = 4;
-      const x = Math.round(cx) - 10;
-      const y = Math.round(topY) - 2;
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + w, y);
-      ctx.lineTo(x + w / 2, y + h);
-      ctx.closePath();
-      ctx.fillStyle = "#ff6d7a";
-      ctx.fill();
       ctx.restore();
     }
     _drawAttackLines(ctx, camera, lines) {
@@ -849,7 +833,7 @@
       }
       if (badge) badge.style.display = "";
       const actionType = a.action?.type;
-      const emoji = AGENT_EMOJIS[actionType] || (a.path ? AGENT_EMOJIS.move : getIdleEmoji(a));
+      const emoji = AGENT_EMOJIS[actionType] || getIdleEmoji(a);
       const factionColor = a.factionId ? world.factions.get(a.factionId)?.color || "#888" : null;
       const hpPct = Math.round(a.health / a.maxHealth * 100);
       el.innerHTML = `

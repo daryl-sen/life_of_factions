@@ -1,4 +1,4 @@
-import { CELL, GRID, COLORS, TUNE, AGENT_EMOJIS, WORLD_EMOJIS } from '../../shared/constants';
+import { CELL, GRID, COLORS, AGENT_EMOJIS, WORLD_EMOJIS } from '../../shared/constants';
 import { getIdleEmoji } from '../../shared/utils';
 import type { World } from '../world';
 import type { Agent } from '../agent';
@@ -106,19 +106,14 @@ export class Renderer {
         ? world.factions.get(agent.factionId)?.color || '#fff'
         : '#6b7280';
       const actionType = agent.action?.type;
-      const emoji = AGENT_EMOJIS[actionType as string] || (agent.path ? AGENT_EMOJIS.move : getIdleEmoji(agent));
+      const emoji = AGENT_EMOJIS[actionType as string] || getIdleEmoji(agent);
 
       this._drawAgentEmoji(ctx, x, y, CELL / 2 - 3, col, emoji);
 
       // HP bar
       const hpw = Math.max(0, Math.floor((CELL - 6) * (agent.health / agent.maxHealth)));
       ctx.fillStyle = COLORS.hp;
-      ctx.fillRect(x + 3, y + 1, hpw, 2);
-
-      // Low energy icon
-      if (agent.energy < TUNE.energyLowThreshold) {
-        this._drawLowEnergyIcon(ctx, x + CELL / 2, y - 8);
-      }
+      ctx.fillRect(x + 3, y - 4, hpw, 2);
 
       // Collect attack lines
       if (agent.action?.type === 'attack' && agent.action.payload?.targetId) {
@@ -169,21 +164,6 @@ export class Renderer {
     ctx.lineWidth = 1;
     ctx.fill();
     ctx.stroke();
-    ctx.restore();
-  }
-
-  private _drawLowEnergyIcon(ctx: CanvasRenderingContext2D, cx: number, topY: number): void {
-    const w = 6, h = 4;
-    const x = Math.round(cx) - 10;
-    const y = Math.round(topY) - 2;
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + w, y);
-    ctx.lineTo(x + w / 2, y + h);
-    ctx.closePath();
-    ctx.fillStyle = '#ff6d7a';
-    ctx.fill();
     ctx.restore();
   }
 
