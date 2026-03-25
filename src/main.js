@@ -43,10 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function refreshCanvasSize() {
     setCanvasSize(canvas);
     const fit = fitScaleForCanvas(canvas);
-    const levels = [fit * 0.75, fit * 1.0, fit * 1.3, fit * 1.7, fit * 2.2];
-    camera._levels = levels.map((v) => clamp(v, 0.2, 6));
-    camera._levelIdx = 2;
-    camera.scale = camera._levels[camera._levelIdx];
+    camera.scale = clamp(fit, camera.min, camera.max);
     camera.x = (WORLD_PX - canvas.width / camera.scale) / 2;
     camera.y = (WORLD_PX - canvas.height / camera.scale) / 2;
     panBy(camera, 0, 0);
