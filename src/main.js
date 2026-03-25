@@ -3,7 +3,7 @@ import { clamp } from './utils.js';
 import { World } from './world.js';
 import { makeCamera, setCanvasSize, fitScaleForCanvas, panBy } from './camera.js';
 import { render } from './renderer.js';
-import { renderLog, bindDom, setupLogFilters, renderHUD, rebuildFactionsListIfNeeded, updateInspector } from './ui.js';
+import { renderLog, bindDom, setupLogFilters, renderHUD, rebuildFactionsListIfNeeded, updateInspector, showNotification } from './ui.js';
 import { setupInput } from './input.js';
 import { wireControls } from './controls.js';
 import { updateTick } from './simulation.js';
@@ -41,7 +41,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // Camera
   const camera = makeCamera();
   function refreshCanvasSize() {
-    setCanvasSize(canvas);
+    const { cw, ch } = setCanvasSize(canvas);
+    camera.viewW = cw;
+    camera.viewH = ch;
     const fit = fitScaleForCanvas(canvas);
     camera.scale = clamp(fit, camera.min, camera.max);
     camera.x = (WORLD_PX - canvas.width / camera.scale) / 2;
@@ -55,18 +57,38 @@ document.addEventListener("DOMContentLoaded", () => {
   setupInput(canvas, camera, world, dom);
   wireControls(world, dom, doRenderLog);
 
+  // Sidebar play button: start or resume/pause toggle
+  const sidebarPlay = document.getElementById("sidebarPlay");
+  if (sidebarPlay) {
+    sidebarPlay.addEventListener("click", () => {
+      if (!world.running && world.tick === 0) {
+        // Not started yet — click Start
+        dom.buttons.btnStart?.click();
+      } else if (!world.running) {
+        // Paused — resume
+        dom.buttons.btnResume?.click();
+      } else {
+        // Running — pause
+        dom.buttons.btnPause?.click();
+      }
+    });
+  }
+
   // Timer state
   let lastTs = 0,
     acc = 0,
     fps = 0,
     fpsAcc = 0,
     fpsCount = 0;
-  const statsWithFps = new Proxy(dom.statsEls, {
-    get(target, prop) {
-      if (prop === "fps") return fps;
-      return target[prop];
-    },
-  });
+  const statsWithFps = new Proxy(
+    { ...dom.statsEls, ...dom.barEls },
+    {
+      get(target, prop) {
+        if (prop === "fps") return fps;
+        return target[prop];
+      },
+    }
+  );
 
   // Pause on blur/hidden
   function pauseForBlur(reason) {
@@ -91,6 +113,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (document.hidden) pauseForBlur("tab hidden");
   });
 
+  // Track selected agent for notification
+  let lastSelectedId = null;
+
   // Periodic UI refresh
   setInterval(() => {
     updateInspector(world, dom.inspector);
@@ -103,6 +128,13 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
     rebuildFactionsListIfNeeded(world, factionsList);
+
+    // Show notification when agent is newly selected
+    if (world.selectedId && world.selectedId !== lastSelectedId) {
+      const agent = world.agentsById.get(world.selectedId);
+      if (agent) showNotification(agent);
+    }
+    lastSelectedId = world.selectedId;
   }, 400);
 
   // Game loop

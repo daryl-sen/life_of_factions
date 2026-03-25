@@ -1,8 +1,8 @@
 import { TUNE } from './constants.js';
-import { generatePronounceableString, key } from './utils.js';
+import { generatePronounceableString, key, uuid } from './utils.js';
 
 export function addAgentAt(world, x, y) {
-  const id = crypto.randomUUID();
+  const id = uuid();
   const rp = Math.random();
   const pref = rp < 1 / 3 ? "near" : rp < 2 / 3 ? "far" : "wander";
   const a = {

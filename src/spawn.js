@@ -1,5 +1,5 @@
 import { GRID, TUNE, WORLD_EMOJIS } from './constants.js';
-import { key, rndi, log } from './utils.js';
+import { key, rndi, log, uuid } from './utils.js';
 
 function randomCropEmoji() {
   return WORLD_EMOJIS.crops[Math.floor(Math.random() * WORLD_EMOJIS.crops.length)];
@@ -15,7 +15,7 @@ export function addCrop(world, x, y) {
     world.flagCells.has(k)
   )
     return false;
-  world.crops.set(k, { id: crypto.randomUUID(), x, y, emoji: randomCropEmoji() });
+  world.crops.set(k, { id: uuid(), x, y, emoji: randomCropEmoji() });
   log(world, "spawn", `crop @${x},${y}`, null, { x, y });
   return true;
 }
@@ -44,6 +44,6 @@ export function maybeSpawnCrops(world) {
         prob *= 1 + (TUNE.farmBoostRadius - d + 1) * 0.6;
     }
     if (Math.random() < prob)
-      world.crops.set(k, { id: crypto.randomUUID(), x, y, emoji: randomCropEmoji() });
+      world.crops.set(k, { id: uuid(), x, y, emoji: randomCropEmoji() });
   }
 }

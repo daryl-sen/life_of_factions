@@ -20,7 +20,7 @@ export class World {
     this.spawnMult = 1;
     this.running = false;
     this.selectedId = null;
-    this.pauseOnBlur = true;
+    this.pauseOnBlur = false;
     this._lastFactionsDomAt = 0;
     this._lastAgentCount = 0;
     this._rebuildAgentOptions = null;
@@ -34,6 +34,6 @@ export class World {
     this.foodField = new Uint16Array(GRID * GRID);
     this.foodField.fill(0xffff);
     this._foodFieldTick = -1;
-    this.drawGrid = true;
+    this.drawGrid = false;
   }
 }

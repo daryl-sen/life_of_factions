@@ -1,5 +1,5 @@
 import { FACTION_COLORS, TUNE } from './constants.js';
-import { generatePronounceableString, key, rndi, log } from './utils.js';
+import { generatePronounceableString, key, rndi, log, uuid } from './utils.js';
 import { isBlocked, randomFreeCell } from './spatial.js';
 
 function _nextFactionColor(world) {
@@ -19,7 +19,7 @@ function _placeFlag(world, fid, members) {
   let spot = { x: cx, y: cy };
   if (isBlocked(world, cx, cy)) spot = randomFreeCell(world);
   world.flags.set(fid, {
-    id: crypto.randomUUID(),
+    id: uuid(),
     factionId: fid,
     x: spot.x,
     y: spot.y,

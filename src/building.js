@@ -1,5 +1,5 @@
 import { TUNE } from './constants.js';
-import { key, rndi, log } from './utils.js';
+import { key, rndi, log, uuid } from './utils.js';
 import { isBlocked } from './spatial.js';
 
 export function tryBuildFarm(world, a) {
@@ -16,7 +16,7 @@ export function tryBuildFarm(world, a) {
   );
   if (!free.length) return;
   const [x, y] = free[rndi(0, free.length - 1)];
-  world.farms.set(key(x, y), { id: crypto.randomUUID(), x, y });
+  world.farms.set(key(x, y), { id: uuid(), x, y });
   a.energy -= TUNE.farmEnergyCost;
   log(world, "build", `${a.name} built farm`, a.id, { x, y });
 }
