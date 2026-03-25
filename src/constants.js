@@ -67,6 +67,25 @@ export const FACTION_COLORS = [
   "#ec407a",
   "#8d6e63",
 ];
+export const AGENT_EMOJIS = {
+  idle: "🙂",
+  move: "🫨",
+  talk: "😄",
+  quarrel: "😤",
+  attack: "😡",
+  heal: "🤗",
+  help: "🫢",
+  reproduce: "😍",
+  harvest: "🌾",
+  build_farm: "🔨",
+  attack_flag: "⚔️",
+};
+export const WORLD_EMOJIS = {
+  crops: ["🌿", "🌱", "🍀", "🌾", "🥕", "🍅", "🫛"],
+  farm: "🌻",
+  wall: "🧱",
+  flag: "🚩",
+};
 export const LOG_CATS = [
   "talk",
   "quarrel",
