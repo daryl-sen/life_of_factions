@@ -1,5 +1,5 @@
 import { CELL, GRID } from './constants.js';
-import { key, clamp, log } from './utils.js';
+import { key, log } from './utils.js';
 import { screenToWorld, zoomAt, panBy } from './camera.js';
 import { qs, updateInspector } from './ui.js';
 
@@ -107,26 +107,99 @@ export function setupInput(canvas, camera, world, dom) {
     lastPaintKey = null;
   });
 
-  // Wheel zoom
+  // Wheel: trackpad 2-finger scroll → pan, pinch/Ctrl+wheel → zoom
   canvas.addEventListener(
     "wheel",
     (e) => {
+      e.preventDefault();
       const rect = canvas.getBoundingClientRect();
       const sx = (e.clientX - rect.left) * (canvas.width / rect.width);
       const sy = (e.clientY - rect.top) * (canvas.height / rect.height);
-      const dir = e.deltaY < 0 ? 1 : -1;
-      camera._levelIdx = clamp(
-        camera._levelIdx + dir,
-        0,
-        camera._levels.length - 1
-      );
-      const target = camera._levels[camera._levelIdx];
-      const ratio = target / camera.scale;
-      zoomAt(camera, sx, sy, ratio);
-      e.preventDefault();
+
+      // Normalize deltaMode (line/page → pixels)
+      let dx = e.deltaX;
+      let dy = e.deltaY;
+      if (e.deltaMode === 1) { dx *= 16; dy *= 16; }
+      if (e.deltaMode === 2) { dx *= 100; dy *= 100; }
+
+      if (e.ctrlKey || e.metaKey) {
+        // Pinch-to-zoom (trackpad) or Ctrl+scroll (mouse) → zoom
+        const factor = Math.pow(2, -dy * 0.01);
+        zoomAt(camera, sx, sy, factor);
+      } else {
+        // Two-finger scroll (trackpad) or mouse wheel → pan
+        panBy(camera, dx, dy);
+      }
     },
     { passive: false }
   );
+
+  // Touch: pinch-to-zoom and two-finger pan for mobile
+  let lastTouchDist = 0;
+  let lastTouchCenter = null;
+  let touchStartPositions = new Map();
+
+  canvas.addEventListener("touchstart", (e) => {
+    for (const t of e.changedTouches) {
+      touchStartPositions.set(t.identifier, { x: t.clientX, y: t.clientY });
+    }
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const [t1, t2] = e.touches;
+      lastTouchDist = Math.hypot(
+        t2.clientX - t1.clientX,
+        t2.clientY - t1.clientY
+      );
+      lastTouchCenter = {
+        x: (t1.clientX + t2.clientX) / 2,
+        y: (t1.clientY + t2.clientY) / 2,
+      };
+    }
+  }, { passive: false });
+
+  canvas.addEventListener("touchmove", (e) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const [t1, t2] = e.touches;
+      const dist = Math.hypot(
+        t2.clientX - t1.clientX,
+        t2.clientY - t1.clientY
+      );
+      const center = {
+        x: (t1.clientX + t2.clientX) / 2,
+        y: (t1.clientY + t2.clientY) / 2,
+      };
+
+      // Pinch zoom
+      if (lastTouchDist > 0) {
+        const factor = dist / lastTouchDist;
+        const rect = canvas.getBoundingClientRect();
+        const zx = (center.x - rect.left) * (canvas.width / rect.width);
+        const zy = (center.y - rect.top) * (canvas.height / rect.height);
+        zoomAt(camera, zx, zy, factor);
+      }
+
+      // Two-finger pan
+      if (lastTouchCenter) {
+        const dx = center.x - lastTouchCenter.x;
+        const dy = center.y - lastTouchCenter.y;
+        panBy(camera, -dx, -dy);
+      }
+
+      lastTouchDist = dist;
+      lastTouchCenter = center;
+    }
+  }, { passive: false });
+
+  canvas.addEventListener("touchend", (e) => {
+    for (const t of e.changedTouches) {
+      touchStartPositions.delete(t.identifier);
+    }
+    if (e.touches.length < 2) {
+      lastTouchDist = 0;
+      lastTouchCenter = null;
+    }
+  });
 
   // NavPad buttons
   const stepWorld = CELL * 6;
@@ -145,24 +218,8 @@ export function setupInput(canvas, camera, world, dom) {
   qs("#btnPanRight")?.addEventListener("click", () =>
     panBy(camera, stepWorld * camera.scale, 0)
   );
-  qs("#btnZoomIn")?.addEventListener("click", () => {
-    camera._levelIdx = clamp(
-      (camera._levelIdx ?? 2) + 1,
-      0,
-      (camera._levels?.length || 1) - 1
-    );
-    const target = camera._levels[camera._levelIdx];
-    zoomCenter(target / camera.scale);
-  });
-  qs("#btnZoomOut")?.addEventListener("click", () => {
-    camera._levelIdx = clamp(
-      (camera._levelIdx ?? 2) - 1,
-      0,
-      (camera._levels?.length || 1) - 1
-    );
-    const target = camera._levels[camera._levelIdx];
-    zoomCenter(target / camera.scale);
-  });
+  qs("#btnZoomIn")?.addEventListener("click", () => zoomCenter(1.3));
+  qs("#btnZoomOut")?.addEventListener("click", () => zoomCenter(1 / 1.3));
 
   // Agent selection
   canvas.addEventListener("click", (e) => {
