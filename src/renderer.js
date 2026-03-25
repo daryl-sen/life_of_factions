@@ -1,4 +1,5 @@
 import { CELL, GRID, COLORS, TUNE, AGENT_EMOJIS, WORLD_EMOJIS } from './constants.js';
+import { getIdleEmoji } from './utils.js';
 
 const emojiCache = new Map();
 
@@ -215,7 +216,7 @@ export function render(world, ctx, canvas, camera) {
       ? world.factions.get(a.factionId)?.color || "#fff"
       : "#6b7280";
     const actionType = a.action?.type;
-    const emoji = AGENT_EMOJIS[actionType] || (a.path ? AGENT_EMOJIS.move : AGENT_EMOJIS.idle);
+    const emoji = AGENT_EMOJIS[actionType] || (a.path ? AGENT_EMOJIS.move : getIdleEmoji(a));
     drawAgentEmoji(ctx, x, y, CELL / 2 - 3, col, emoji);
     const hpw = Math.max(
       0,

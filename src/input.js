@@ -1,7 +1,7 @@
 import { CELL, GRID } from './constants.js';
-import { key, log } from './utils.js';
+import { key, log, uuid } from './utils.js';
 import { screenToWorld, zoomAt, panBy } from './camera.js';
-import { qs, updateInspector } from './ui.js';
+import { updateInspector } from './ui.js';
 
 export function setupInput(canvas, camera, world, dom) {
   // Paint mode buttons
@@ -44,10 +44,7 @@ export function setupInput(canvas, camera, world, dom) {
         !world.crops.has(k) &&
         !world.agentsByCell.has(k)
       ) {
-        const id =
-          typeof crypto !== "undefined" && crypto.randomUUID
-            ? crypto.randomUUID()
-            : "w_" + Math.random().toString(36).slice(2);
+        const id = uuid();
         world.walls.set(k, { id, x, y, hp: 12, maxHp: 12 });
         if (typeof log === "function")
           try {
@@ -200,26 +197,6 @@ export function setupInput(canvas, camera, world, dom) {
       lastTouchCenter = null;
     }
   });
-
-  // NavPad buttons
-  const stepWorld = CELL * 6;
-  function zoomCenter(factor) {
-    zoomAt(camera, canvas.width / 2, canvas.height / 2, factor);
-  }
-  qs("#btnPanUp")?.addEventListener("click", () =>
-    panBy(camera, 0, -stepWorld * camera.scale)
-  );
-  qs("#btnPanDown")?.addEventListener("click", () =>
-    panBy(camera, 0, stepWorld * camera.scale)
-  );
-  qs("#btnPanLeft")?.addEventListener("click", () =>
-    panBy(camera, -stepWorld * camera.scale, 0)
-  );
-  qs("#btnPanRight")?.addEventListener("click", () =>
-    panBy(camera, stepWorld * camera.scale, 0)
-  );
-  qs("#btnZoomIn")?.addEventListener("click", () => zoomCenter(1.3));
-  qs("#btnZoomOut")?.addEventListener("click", () => zoomCenter(1 / 1.3));
 
   // Agent selection
   canvas.addEventListener("click", (e) => {

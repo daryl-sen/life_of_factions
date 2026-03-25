@@ -1,4 +1,4 @@
-import { key, rndi } from './utils.js';
+import { key, rndi, uuid } from './utils.js';
 import { randomFreeCell } from './spatial.js';
 import { addAgentAt } from './agent.js';
 import { addCrop } from './spawn.js';
@@ -9,7 +9,7 @@ function seedEnvironment(world) {
   for (let i = 0; i < 4; i++) {
     const x = rndi(5, 56),
       y = rndi(5, 56);
-    world.farms.set(key(x, y), { id: crypto.randomUUID(), x, y });
+    world.farms.set(key(x, y), { id: uuid(), x, y });
   }
 }
 

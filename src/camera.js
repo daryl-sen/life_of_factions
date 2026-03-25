@@ -7,13 +7,14 @@ export function makeCamera() {
 
 export function setCanvasSize(canvas) {
   const dpr = Math.max(1, window.devicePixelRatio || 1);
-  const w = Math.floor(window.innerWidth * dpr);
-  const h = Math.floor(window.innerHeight * dpr);
+  const style = getComputedStyle(canvas);
+  const cw = parseFloat(style.width) || window.innerWidth;
+  const ch = parseFloat(style.height) || window.innerHeight;
+  const w = Math.floor(cw * dpr);
+  const h = Math.floor(ch * dpr);
   canvas.width = w;
   canvas.height = h;
-  canvas.style.width = "100vw";
-  canvas.style.height = "100vh";
-  return { w, h, dpr };
+  return { w, h, dpr, cw, ch };
 }
 
 export function fitScaleForCanvas(canvas) {
@@ -36,14 +37,8 @@ export function panBy(camera, dx, dy) {
   camera.x += dx / camera.scale;
   camera.y += dy / camera.scale;
   const slack = 40;
-  camera.x = clamp(
-    camera.x,
-    -slack,
-    WORLD_PX + slack - window.innerWidth / camera.scale
-  );
-  camera.y = clamp(
-    camera.y,
-    -slack,
-    WORLD_PX + slack - window.innerHeight / camera.scale
-  );
+  const vw = camera.viewW || window.innerWidth;
+  const vh = camera.viewH || window.innerHeight;
+  camera.x = clamp(camera.x, -slack, WORLD_PX + slack - vw / camera.scale);
+  camera.y = clamp(camera.y, -slack, WORLD_PX + slack - vh / camera.scale);
 }

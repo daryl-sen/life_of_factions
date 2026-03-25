@@ -7,6 +7,10 @@ export const fromKey = (k) => {
   return { x, y };
 };
 export const manhattan = (ax, ay, bx, by) => Math.abs(ax - bx) + Math.abs(ay - by);
+export const uuid = () =>
+  (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : 'x_' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 export const generatePronounceableString = (length) => {
   const consonants = "BCDFGHJKLMNPQRSTVWXYZ";
   const vowels = "AEIOU";
@@ -53,6 +57,12 @@ export class RingLog {
     });
   }
 }
+export const getIdleEmoji = (a) => {
+  if (a.energy <= 20) return "🤤";
+  if (a.health <= 30) return "🤕";
+  if (a.energy >= 80) return "🤩";
+  return "🙂";
+};
 export const log = (world, cat, msg, actorId = null, extra = {}) => {
   world.log.push({ t: performance.now(), cat, msg, actorId, extra });
 };
