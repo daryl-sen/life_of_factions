@@ -466,7 +466,6 @@ export class UIManager {
         <div style="color:var(--muted)">ATTACK</div><div>${a.attack.toFixed(1)}</div>
         <div style="color:var(--muted)">XP</div><div>${a.xp} / ${a.xpToNextLevel()}</div>
         <div style="color:var(--muted)">AGE</div><div>${a.ageTicks} ticks</div>
-        <div style="color:var(--muted)">TRAVEL</div><div>${a.travelPref}</div>
         <div style="color:var(--muted)">SOCIAL</div><div>${a.social.toFixed(0)}</div>
         <div style="color:var(--muted)">INSPIRATION</div><div>${a.inspiration.toFixed(0)}</div>
       </div>`;

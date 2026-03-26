@@ -43,7 +43,6 @@ export class PersistenceManager {
           }
         : null,
       lockMsRemaining: a.lockMsRemaining,
-      travelPref: a.travelPref,
       aggression: a.aggression,
       cooperation: a.cooperation,
       fullness: a.fullness,
@@ -260,7 +259,6 @@ export class PersistenceManager {
         pathIdx: a.pathIdx || 0,
         action,
         lockMsRemaining: a.lockMsRemaining || 0,
-        travelPref: a.travelPref || 'near',
         aggression: a.aggression ?? Math.random(),
         cooperation: a.cooperation ?? Math.random(),
         fullness: a.fullness ?? TUNE.fullness.start,

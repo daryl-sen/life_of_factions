@@ -3,8 +3,6 @@ export interface IPosition {
   readonly y: number;
 }
 
-export type TravelPref = 'near' | 'far' | 'wander';
-
 export type ActionType =
   | 'talk'
   | 'quarrel'

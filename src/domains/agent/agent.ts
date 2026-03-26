@@ -1,4 +1,4 @@
-import type { IActionState, IInventory, IPosition, TravelPref } from '../../shared/types';
+import type { IActionState, IInventory, IPosition } from '../../shared/types';
 import { TUNE } from '../../shared/constants';
 import { RelationshipMap } from './relationships';
 
@@ -23,7 +23,6 @@ export class Agent {
   pathIdx: number;
   action: IActionState | null;
   lockMsRemaining: number;
-  travelPref: TravelPref;
   aggression: number;
   cooperation: number;
   replanAtTick: number;
@@ -60,7 +59,6 @@ export class Agent {
     pathIdx?: number;
     action?: IActionState | null;
     lockMsRemaining?: number;
-    travelPref?: TravelPref;
     aggression?: number;
     cooperation?: number;
     replanAtTick?: number;
@@ -94,7 +92,6 @@ export class Agent {
     this.pathIdx = opts.pathIdx ?? 0;
     this.action = opts.action ?? null;
     this.lockMsRemaining = opts.lockMsRemaining ?? 0;
-    this.travelPref = opts.travelPref ?? 'near';
     this.aggression = opts.aggression ?? Math.random();
     this.cooperation = opts.cooperation ?? Math.random();
     this.replanAtTick = opts.replanAtTick ?? 0;
