@@ -49,7 +49,7 @@ export class World {
   _nextCloudSpawnMs = 0;
 
   // Convenience accessors that delegate to grid
-  get walls() { return this.grid.walls; }
+  get obstacles() { return this.grid.obstacles; }
   get foodBlocks() { return this.grid.foodBlocks; }
   /** @deprecated Use foodBlocks */
   get crops() { return this.grid.foodBlocks; }

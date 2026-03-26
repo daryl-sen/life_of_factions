@@ -211,8 +211,8 @@ export const COLORS = {
   agentFill: '#e6e9ff',
   crop: '#3adf7e',
   farm: '#edd65a',
-  wall: '#9aa2d6',
-  wallDam: '#ff7b8b',
+  obstacle: '#9aa2d6',
+  obstacleDam: '#ff7b8b',
   flagPole: '#c7c7d2',
   hp: '#60e6a8',
   energy: '#7bdcff',
@@ -265,9 +265,11 @@ export const FOOD_EMOJIS = {
   lq: ['🌿', '🥬', '🥦', '🍀'],
 } as const;
 
+export const OBSTACLE_EMOJIS = ['🪨', '⛰️', '🗻', '🏔️', '🪵'] as const;
+
 export const WORLD_EMOJIS = {
   farm: '🏡',
-  wall: '🪨',
+  obstacle: '🪨',
   flag: '🚩',
   water: '💦',
   cloud: '🌧️',

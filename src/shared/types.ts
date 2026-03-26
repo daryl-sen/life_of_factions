@@ -93,10 +93,11 @@ export interface IFarm {
   spawnTimerMs: number;
 }
 
-export interface IWall {
+export interface IObstacle {
   id: string;
   x: number;
   y: number;
+  emoji: string;
   hp: number;
   maxHp: number;
 }

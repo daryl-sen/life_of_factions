@@ -1,10 +1,10 @@
 import { GRID } from '../../shared/constants';
 import { key } from '../../shared/utils';
-import type { IFoodBlock, IFarm, IWall, IFlag, IWaterBlock, ITreeBlock, ISeedling, ILootBag, IPoopBlock } from '../../shared/types';
+import type { IFoodBlock, IFarm, IObstacle, IFlag, IWaterBlock, ITreeBlock, ISeedling, ILootBag, IPoopBlock } from '../../shared/types';
 
 export class Grid {
   readonly size: number = GRID;
-  readonly walls: Map<string, IWall> = new Map();
+  readonly obstacles: Map<string, IObstacle> = new Map();
   readonly foodBlocks: Map<string, IFoodBlock> = new Map();
   readonly farms: Map<string, IFarm> = new Map();
   readonly flags: Map<string, IFlag> = new Map();
@@ -19,7 +19,7 @@ export class Grid {
   isBlocked(x: number, y: number, ignoreId: string | null = null): boolean {
     if (x < 0 || y < 0 || x >= this.size || y >= this.size) return true;
     const k = key(x, y);
-    if (this.walls.has(k)) return true;
+    if (this.obstacles.has(k)) return true;
     if (this.farms.has(k)) return true;
     if (this.flagCells.has(k)) return true;
     if (this.waterBlocks.has(k)) return true;
@@ -34,7 +34,7 @@ export class Grid {
     if (x < 0 || y < 0 || x >= this.size || y >= this.size) return true;
     const k = key(x, y);
     return (
-      this.walls.has(k) ||
+      this.obstacles.has(k) ||
       this.farms.has(k) ||
       this.flagCells.has(k) ||
       this.foodBlocks.has(k) ||
@@ -56,7 +56,7 @@ export class Grid {
   }
 
   clear(): void {
-    this.walls.clear();
+    this.obstacles.clear();
     this.foodBlocks.clear();
     this.farms.clear();
     this.flags.clear();
