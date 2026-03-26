@@ -226,12 +226,14 @@ export class Renderer {
       } else if (actionType === 'harvest') {
         offY = -Math.abs(Math.sin(now * 0.007)) * 3;
       } else if (actionType === 'poop') {
-        const totalEst = 1500;
-        if (rem > 350) {
-          const prog = Math.min(1, Math.max(0, (totalEst - rem) / (totalEst - 350)));
-          sy = 1 - 0.38 * prog;
+        const elapsed = now - (agent.action!.startedAtMs ?? now);
+        const progress = Math.min(1, elapsed / (agent.action!.totalMs || 1500));
+        if (progress < 0.7) {
+          const eased = Math.sin((progress / 0.7) * Math.PI / 2);
+          sy = 1 - 0.38 * eased;
         } else {
-          sy = 0.62 + 0.38 * (1 - rem / 350);
+          const eased = Math.sin(((progress - 0.7) / 0.3) * Math.PI / 2);
+          sy = 0.62 + 0.38 * eased;
         }
         offY = (1 - sy) * (CELL / 2); // anchor to bottom
       } else if (actionType === 'share') {
@@ -385,15 +387,48 @@ export class Renderer {
   }
 
   private _drawClouds(ctx: CanvasRenderingContext2D, world: World, _camera: Camera): void {
+    const now = performance.now();
     for (const cloud of world.clouds) {
-      const fadeRatio = Math.max(0, cloud.lifetimeMs / 5000);
-      ctx.globalAlpha = Math.min(0.7, fadeRatio);
-      this._drawCellEmoji(ctx, cloud.x, cloud.y, WORLD_EMOJIS.cloud, CELL * 2);
-      ctx.globalAlpha = Math.min(0.45, fadeRatio * 0.65);
-      this._drawCellEmoji(ctx, cloud.x - 1, cloud.y, WORLD_EMOJIS.cloud, CELL * 1.6);
-      this._drawCellEmoji(ctx, cloud.x + 1, cloud.y - 1, WORLD_EMOJIS.cloud, CELL * 1.6);
+      const total = cloud.totalLifetimeMs || 7500;
+      const progress = Math.min(1, (now - cloud.spawnedAtMs) / total);
+
+      // Fade in during first 25%, full opacity in middle, fade out during last 25%
+      let alpha: number;
+      if (progress < 0.25) alpha = progress / 0.25;
+      else if (progress < 0.75) alpha = 1;
+      else alpha = (1 - progress) / 0.25;
+
+      // Analytically compute x displacement: fast → slow (rain) → fast
+      // Phase 1 (0–0.35): 40% of drift, Phase 2 (0.35–0.65): 20%, Phase 3 (0.65–1): 40%
+      const totalDrift = cloud.decorative ? 4 : 3;
+      let xDisp: number;
+      if (progress <= 0.35) {
+        xDisp = (progress / 0.35) * 0.40 * totalDrift;
+      } else if (progress <= 0.65) {
+        xDisp = 0.40 * totalDrift + ((progress - 0.35) / 0.30) * 0.20 * totalDrift;
+      } else {
+        xDisp = 0.60 * totalDrift + ((progress - 0.65) / 0.35) * 0.40 * totalDrift;
+      }
+      const xF = cloud.x + xDisp;
+
+      const maxAlpha = cloud.decorative ? 0.4 : 0.7;
+      ctx.globalAlpha = Math.max(0, alpha) * maxAlpha;
+      this._drawCloudAt(ctx, xF, cloud.y, CELL * 2);
+      ctx.globalAlpha = Math.max(0, alpha) * maxAlpha * 0.6;
+      this._drawCloudAt(ctx, xF - 1, cloud.y, CELL * 1.6);
+      this._drawCloudAt(ctx, xF + 1, cloud.y - 1, CELL * 1.6);
       ctx.globalAlpha = 1;
     }
+  }
+
+  private _drawCloudAt(ctx: CanvasRenderingContext2D, xF: number, y: number, size: number): void {
+    const { canvas: ec, w, h } = this._emojiCache.get(WORLD_EMOJIS.cloud);
+    const scale = Math.min(size / w, size / h);
+    const dw = w * scale;
+    const dh = h * scale;
+    const px = xF * CELL;
+    const py = y * CELL;
+    ctx.drawImage(ec, px + (CELL - dw) / 2, py + (CELL - dh) / 2, dw, dh);
   }
 
   private _drawSelectedAgentPath(ctx: CanvasRenderingContext2D, world: World): void {

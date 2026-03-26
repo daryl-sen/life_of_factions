@@ -50,6 +50,8 @@ export interface IActionState {
   remainingMs: number;
   tickCounterMs: number;
   payload: IActionPayload | null;
+  startedAtMs: number;
+  totalMs: number;
 }
 
 export interface IActionPayload {
@@ -161,9 +163,12 @@ export interface ICloud {
   id: string;
   x: number;
   y: number;
+  xF: number;             // float visual x position in grid units
   spawnedAtMs: number;
   lifetimeMs: number;
+  totalLifetimeMs: number;
   rained: boolean;
+  decorative?: boolean;
 }
 
 export interface IPoopBlock {

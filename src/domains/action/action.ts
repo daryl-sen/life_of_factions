@@ -12,22 +12,28 @@ export class ActionFactory {
   static create(type: ActionType, payload: IActionPayload | null = null, inspiration = 50): IActionState {
     const [mn, mx] = ACTION_DURATIONS[type];
     const mult = ActionFactory.inspirationMultiplier(inspiration);
+    const totalMs = Math.round(rndi(mn, mx) * mult);
     return {
       type,
-      remainingMs: Math.round(rndi(mn, mx) * mult),
+      remainingMs: totalMs,
       tickCounterMs: 0,
       payload,
+      startedAtMs: performance.now(),
+      totalMs,
     };
   }
 
   static createHarvest(resourceType: string, targetPos: { x: number; y: number }, inspiration = 50): IActionState {
     const dur = TUNE.harvest.duration[resourceType] ?? 1000;
     const mult = ActionFactory.inspirationMultiplier(inspiration);
+    const totalMs = Math.round(dur * mult);
     return {
       type: 'harvest',
-      remainingMs: Math.round(dur * mult),
+      remainingMs: totalMs,
       tickCounterMs: 0,
       payload: { targetPos, resourceType },
+      startedAtMs: performance.now(),
+      totalMs,
     };
   }
 

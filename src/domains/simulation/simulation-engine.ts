@@ -359,7 +359,7 @@ export class SimulationEngine {
     // Scale: when coverage is 0, rate multiplier is ~3x; when at target, ~1x; when 2x target, ~0.2x
     const dynamicMultiplier = Math.max(0.1, Math.min(4, (target / Math.max(0.001, currentCoverage))));
 
-    // Spawn new cloud (rate-adjusted by both slider and dynamic multiplier)
+    // Spawn new rain cloud (rate-adjusted by both slider and dynamic multiplier)
     if (world.cloudSpawnRate > 0) {
       world._nextCloudSpawnMs -= BASE_TICK_MS;
       if (world._nextCloudSpawnMs <= 0) {
@@ -367,9 +367,10 @@ export class SimulationEngine {
         const y = rndi(0, GRID - 1);
         const lifetime = rndi(TUNE.cloud.lifetimeRange[0], TUNE.cloud.lifetimeRange[1]);
         world.clouds.push({
-          id: uuid(), x, y,
+          id: uuid(), x, y, xF: x,
           spawnedAtMs: performance.now(),
           lifetimeMs: lifetime,
+          totalLifetimeMs: lifetime,
           rained: false,
         });
         const baseInterval = rndi(TUNE.cloud.spawnIntervalRange[0], TUNE.cloud.spawnIntervalRange[1]);
@@ -377,19 +378,43 @@ export class SimulationEngine {
       }
     }
 
+    // Randomly spawn decorative (non-raining) clouds
+    if (Math.random() < 0.004) {
+      const x = rndi(-2, GRID - 1);
+      const y = rndi(0, GRID - 1);
+      const lifetime = rndi(15000, 28000);
+      world.clouds.push({
+        id: uuid(), x, y, xF: x,
+        spawnedAtMs: performance.now(),
+        lifetimeMs: lifetime,
+        totalLifetimeMs: lifetime,
+        rained: true,
+        decorative: true,
+      });
+    }
+
     // Update existing clouds
     const remaining: typeof world.clouds = [];
     for (const cloud of world.clouds) {
       cloud.lifetimeMs -= BASE_TICK_MS;
 
-      // Rain at mid-life
-      if (!cloud.rained && cloud.lifetimeMs < (rndi(TUNE.cloud.lifetimeRange[0], TUNE.cloud.lifetimeRange[1]) * 0.5)) {
+      // Drift speed based on lifecycle phase
+      const progress = 1 - cloud.lifetimeMs / cloud.totalLifetimeMs;
+      let speed: number;
+      if (progress < 0.35 || progress > 0.65) {
+        speed = cloud.decorative ? 0.04 : 0.05; // fast phase
+      } else {
+        speed = cloud.decorative ? 0.025 : 0.004; // slow (rain) phase
+      }
+      cloud.xF = (cloud.xF ?? cloud.x) + speed;
+
+      // Rain at mid-life (rain clouds only)
+      if (!cloud.rained && cloud.lifetimeMs < (cloud.totalLifetimeMs * 0.5)) {
         cloud.rained = true;
         const isLarge = Math.random() >= TUNE.cloud.smallChance;
         const size = isLarge ? 'large' as const : 'small' as const;
-        // Try to spawn near cloud position
         for (let attempt = 0; attempt < 20; attempt++) {
-          const rx = cloud.x + rndi(-3, 3);
+          const rx = Math.round(cloud.xF) + rndi(-3, 3);
           const ry = cloud.y + rndi(-3, 3);
           if (SimulationEngine.spawnWaterBlock(world, rx, ry, size)) break;
         }
