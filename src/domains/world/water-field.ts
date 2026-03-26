@@ -6,11 +6,13 @@ const WF_INF = 0xffff;
 const wfIdx = (x: number, y: number): number => y * GRID + x;
 
 export class WaterField {
-  readonly data: Uint16Array;
+  data: Uint16Array;
   private _lastTick = -1;
+  private _allocSize = 0;
 
   constructor() {
     const N = GRID * GRID;
+    this._allocSize = N;
     this.data = new Uint16Array(N);
     this.data.fill(WF_INF);
   }
@@ -21,6 +23,10 @@ export class WaterField {
 
   recompute(grid: Grid, tick: number): void {
     const N = GRID * GRID;
+    if (N !== this._allocSize) {
+      this._allocSize = N;
+      this.data = new Uint16Array(N);
+    }
     this.data.fill(WF_INF);
     if (grid.waterBlocks.size === 0) {
       this._lastTick = tick;

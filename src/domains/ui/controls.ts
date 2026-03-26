@@ -1,5 +1,5 @@
 import { key, rndi, uuid } from '../../shared/utils';
-import { GRID, LOG_CATS, OBSTACLE_EMOJIS, TUNE } from '../../shared/constants';
+import { GRID, LOG_CATS, OBSTACLE_EMOJIS, TUNE, setGridSize } from '../../shared/constants';
 import { RingLog } from '../../shared/utils';
 import type { World } from '../world';
 import { AgentFactory } from '../agent';
@@ -10,8 +10,8 @@ import { UIManager } from './ui-manager';
 
 function seedEnvironment(world: World): void {
   for (let i = 0; i < 4; i++) {
-    const x = rndi(5, 56);
-    const y = rndi(5, 56);
+    const x = rndi(5, GRID - 6);
+    const y = rndi(5, GRID - 6);
     world.farms.set(key(x, y), { id: uuid(), x, y });
   }
   // Scatter random obstacles
@@ -27,7 +27,7 @@ function seedEnvironment(world: World): void {
 }
 
 export class Controls {
-  static wire(world: World, dom: DomRefs, doRenderLog: () => void): void {
+  static wire(world: World, dom: DomRefs, doRenderLog: () => void, onWorldResize?: () => void): void {
     const { buttons, ranges, labels, nums } = dom;
 
     function spawnAgents(n: number): void {
@@ -49,10 +49,15 @@ export class Controls {
       if (nums.numSpeed) nums.numSpeed.value = ranges.rngSpeed!.value;
       world.speedPct = Number(ranges.rngSpeed!.value);
     });
-    ranges.rngSpawn?.addEventListener('input', () => {
-      if (labels.lblSpawn) labels.lblSpawn.textContent = Number(ranges.rngSpawn!.value).toFixed(1) + '\u00d7';
-      if (nums.numSpawn) nums.numSpawn.value = ranges.rngSpawn!.value;
-      world.spawnMult = Number(ranges.rngSpawn!.value);
+    ranges.rngCloudRate?.addEventListener('input', () => {
+      if (labels.lblCloudRate) labels.lblCloudRate.textContent = Number(ranges.rngCloudRate!.value).toFixed(1) + '\u00d7';
+      if (nums.numCloudRate) nums.numCloudRate.value = ranges.rngCloudRate!.value;
+      world.cloudSpawnRate = Number(ranges.rngCloudRate!.value);
+    });
+    ranges.rngWorldSize?.addEventListener('input', () => {
+      const v = Number(ranges.rngWorldSize!.value);
+      if (labels.lblWorldSize) labels.lblWorldSize.textContent = v + '\u00d7' + v;
+      if (nums.numWorldSize) nums.numWorldSize.value = ranges.rngWorldSize!.value;
     });
     nums.numAgents?.addEventListener('input', () => {
       const v = $clamp(Number(nums.numAgents!.value), 20, 300);
@@ -67,12 +72,18 @@ export class Controls {
       if (labels.lblSpeed) labels.lblSpeed.textContent = v + '%';
       world.speedPct = v;
     });
-    nums.numSpawn?.addEventListener('input', () => {
-      const v = $clamp(Number(nums.numSpawn!.value), 0.1, 5);
-      nums.numSpawn!.value = String(v);
-      if (ranges.rngSpawn) ranges.rngSpawn.value = String(v);
-      if (labels.lblSpawn) labels.lblSpawn.textContent = v.toFixed(1) + '\u00d7';
-      world.spawnMult = v;
+    nums.numCloudRate?.addEventListener('input', () => {
+      const v = $clamp(Number(nums.numCloudRate!.value), 0, 10);
+      nums.numCloudRate!.value = String(v);
+      if (ranges.rngCloudRate) ranges.rngCloudRate.value = String(v);
+      if (labels.lblCloudRate) labels.lblCloudRate.textContent = v.toFixed(1) + '\u00d7';
+      world.cloudSpawnRate = v;
+    });
+    nums.numWorldSize?.addEventListener('input', () => {
+      const v = $clamp(Number(nums.numWorldSize!.value), 20, 120);
+      nums.numWorldSize!.value = String(v);
+      if (ranges.rngWorldSize) ranges.rngWorldSize.value = String(v);
+      if (labels.lblWorldSize) labels.lblWorldSize.textContent = v + '\u00d7' + v;
     });
 
     buttons.btnStart?.addEventListener('click', () => {
@@ -88,8 +99,13 @@ export class Controls {
       world.selectedId = null;
       world.activeLogCats = new Set(LOG_CATS);
       UIManager.setupLogFilters(world, dom.logFilters, doRenderLog);
+      // Apply world size before seeding
+      const worldSize = Number(ranges.rngWorldSize?.value || 62);
+      setGridSize(worldSize);
+      world.grid.size = worldSize;
+
       world.speedPct = Number(ranges.rngSpeed?.value || 100);
-      world.spawnMult = Number(ranges.rngSpawn?.value || 1);
+      world.cloudSpawnRate = Number(ranges.rngCloudRate?.value || 1);
       seedEnvironment(world);
       spawnAgents(Number(ranges.rngAgents?.value || 20));
       world.running = true;
@@ -98,6 +114,9 @@ export class Controls {
       if (buttons.btnResume) buttons.btnResume.disabled = true;
       if (ranges.rngAgents) ranges.rngAgents.disabled = true;
       if (nums.numAgents) nums.numAgents.disabled = true;
+      if (ranges.rngWorldSize) ranges.rngWorldSize.disabled = true;
+      if (nums.numWorldSize) nums.numWorldSize.disabled = true;
+      if (onWorldResize) onWorldResize();
       world.log.push({
         t: performance.now(),
         cat: 'info',
@@ -133,6 +152,17 @@ export class Controls {
       const y = rndi(0, GRID - 1);
       const lifetime = rndi(TUNE.cloud.lifetimeRange[0], TUNE.cloud.lifetimeRange[1]);
       world.clouds.push({ id: uuid(), x, y, spawnedAtMs: performance.now(), lifetimeMs: lifetime, rained: false });
+    });
+
+    buttons.btnReplenish?.addEventListener('click', () => {
+      const next = world.paintMode === 'replenish' ? 'none' as const : 'replenish' as const;
+      world.paintMode = next;
+      buttons.btnReplenish!.classList.toggle('toggled', next === 'replenish');
+      // Deactivate other paint modes
+      if (next === 'replenish') {
+        if (dom.buttons.btnDrawObstacles) dom.buttons.btnDrawObstacles.classList.remove('toggled');
+        if (dom.buttons.btnEraseObstacles) dom.buttons.btnEraseObstacles.classList.remove('toggled');
+      }
     });
 
     buttons.btnSave?.addEventListener('click', () => PersistenceManager.export(world, doRenderLog));

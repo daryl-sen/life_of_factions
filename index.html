@@ -951,8 +951,10 @@
           <input id="rngAgents" type="range" min="20" max="300" step="1" value="20"/>
           <div class="param-row"><span class="param-label">SIMULATION SPEED</span><span class="param-value" id="lblSpeed">100%</span></div>
           <input id="rngSpeed" type="range" min="5" max="300" step="1" value="100"/>
-          <div class="param-row"><span class="param-label">CROP SPAWN MULTIPLIER</span><span class="param-value" id="lblSpawn">1.0&times;</span></div>
-          <input id="rngSpawn" type="range" min="0.0" max="20.0" step="0.1" value="1"/>
+          <div class="param-row"><span class="param-label">CLOUD SPAWN RATE</span><span class="param-value" id="lblCloudRate">1.0&times;</span></div>
+          <input id="rngCloudRate" type="range" min="0" max="10.0" step="0.1" value="1"/>
+          <div class="param-row"><span class="param-label">WORLD SIZE</span><span class="param-value" id="lblWorldSize">62&times;62</span></div>
+          <input id="rngWorldSize" type="range" min="20" max="120" step="2" value="62"/>
         </div>
       </div>
     </div>
@@ -979,6 +981,9 @@
           </button>
           <button id="btnEraseObstacles" class="tool-btn">
             <span class="tool-icon">&#128221;</span> Erase Structures <span class="tool-badge">ACTIVE</span>
+          </button>
+          <button id="btnReplenish" class="tool-btn">
+            <span class="tool-icon">&#10024;</span> Replenish Agent <span class="tool-badge">ACTIVE</span>
           </button>
           <div style="margin-top:12px">
             <label class="toggle-row"><input type="checkbox" id="cbPauseOnBlur"/> Pause when unfocused</label>
@@ -1102,7 +1107,8 @@
     <div style="display: none">
       <input id="numAgents" type="number" min="20" max="300" step="1" value="20" />
       <input id="numSpeed" type="number" min="5" max="300" step="1" value="50" />
-      <input id="numSpawn" type="number" min="0.1" max="5" step="0.1" value="1" />
+      <input id="numCloudRate" type="number" min="0" max="10" step="0.1" value="1" />
+      <input id="numWorldSize" type="number" min="20" max="120" step="2" value="62" />
       <input id="fileLoad" type="file" accept="application/json" />
     </div>
 

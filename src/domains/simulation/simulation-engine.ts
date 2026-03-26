@@ -8,6 +8,7 @@ import { PoopBlockManager } from '../world/poop-block-manager';
 import type { World } from '../world';
 import type { Agent } from '../agent';
 import { ActionFactory, ActionProcessor, InteractionEngine } from '../action';
+import { AgentFactory } from '../agent/agent-factory';
 import { FactionManager } from '../faction';
 import { RoamingStrategy } from './roaming';
 
@@ -24,7 +25,6 @@ export class SimulationEngine {
   }
 
   static addCrop(world: World, x: number, y: number): boolean {
-    if (world.foodBlocks.size >= TUNE.maxCrops) return false;
     const k = key(x, y);
     if (world.grid.isCellOccupied(x, y)) return false;
     const units = rndi(TUNE.foodBlock.lqUnits[0], TUNE.foodBlock.lqUnits[1]);
@@ -52,10 +52,8 @@ export class SimulationEngine {
   }
 
   private static _maybeSpawnCrops(world: World): void {
-    if (world.foodBlocks.size >= TUNE.maxCrops) return;
     const toDelete: string[] = [];
     for (const [fk, fm] of world.farms) {
-      if (world.foodBlocks.size >= TUNE.maxCrops) break;
       fm.spawnTimerMs -= BASE_TICK_MS;
       if (fm.spawnTimerMs > 0) continue;
 
@@ -174,10 +172,12 @@ export class SimulationEngine {
       const y = rndi(0, GRID - 1);
       if (world.grid.isCellOccupied(x, y)) continue;
       const units = rndi(TUNE.tree.unitRange[0], TUNE.tree.unitRange[1]);
+      const maxAgeMs = rndi(TUNE.tree.maxAgeRange[0], TUNE.tree.maxAgeRange[1]);
       world.treeBlocks.set(key(x, y), {
         id: uuid(), x, y,
         emoji: SimulationEngine._randomTreeEmoji(),
         units, maxUnits: units,
+        ageTotalMs: 0, maxAgeMs,
       });
       log(world, 'spawn', `tree @${x},${y}`, null, { x, y });
       return true;
@@ -194,6 +194,16 @@ export class SimulationEngine {
   // ── Seedling / tree passive spawns ──
 
   static trySpawnSeedling(world: World, originX: number, originY: number): boolean {
+    // Require water within range to spawn seedling
+    let nearWater = false;
+    for (const wb of world.waterBlocks.values()) {
+      if (manhattan(originX, originY, wb.x, wb.y) <= TUNE.tree.waterRequiredForSeedling) {
+        nearWater = true;
+        break;
+      }
+    }
+    if (!nearWater) return false;
+
     const r = TUNE.tree.seedlingRadius;
     for (let attempt = 0; attempt < 20; attempt++) {
       const x = originX + rndi(-r, r);
@@ -241,25 +251,37 @@ export class SimulationEngine {
       const s = world.seedlings.get(k)!;
       world.seedlings.delete(k);
       const units = rndi(TUNE.tree.unitRange[0], TUNE.tree.unitRange[1]);
+      const maxAgeMs = rndi(TUNE.tree.maxAgeRange[0], TUNE.tree.maxAgeRange[1]);
       world.treeBlocks.set(k, {
         id: uuid(), x: s.x, y: s.y,
         emoji: SimulationEngine._randomTreeEmoji(),
         units, maxUnits: units,
+        ageTotalMs: 0, maxAgeMs,
       });
       log(world, 'spawn', `seedling grew into tree @${s.x},${s.y}`, null, { x: s.x, y: s.y });
     }
   }
 
+  static hasPoopNearby(world: World, x: number, y: number, radius: number): boolean {
+    for (const poop of world.poopBlocks.values()) {
+      if (manhattan(x, y, poop.x, poop.y) <= radius) return true;
+    }
+    return false;
+  }
+
   private static _tickTreePassiveSpawns(world: World): void {
-    // Deduplicate (trees are 1x1 so each key is unique)
     for (const tree of world.treeBlocks.values()) {
       if (tree.units <= 0) continue;
-      // 2% chance seedling
-      if (Math.random() < TUNE.tree.seedlingPassiveChance) {
+      const nearPoop = SimulationEngine.hasPoopNearby(world, tree.x, tree.y, TUNE.tree.poopBoostSeedlingRadius);
+      // Seedling chance: doubled if poop nearby
+      const seedlingChance = nearPoop
+        ? TUNE.tree.seedlingPassiveChance * 2
+        : TUNE.tree.seedlingPassiveChance;
+      if (Math.random() < seedlingChance) {
         SimulationEngine.trySpawnSeedling(world, tree.x, tree.y);
       }
-      // 1% chance food (independent roll)
-      else if (Math.random() < TUNE.tree.foodPassiveChance) {
+      // Food spawn: only if poop within range
+      else if (nearPoop && Math.random() < TUNE.tree.foodPassiveChance) {
         SimulationEngine.trySpawnFoodNearTree(world, tree.x, tree.y);
       }
     }
@@ -268,19 +290,22 @@ export class SimulationEngine {
   // ── Cloud / rain ──
 
   private static _tickClouds(world: World): void {
-    // Spawn new cloud
-    world._nextCloudSpawnMs -= BASE_TICK_MS;
-    if (world._nextCloudSpawnMs <= 0) {
-      const x = rndi(0, GRID - 1);
-      const y = rndi(0, GRID - 1);
-      const lifetime = rndi(TUNE.cloud.lifetimeRange[0], TUNE.cloud.lifetimeRange[1]);
-      world.clouds.push({
-        id: uuid(), x, y,
-        spawnedAtMs: performance.now(),
-        lifetimeMs: lifetime,
-        rained: false,
-      });
-      world._nextCloudSpawnMs = rndi(TUNE.cloud.spawnIntervalRange[0], TUNE.cloud.spawnIntervalRange[1]);
+    // Spawn new cloud (rate-adjusted)
+    if (world.cloudSpawnRate > 0) {
+      world._nextCloudSpawnMs -= BASE_TICK_MS;
+      if (world._nextCloudSpawnMs <= 0) {
+        const x = rndi(0, GRID - 1);
+        const y = rndi(0, GRID - 1);
+        const lifetime = rndi(TUNE.cloud.lifetimeRange[0], TUNE.cloud.lifetimeRange[1]);
+        world.clouds.push({
+          id: uuid(), x, y,
+          spawnedAtMs: performance.now(),
+          lifetimeMs: lifetime,
+          rained: false,
+        });
+        const baseInterval = rndi(TUNE.cloud.spawnIntervalRange[0], TUNE.cloud.spawnIntervalRange[1]);
+        world._nextCloudSpawnMs = Math.max(1000, baseInterval / world.cloudSpawnRate);
+      }
     }
 
     // Update existing clouds
@@ -358,6 +383,11 @@ export class SimulationEngine {
             agent.action = ActionFactory.createHarvest(resourceType, { x: nx, y: ny }, agent.inspiration);
             return;
           }
+        }
+        // Seedlings are harvestable as low-quality food
+        if (world.seedlings.has(k) && !agent.action) {
+          agent.action = ActionFactory.createHarvest('food_lq', { x: nx, y: ny }, agent.inspiration);
+          return;
         }
       }
     }
@@ -487,6 +517,13 @@ export class SimulationEngine {
         if (!agent.action) {
           const resourceType = block.quality === 'hq' ? 'food_hq' : 'food_lq';
           agent.action = ActionFactory.createHarvest(resourceType, { x: nx, y: ny }, agent.inspiration);
+          return true;
+        }
+      }
+      // Seedlings are harvestable as low-quality food
+      if (world.seedlings.has(k)) {
+        if (!agent.action) {
+          agent.action = ActionFactory.createHarvest('food_lq', { x: nx, y: ny }, agent.inspiration);
           return true;
         }
       }
@@ -756,6 +793,14 @@ export class SimulationEngine {
           if (!agent.path && !agent.action) {
             InteractionEngine.consider(world, agent);
 
+            // Babies can only eat/drink/move — skip all other idle actions
+            if (agent.babyMsRemaining > 0) {
+              // babies just roam if they have no action
+              if (!agent.action && !agent.path) {
+                RoamingStrategy.biasedRoam(world, agent);
+              }
+            } else {
+
             // Poop trigger: 10% chance per tick for 30s after eating, only when idle
             if (!agent.action && !agent.path && agent.poopTimerMs > 0) {
               if (Math.random() < TUNE.poop.chancePerTick) {
@@ -866,7 +911,15 @@ export class SimulationEngine {
             }
           }
 
+            } // end baby guard else
+
         }
+      }
+
+      // Age-based death for agents
+      if (agent.ageTicks >= agent.maxAgeTicks) {
+        agent.health = 0;
+        log(world, 'death', `${agent.name} died of old age`, agent.id, {});
       }
 
       agent.clampStats();
@@ -903,6 +956,8 @@ export class SimulationEngine {
     SimulationEngine._applyFlagHealing(world);
     SimulationEngine._tickDiseaseSpread(world);
     SimulationEngine._cleanDead(world);
+    SimulationEngine._tickTreeAging(world);
+    SimulationEngine._tickEggs(world);
     LootBagManager.tickDecay(world, BASE_TICK_MS);
     PoopBlockManager.tickDecay(world, BASE_TICK_MS);
   }
@@ -925,6 +980,64 @@ export class SimulationEngine {
           log(world, 'hygiene', `${agent.name} spread disease to ${target.name}`, agent.id, { to: target.id });
         }
       }
+    }
+  }
+
+  private static _tickTreeAging(world: World): void {
+    const toRemove: string[] = [];
+    for (const [k, tree] of world.treeBlocks) {
+      tree.ageTotalMs += BASE_TICK_MS;
+      if (tree.ageTotalMs >= tree.maxAgeMs) {
+        toRemove.push(k);
+      }
+    }
+    for (const k of toRemove) {
+      const tree = world.treeBlocks.get(k);
+      world.treeBlocks.delete(k);
+      if (tree) log(world, 'death', `Tree @${tree.x},${tree.y} died of old age`, null, { x: tree.x, y: tree.y });
+    }
+  }
+
+  private static _tickEggs(world: World): void {
+    // Spawn eggs from trees when no agents exist
+    if (world.agents.length === 0) {
+      for (const tree of world.treeBlocks.values()) {
+        if (Math.random() < TUNE.egg.spawnChance) {
+          const adj: [number, number][] = [
+            [tree.x + 1, tree.y], [tree.x - 1, tree.y],
+            [tree.x, tree.y + 1], [tree.x, tree.y - 1],
+          ];
+          for (const [nx, ny] of adj) {
+            if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) continue;
+            if (world.grid.isCellOccupied(nx, ny)) continue;
+            world.eggs.set(key(nx, ny), {
+              id: uuid(), x: nx, y: ny,
+              hatchTimerMs: TUNE.egg.hatchTimeMs,
+            });
+            log(world, 'spawn', `Egg appeared @${nx},${ny}`, null, { x: nx, y: ny });
+            break;
+          }
+        }
+      }
+    }
+
+    // Hatch eggs
+    const toHatch: string[] = [];
+    for (const [k, egg] of world.eggs) {
+      egg.hatchTimerMs -= BASE_TICK_MS;
+      if (egg.hatchTimerMs <= 0) toHatch.push(k);
+    }
+    for (const k of toHatch) {
+      const egg = world.eggs.get(k)!;
+      world.eggs.delete(k);
+      const babyMs = TUNE.baby.durationRange[0] + Math.random() * (TUNE.baby.durationRange[1] - TUNE.baby.durationRange[0]);
+      const agent = AgentFactory.create(world, egg.x, egg.y);
+      agent.babyMsRemaining = babyMs;
+      agent.health = 80;
+      agent.energy = 60;
+      agent.fullness = 50;
+      world.totalBirths++;
+      log(world, 'spawn', `Egg hatched into ${agent.name} @${egg.x},${egg.y}`, agent.id, {});
     }
   }
 }

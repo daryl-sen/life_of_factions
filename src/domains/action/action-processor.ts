@@ -288,13 +288,24 @@ export class ActionProcessor {
   private static _harvestFood(world: World, agent: Agent, tp: { x: number; y: number }): void {
     const k = key(tp.x, tp.y);
     const block = world.foodBlocks.get(k);
-    if (!block || block.units <= 0) return;
-    block.units--;
-    agent.addToInventory('food', 1);
-    agent.addXp(TUNE.xp.perHarvest);
-    log(world, 'harvest', `${agent.name} harvested food`, agent.id, { x: tp.x, y: tp.y });
-    if (block.units <= 0) world.foodBlocks.delete(k);
-    ActionProcessor._checkLevelUp(world, agent);
+    if (block && block.units > 0) {
+      block.units--;
+      agent.addToInventory('food', 1);
+      agent.addXp(TUNE.xp.perHarvest);
+      log(world, 'harvest', `${agent.name} harvested food`, agent.id, { x: tp.x, y: tp.y });
+      if (block.units <= 0) world.foodBlocks.delete(k);
+      ActionProcessor._checkLevelUp(world, agent);
+      return;
+    }
+    // Fallback: harvest seedling as low-quality food
+    const seedling = world.seedlings.get(k);
+    if (seedling) {
+      world.seedlings.delete(k);
+      agent.addToInventory('food', 1);
+      agent.addXp(TUNE.xp.perHarvest);
+      log(world, 'harvest', `${agent.name} harvested seedling`, agent.id, { x: tp.x, y: tp.y });
+      ActionProcessor._checkLevelUp(world, agent);
+    }
   }
 
   private static _harvestWater(world: World, agent: Agent, tp: { x: number; y: number }): void {
@@ -337,7 +348,9 @@ export class ActionProcessor {
     if (roll < TUNE.tree.seedlingChanceOnHarvest) {
       SimulationEngine.trySpawnSeedling(world, tree.x, tree.y);
     } else if (roll < TUNE.tree.seedlingChanceOnHarvest + TUNE.tree.foodChanceOnHarvest) {
-      SimulationEngine.trySpawnFoodNearTree(world, tree.x, tree.y);
+      // Food only spawns if poop nearby
+      const hasPoop = SimulationEngine.hasPoopNearby(world, tree.x, tree.y, TUNE.tree.foodRequiresPoopRadius);
+      if (hasPoop) SimulationEngine.trySpawnFoodNearTree(world, tree.x, tree.y);
     }
 
     if (tree.units <= 0) world.treeBlocks.delete(k);

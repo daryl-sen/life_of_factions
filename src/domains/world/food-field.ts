@@ -6,11 +6,13 @@ const FF_INF = 0xffff;
 const ffIdx = (x: number, y: number): number => y * GRID + x;
 
 export class FoodField {
-  readonly data: Uint16Array;
+  data: Uint16Array;
   private _lastTick = -1;
+  private _allocSize = 0;
 
   constructor() {
     const N = GRID * GRID;
+    this._allocSize = N;
     this.data = new Uint16Array(N);
     this.data.fill(FF_INF);
   }
@@ -21,6 +23,10 @@ export class FoodField {
 
   recompute(grid: Grid, tick: number): void {
     const N = GRID * GRID;
+    if (N !== this._allocSize) {
+      this._allocSize = N;
+      this.data = new Uint16Array(N);
+    }
     this.data.fill(FF_INF);
     if (grid.foodBlocks.size === 0) {
       this._lastTick = tick;

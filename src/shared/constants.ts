@@ -1,8 +1,13 @@
 import type { ActionType, LogCategory } from './types';
 
 export const CELL = 16;
-export const GRID = 62;
-export const WORLD_PX: number = GRID * CELL;
+export let GRID = 62;
+export let WORLD_PX: number = GRID * CELL;
+
+export function setGridSize(size: number): void {
+  GRID = size;
+  WORLD_PX = GRID * CELL;
+}
 export const BASE_TICK_MS = 250;
 export const ENERGY_CAP = 200;
 
@@ -45,7 +50,9 @@ export const TUNE = {
   shareConvertRelThreshold: 0.4,
   energyLowThreshold: 40,
   levelCap: 20,
-  maxCrops: 100,
+  agent: {
+    maxAgeRange: [240000, 360000] as [number, number],
+  },
   reproduction: { relationshipThreshold: 0.4, relationshipEnergy: 90 },
   baby: {
     durationRange: [50000, 70000] as [number, number],
@@ -125,6 +132,14 @@ export const TUNE = {
     seedlingRadius: 5,
     seedlingGrowthRange: [45000, 90000] as [number, number],
     foodRadius: 3,
+    maxAgeRange: [780000, 1020000] as [number, number],
+    waterRequiredForSeedling: 5,
+    poopBoostSeedlingRadius: 3,
+    foodRequiresPoopRadius: 3,
+  },
+  egg: {
+    hatchTimeMs: 60000,
+    spawnChance: 0.001,
   },
   cloud: {
     spawnIntervalRange: [60000, 120000] as [number, number],
@@ -153,7 +168,7 @@ export const TUNE = {
     spreadBlockThreshold: 60,
     cureHygieneThreshold: 80,
     energyDrainMultiplier: 2,
-    hpDrainPerSec: 0.8,
+    hpDrainPerSec: 0.3,
   },
   flagStorage: {
     capacityPerType: 30,
@@ -282,6 +297,7 @@ export const WORLD_EMOJIS = {
   seedling: '🌱',
   lootBag: '👝',
   poop: '💩',
+  egg: '🥚',
 } as const;
 
 export const TREE_EMOJIS: readonly string[] = ['🌲', '🌳', '🌴', '🎄'];
