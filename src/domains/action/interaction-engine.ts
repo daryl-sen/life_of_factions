@@ -1,5 +1,6 @@
 import { TUNE } from '../../shared/constants';
 import { key, rndi, clamp } from '../../shared/utils';
+import { Pathfinder } from '../../shared/pathfinding';
 import type { World } from '../world';
 import type { Agent } from '../agent';
 import { ActionFactory } from './action';
@@ -11,12 +12,59 @@ function lockAgent(world: World, id: string, ms: number): void {
 }
 
 export class InteractionEngine {
+  /**
+   * New decision priority hierarchy (Phase 1):
+   * 1. Energy < 20          → mandatory sleep
+   * 2. Under attack         → flee/retaliate
+   * 3. Health < 30% maxHP   → seek faction flag
+   * 4. Fullness < 20        → urgent food seeking
+   * 5. Energy < 40          → voluntary sleep
+   * 6. Normal state:
+   *    a. Fullness < 40     → proactive food seeking
+   *    b. Reproduction
+   *    c. Attack
+   *    d. Help/Heal/Talk
+   */
   static consider(world: World, agent: Agent): void {
-    if (agent.energy < TUNE.energyLowThreshold) {
-      InteractionEngine.chooseAttack(world, agent, true);
+    // 1. Mandatory sleep
+    if (agent.energy < TUNE.sleep.mandatoryThreshold) {
+      if (InteractionEngine._trySleep(agent)) return;
     }
 
-    // Check for reproduction opportunity
+    // 2. Under attack — retaliate
+    if (agent._underAttack) {
+      if (InteractionEngine.chooseAttack(world, agent, true)) return;
+    }
+
+    // 3. Critical health — seek faction flag for aura healing
+    if (agent.health < agent.maxHealth * 0.3) {
+      if (InteractionEngine._seekFactionFlag(world, agent)) return;
+    }
+
+    // 4. Critical fullness — urgent food seeking
+    if (agent.fullness < TUNE.fullness.criticalThreshold) {
+      // Will be handled by SimulationEngine.seekFoodWhenHungry (called from tick)
+      // Signal: return without action/path so tick loop handles food seeking
+      return;
+    }
+
+    // 5. Voluntary sleep
+    if (agent.energy < TUNE.energyLowThreshold) {
+      if (InteractionEngine._trySleep(agent)) return;
+      // If sleep failed, try attack as fallback (old behavior)
+      if (InteractionEngine.chooseAttack(world, agent, true)) return;
+      return;
+    }
+
+    // 6. Normal state (energy >= 40)
+
+    // 6a. Proactive food seeking
+    if (agent.fullness < TUNE.fullness.seekThreshold) {
+      // Signal: return without action/path so tick loop handles food seeking
+      return;
+    }
+
+    // 6b. Reproduction check
     const adj: [number, number][] = [
       [agent.cellX + 1, agent.cellY],
       [agent.cellX - 1, agent.cellY],
@@ -46,8 +94,25 @@ export class InteractionEngine {
       }
     }
 
+    // 6c. Attack
     if (InteractionEngine.chooseAttack(world, agent)) return;
+
+    // 6d. Help/Heal/Talk
     if (InteractionEngine._chooseHelpHealTalk(world, agent)) return;
+  }
+
+  private static _trySleep(agent: Agent): boolean {
+    return ActionFactory.tryStart(agent, 'sleep');
+  }
+
+  private static _seekFactionFlag(world: World, agent: Agent): boolean {
+    if (!agent.factionId) return false;
+    const flag = world.flags.get(agent.factionId);
+    if (!flag) return false;
+    const dist = Math.abs(agent.cellX - flag.x) + Math.abs(agent.cellY - flag.y);
+    if (dist <= TUNE.healAuraRadius) return false; // Already in aura range
+    Pathfinder.planPathTo(world, agent, flag.x, flag.y);
+    return agent.path !== null && agent.path.length > 0;
   }
 
   static chooseAttack(world: World, agent: Agent, preferEnemies = false): boolean {

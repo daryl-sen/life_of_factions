@@ -1,4 +1,4 @@
-import { CELL, GRID } from '../../shared/constants';
+import { CELL, GRID, TUNE } from '../../shared/constants';
 import { VERSION } from '../../shared/version';
 import { key } from '../../shared/utils';
 import type { World } from '../world';
@@ -26,6 +26,7 @@ export class PersistenceManager {
       health: a.health,
       maxHealth: a.maxHealth,
       energy: a.energy,
+      maxEnergy: a.maxEnergy,
       attack: a.attack,
       level: a.level,
       ageTicks: a.ageTicks,
@@ -45,6 +46,11 @@ export class PersistenceManager {
       travelPref: a.travelPref,
       aggression: a.aggression,
       cooperation: a.cooperation,
+      fullness: a.fullness,
+      hygiene: a.hygiene,
+      social: a.social,
+      inspiration: a.inspiration,
+      xp: a.xp,
     }));
     return {
       meta: { version: VERSION, savedAt: Date.now() },
@@ -150,6 +156,7 @@ export class PersistenceManager {
         health: a.health,
         maxHealth: a.maxHealth,
         energy: a.energy,
+        maxEnergy: a.maxEnergy ?? TUNE.maxEnergyBase,
         attack: a.attack,
         level: a.level,
         ageTicks: a.ageTicks,
@@ -162,6 +169,11 @@ export class PersistenceManager {
         travelPref: a.travelPref || 'near',
         aggression: a.aggression ?? Math.random(),
         cooperation: a.cooperation ?? Math.random(),
+        fullness: a.fullness ?? TUNE.fullness.start,
+        hygiene: a.hygiene ?? TUNE.needs.hygieneStart,
+        social: a.social ?? TUNE.needs.socialStart,
+        inspiration: a.inspiration ?? TUNE.needs.inspirationStart,
+        xp: a.xp ?? 0,
       });
       world.agents.push(agent);
       world.agentsById.set(agent.id, agent);

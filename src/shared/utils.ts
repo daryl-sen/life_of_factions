@@ -62,7 +62,8 @@ export class RingLog {
   }
 }
 
-export const getIdleEmoji = (a: { energy: number; health: number }): string => {
+export const getIdleEmoji = (a: { energy: number; health: number; fullness: number }): string => {
+  if (a.fullness <= 20) return IDLE_EMOJIS.lowFullness;
   if (a.energy <= 20) return IDLE_EMOJIS.lowEnergy;
   if (a.health <= 30) return IDLE_EMOJIS.lowHealth;
   if (a.energy >= 80) return IDLE_EMOJIS.highEnergy;

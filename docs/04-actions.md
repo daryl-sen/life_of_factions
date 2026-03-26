@@ -4,14 +4,17 @@ Actions are discrete behaviors agents perform. Each action has a duration, energ
 
 ## Action Reference
 
-| Action | Duration | Energy/sec | Distance | Locks |
-|--------|----------|------------|----------|-------|
-| `talk` | 0.9-1.8s | 0.4 | 1 | Yes |
-| `quarrel` | 0.9-1.8s | 0.8 | 1 | Yes |
-| `attack` | 0.45-0.9s | 2.2 | ≤2 | No |
-| `heal` | 0.9-1.8s | 3.0 | 1 | Yes |
-| `help` | 0.9-1.8s | 1.6 | 1 | Yes |
-| `reproduce` | 2.0-3.2s | 3.0 | 1 | Yes |
+| Action | Duration | Energy/sec | Distance | Locks | Emoji |
+|--------|----------|------------|----------|-------|-------|
+| `talk` | 0.9-1.8s | 0.2 | 1 | Yes | |
+| `quarrel` | 0.9-1.8s | 0.4 | 1 | Yes | |
+| `attack` | 0.45-0.9s | 1.1 | ≤2 | No | |
+| `heal` | 0.9-1.8s | 1.5 | 1 | Yes | |
+| `help` | 0.9-1.8s | 0.8 | 1 | Yes | |
+| `reproduce` | 2.0-3.2s | 1.5 | 1 | Yes | |
+| `sleep` | 8-12s | 0 (restores) | self | Yes | 😴 |
+
+> **Note:** All action energy costs were halved in Phase 1 to account for the new sleep-based energy economy.
 
 ## Social Actions
 
@@ -120,6 +123,35 @@ child.factionId = random(parent.factionId) // if either has faction
 
 **Faction formation:** If both parents are factionless and relationship ≥ 0.6, they form a new faction together.
 
+## Sleep Action
+
+### Sleep
+
+**Purpose:** Restore energy. This is the **only** way agents recover energy.
+
+**Duration:** 8–12 seconds
+
+**Effect (every 500ms):**
+```javascript
+agent.energy = min(agent.maxEnergy, agent.energy + 8)
+```
+
+**Total energy restored:** 128–192 (depending on duration)
+
+**Trigger conditions:**
+- **Mandatory:** energy < 20 (highest decision priority)
+- **Voluntary:** energy < 40 (lower priority than combat response, low health, and urgent hunger)
+
+**Properties:**
+- Solo action (no target required)
+- Agent is locked in place during sleep
+- Interruptible by incoming attack
+- Emoji: 😴
+
+**XP:** Sleep does not grant XP.
+
+---
+
 ## Action Mechanics
 
 ### Starting an Action
@@ -175,14 +207,28 @@ Locks are applied to both agents for social actions. Locks are decremented each 
 
 | Action | Min Cost | Max Cost | Avg Cost |
 |--------|----------|----------|----------|
-| talk | 0.36 | 0.72 | 0.54 |
-| quarrel | 0.72 | 1.44 | 1.08 |
-| attack | 1.0 | 2.0 | 1.5 |
-| heal | 2.7 | 5.4 | 4.05 |
-| help | 1.44 | 2.88 | 2.16 |
-| reproduce | 6.0 | 9.6 | 7.8 (+16 upfront) |
+| talk | 0.18 | 0.36 | 0.27 |
+| quarrel | 0.36 | 0.72 | 0.54 |
+| attack | 0.50 | 0.99 | 0.74 |
+| heal | 1.35 | 2.70 | 2.03 |
+| help | 0.72 | 1.44 | 1.08 |
+| reproduce | 3.0 | 4.8 | 3.9 (+16 upfront) |
+| sleep | 0 (restores 128–192) | — | — |
+
+> **Note:** Costs halved from previous version to balance with sleep-only energy recovery.
 
 ## Action Completion Effects
+
+### XP Rewards
+
+| Completion | XP |
+|------------|-----|
+| Kill (attack) | +50 |
+| Eat (crop) | +5 |
+| Heal complete | +10 |
+| Share/help complete | +5 |
+| Build farm | +15 |
+| Harvest | +2 |
 
 ### Faction Formation
 

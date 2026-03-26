@@ -1,4 +1,4 @@
-import { TUNE, ENERGY_CAP } from '../../shared/constants';
+import { TUNE } from '../../shared/constants';
 import { manhattan, log } from '../../shared/utils';
 import type { World } from '../world';
 import type { Agent } from '../agent';
@@ -11,15 +11,25 @@ export class ActionProcessor {
     if (!agent.action) return;
     const act = agent.action;
 
-    if (agent.energy < TUNE.energyLowThreshold && act.type !== 'attack') {
+    // Sleep is interruptible by attack
+    if (act.type === 'sleep' && agent._underAttack) {
+      agent.action = null;
+      return;
+    }
+
+    // Don't cancel sleep or attack on low energy
+    if (agent.energy < TUNE.energyLowThreshold && act.type !== 'attack' && act.type !== 'sleep') {
       agent.action = null;
       return;
     }
 
     act.remainingMs -= dtMs;
     act.tickCounterMs += dtMs;
-    const costPerMs = (TUNE.actionCost[act.type] || 1) / 1000;
+    const costPerMs = (TUNE.actionCost[act.type] || 0) / 1000;
     agent.energy -= costPerMs * dtMs;
+
+    // Fullness decays during all actions
+    agent.drainFullness((TUNE.fullness.actionDecayPerSec / 1000) * dtMs);
 
     const targ = act.payload?.targetId
       ? world.agentsById.get(act.payload.targetId)      : undefined;
@@ -44,6 +54,13 @@ export class ActionProcessor {
     }
   }
 
+  private static _checkLevelUp(world: World, agent: Agent): void {
+    while (agent.canLevelUp()) {
+      agent.levelUp();
+      log(world, 'level', `${agent.name} leveled to ${agent.level}`, agent.id, {});
+    }
+  }
+
   private static _applyPeriodicEffect(
     world: World,
     agent: Agent,
@@ -51,7 +68,9 @@ export class ActionProcessor {
   ): void {
     const act = agent.action!;
 
-    if (act.type === 'attack' && targ) {
+    if (act.type === 'sleep') {
+      agent.addEnergy(TUNE.sleep.energyPerTick);
+    } else if (act.type === 'attack' && targ) {
       targ.takeDamage(agent.attack * 0.4);
       if (agent.factionId === targ.factionId) {
         Math.random() < 0.3
@@ -60,15 +79,15 @@ export class ActionProcessor {
       }
       agent.relationships.set(targ.id, agent.relationships.get(targ.id) - 0.2);
       log(world, 'attack', `${agent.name} hit ${targ.name}`, agent.id, { to: targ.id });
-      if (targ.health <= 0 && agent.level < TUNE.levelCap) {
-        agent.levelUp();
-        log(world, 'level', `${agent.name} leveled to ${agent.level}`, agent.id, {});
+      if (targ.health <= 0) {
+        agent.addXp(TUNE.xp.perKill);
+        ActionProcessor._checkLevelUp(world, agent);
       }
     } else if (act.type === 'heal' && targ) {
       targ.healBy(2);
       log(world, 'heal', `${agent.name} healed ${targ.name}`, agent.id, { to: targ.id });
     } else if (act.type === 'help' && targ) {
-      const high = agent.energy > ENERGY_CAP * 0.7;
+      const high = agent.energy > agent.maxEnergy * 0.7;
       const ratio = high ? 0.2 : 0.1;
       const transfer = Math.max(0, agent.energy * ratio);
       if (transfer > 0) {
@@ -99,6 +118,17 @@ export class ActionProcessor {
     targ: Agent | undefined
   ): void {
     const act = agent.action!;
+
+    // XP on action completion
+    if (act.type === 'heal' && targ) {
+      agent.addXp(TUNE.xp.perHeal);
+      ActionProcessor._checkLevelUp(world, agent);
+    } else if (act.type === 'help' && targ) {
+      agent.addXp(TUNE.xp.perShare);
+      ActionProcessor._checkLevelUp(world, agent);
+    } else if (act.type === 'sleep') {
+      log(world, 'sleep', `${agent.name} woke up`, agent.id, {});
+    }
 
     if (targ && !agent.factionId && !targ.factionId) {
       const rel = agent.relationships.get(targ.id);

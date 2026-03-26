@@ -9,13 +9,14 @@ export const ENERGY_CAP = 200;
 export const TUNE = {
   moveEnergy: 0.12,
   actionCost: {
-    talk: 0.4,
-    quarrel: 0.8,
-    attack: 2.2,
-    heal: 3,
-    help: 1.6,
-    attack_flag: 2,
-    reproduce: 3,
+    talk: 0.2,
+    quarrel: 0.4,
+    attack: 1.1,
+    heal: 1.5,
+    help: 0.8,
+    attack_flag: 1.0,
+    reproduce: 1.5,
+    sleep: 0,
   } as Record<ActionType, number>,
   cropGain: 28,
   starveHpPerSec: 1.0,
@@ -37,6 +38,38 @@ export const TUNE = {
   maxCrops: 100,
   reproduction: { relationshipThreshold: 0.1, relationshipEnergy: 85 },
   pathBudgetPerTick: 30,
+  fullness: {
+    max: 100,
+    start: 100,
+    passiveDecay: 0.03,
+    moveDecay: 0.08,
+    actionDecayPerSec: 0.02,
+    cropGain: 20,
+    regenThreshold: 90,
+    seekThreshold: 40,
+    criticalThreshold: 20,
+  },
+  needs: {
+    hygieneStart: 100,
+    socialStart: 50,
+    inspirationStart: 50,
+  },
+  xp: {
+    perKill: 50,
+    perEat: 5,
+    perHeal: 10,
+    perShare: 5,
+    perBuildFarm: 15,
+    perHarvest: 2,
+    perLevel: 50,
+  },
+  maxEnergyBase: 200,
+  maxEnergyPerLevel: 5,
+  sleep: {
+    energyPerTick: 8,
+    mandatoryThreshold: 20,
+    voluntaryThreshold: 80,
+  },
 } as const;
 
 export const ACTION_DURATIONS: Record<ActionType, [number, number]> = {
@@ -47,6 +80,7 @@ export const ACTION_DURATIONS: Record<ActionType, [number, number]> = {
   help: [900, 1800],
   attack_flag: [1000, 2000],
   reproduce: [2000, 3200],
+  sleep: [8000, 12000],
 };
 
 
@@ -81,11 +115,13 @@ export const AGENT_EMOJIS: Record<string, string> = {
   heal: '🤗',
   help: '🫢',
   reproduce: '😍',
+  sleep: '😴',
 };
 
 export const IDLE_EMOJIS = {
   lowEnergy: '🤤',
   lowHealth: '🤕',
+  lowFullness: '😩',
   highEnergy: '😀',
   default: '🙂',
 };
@@ -111,4 +147,6 @@ export const LOG_CATS: readonly LogCategory[] = [
   'level',
   'spawn',
   'info',
+  'sleep',
+  'eat',
 ];

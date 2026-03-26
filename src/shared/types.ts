@@ -12,7 +12,8 @@ export type ActionType =
   | 'heal'
   | 'help'
   | 'attack_flag'
-  | 'reproduce';
+  | 'reproduce'
+  | 'sleep';
 
 export type LogCategory =
   | 'talk'
@@ -27,7 +28,9 @@ export type LogCategory =
   | 'faction'
   | 'level'
   | 'spawn'
-  | 'info';
+  | 'info'
+  | 'sleep'
+  | 'eat';
 
 export type PaintMode = 'none' | 'draw' | 'erase';
 

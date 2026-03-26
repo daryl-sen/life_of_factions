@@ -1,4 +1,4 @@
-import { GRID, BASE_TICK_MS, TUNE, ENERGY_CAP, WORLD_EMOJIS } from '../../shared/constants';
+import { GRID, BASE_TICK_MS, TUNE, WORLD_EMOJIS } from '../../shared/constants';
 import { key, rndi, log, uuid, manhattan } from '../../shared/utils';
 import { Pathfinder } from '../../shared/pathfinding';
 import { FoodField } from '../world/food-field';
@@ -63,33 +63,16 @@ export class SimulationEngine {
     const crop = world.crops.get(k);
     if (!crop) return false;
     world.crops.delete(k);
-    agent.addEnergy(TUNE.cropGain);
-    SimulationEngine._levelCheck(world, agent);
-    if (agent.factionId) {
-      const recips = world.agents.filter(
-        (m) =>
-          m.factionId === agent.factionId &&
-          m.id !== agent.id &&
-          manhattan(agent.cellX, agent.cellY, m.cellX, m.cellY) <= 5
-      );
-      if (recips.length) {
-        const share = TUNE.cropGain * 0.3;
-        const per = share / recips.length;
-        for (const m of recips) m.addEnergy(per);
-      }
-    }
-    return true;
-  }
-
-  // ── Level check ──
-
-  private static _levelCheck(world: World, agent: Agent): void {
-    if (agent.level >= TUNE.levelCap) return;
-    if (agent.energy > ENERGY_CAP * 0.7) {
+    // Crops now restore fullness, not energy
+    agent.addFullness(TUNE.fullness.cropGain);
+    agent.addXp(TUNE.xp.perEat);
+    log(world, 'eat', `${agent.name} ate food`, agent.id, { x, y });
+    // Check for XP-based level up
+    while (agent.canLevelUp()) {
       agent.levelUp();
-      agent.energy = Math.min(ENERGY_CAP, 140);
       log(world, 'level', `${agent.name} leveled to ${agent.level}`, agent.id, {});
     }
+    return true;
   }
 
   // ── Farm building ──
@@ -110,10 +93,15 @@ export class SimulationEngine {
     const [x, y] = free[rndi(0, free.length - 1)];
     world.farms.set(key(x, y), { id: uuid(), x, y });
     agent.drainEnergy(TUNE.farmEnergyCost);
+    agent.addXp(TUNE.xp.perBuildFarm);
     log(world, 'build', `${agent.name} built farm`, agent.id, { x, y });
+    while (agent.canLevelUp()) {
+      agent.levelUp();
+      log(world, 'level', `${agent.name} leveled to ${agent.level}`, agent.id, {});
+    }
   }
 
-  // ── Food seeking ──
+  // ── Food seeking (public for InteractionEngine) ──
 
   private static _stepTowardFood(world: World, agent: Agent): boolean {
     const here = world.foodField.distanceAt(agent.cellX, agent.cellY);
@@ -138,7 +126,7 @@ export class SimulationEngine {
     return true;
   }
 
-  private static _seekFoodWhenHungry(world: World, agent: Agent): void {
+  static seekFoodWhenHungry(world: World, agent: Agent): void {
     if (world.crops.has(key(agent.cellX, agent.cellY))) {
       SimulationEngine._harvestAt(world, agent, agent.cellX, agent.cellY);
       return;
@@ -279,11 +267,17 @@ export class SimulationEngine {
     for (const a of world.agents) {
       const agent = a;
       agent.ageTicks++;
+      // Passive energy drain
       agent.energy -= 0.0625;
+      // Passive fullness decay
+      agent.drainFullness(TUNE.fullness.passiveDecay);
       agent.lockMsRemaining = Math.max(0, (agent.lockMsRemaining || 0) - BASE_TICK_MS);
 
+      // Don't cancel sleep or attack on low energy
       if (agent.energy < TUNE.energyLowThreshold) {
-        if (agent.action && agent.action.type !== 'attack') agent.action = null;
+        if (agent.action && agent.action.type !== 'attack' && agent.action.type !== 'sleep') {
+          agent.action = null;
+        }
       }
 
       if (agent.action) {
@@ -291,6 +285,7 @@ export class SimulationEngine {
       } else {
         const locked = agent.lockMsRemaining > 0 && !agent._underAttack;
         if (!locked) {
+          // Follow path
           if (agent.path && agent.pathIdx < agent.path.length) {
             const step = agent.path[agent.pathIdx];
             if (!world.grid.isBlocked(step.x, step.y, agent.id)) {
@@ -303,6 +298,7 @@ export class SimulationEngine {
               world.agentsByCell.set(key(agent.cellX, agent.cellY), agent.id);
               agent.pathIdx++;
               agent.energy -= TUNE.moveEnergy;
+              agent.drainFullness(TUNE.fullness.moveDecay);
               if (world.crops.has(key(agent.cellX, agent.cellY)))
                 SimulationEngine._harvestAt(world, agent, agent.cellX, agent.cellY);
             } else {
@@ -311,30 +307,35 @@ export class SimulationEngine {
           } else {
             agent.path = null;
           }
-          if (!agent.path) {
-            if (agent.energy < TUNE.energyLowThreshold) {
-              if (Math.random() < 0.4) {
-                InteractionEngine.consider(world, agent);
+
+          // Idle decision — delegate to InteractionEngine for priority hierarchy
+          if (!agent.path && !agent.action) {
+            InteractionEngine.consider(world, agent);
+
+            // If InteractionEngine returned without action/path, agent needs food
+            if (!agent.path && !agent.action) {
+              if (agent.fullness < TUNE.fullness.seekThreshold) {
+                SimulationEngine.seekFoodWhenHungry(world, agent);
               } else {
-                if (world.crops.has(key(agent.cellX, agent.cellY)))
-                  SimulationEngine._harvestAt(world, agent, agent.cellX, agent.cellY);
-                else SimulationEngine._seekFoodWhenHungry(world, agent);
+                RoamingStrategy.biasedRoam(world, agent);
               }
-            } else {
-              InteractionEngine.consider(world, agent);
-              if (!agent.path && !agent.action) RoamingStrategy.biasedRoam(world, agent);
             }
           }
+
+          // Farm building chance
           if (agent.energy >= 120 && Math.random() < 0.01)
             SimulationEngine._tryBuildFarm(world, agent);
         }
       }
 
       agent.clampStats();
-      if (agent.energy === 0) {
+
+      // Starvation: fullness = 0 causes HP drain (not energy = 0)
+      if (agent.fullness <= 0) {
         agent.health -= (TUNE.starveHpPerSec * BASE_TICK_MS) / 1000;
       }
-      if (agent.energy >= ENERGY_CAP * 0.8) {
+      // Health regen: fullness > 90 (not energy >= 160)
+      if (agent.fullness > TUNE.fullness.regenThreshold) {
         agent.healBy((TUNE.regenHpPerSec * BASE_TICK_MS) / 1000);
       }
     }

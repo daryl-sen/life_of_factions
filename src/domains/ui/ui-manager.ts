@@ -397,20 +397,31 @@ export class UIManager {
         <div>
           <div class="agent-stat-header">
             <span>ENERGY</span>
-            <span>${a.energy.toFixed(1)}</span>
+            <span>${a.energy.toFixed(1)}/${a.maxEnergy}</span>
           </div>
           <div class="agent-stat-bar">
-            <div class="agent-stat-fill energy" style="width:${Math.min(100, a.energy / 2)}%"></div>
+            <div class="agent-stat-fill energy" style="width:${Math.min(100, (a.energy / a.maxEnergy) * 100)}%"></div>
+          </div>
+        </div>
+        <div>
+          <div class="agent-stat-header">
+            <span>FULLNESS</span>
+            <span>${a.fullness.toFixed(1)}/100</span>
+          </div>
+          <div class="agent-stat-bar">
+            <div class="agent-stat-fill" style="background:#f0a040;width:${a.fullness}%"></div>
           </div>
         </div>
       </div>
       <div class="agent-details" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border)">
         <div style="color:var(--muted)">POSITION</div><div>${a.cellX}, ${a.cellY}</div>
         <div style="color:var(--muted)">ATTACK</div><div>${a.attack.toFixed(1)}</div>
+        <div style="color:var(--muted)">XP</div><div>${a.xp} / ${a.xpToNextLevel()}</div>
         <div style="color:var(--muted)">AGE</div><div>${a.ageTicks} ticks</div>
         <div style="color:var(--muted)">TRAVEL</div><div>${a.travelPref}</div>
-        <div style="color:var(--muted)">AGGRESSION</div><div>${a.aggression.toFixed(2)}</div>
-        <div style="color:var(--muted)">COOPERATION</div><div>${a.cooperation.toFixed(2)}</div>
+        <div style="color:var(--muted)">HYGIENE</div><div>${a.hygiene.toFixed(0)}</div>
+        <div style="color:var(--muted)">SOCIAL</div><div>${a.social.toFixed(0)}</div>
+        <div style="color:var(--muted)">INSPIRATION</div><div>${a.inspiration.toFixed(0)}</div>
       </div>`;
   }
 

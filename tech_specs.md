@@ -1,4 +1,4 @@
-# Emoji Life — Technical Specification (v1.3.5, 2025-08-11)
+# Emoji Life — Technical Specification (v1.4.0, 2026-03-25)
 
 ## Purpose
 
@@ -46,10 +46,12 @@ Agent {
   name: string              // 6-char A–Z0–9
   cellX, cellY: int         // grid coords
   health: float             // 0..maxHealth
-  maxHealth: float          // base 100; increases with level
-  energy: float             // loosely 0..200+
-  attack: float             // base ~8; increases with level
+  maxHealth: float          // base 100; increases with level (+8/level)
+  energy: float             // 0..maxEnergy
+  maxEnergy: float          // base 200; +5 per level (level 20 = 295)
+  attack: float             // base ~8; increases with level (+1.5/level)
   level: int                // capped at 20
+  xp: int                   // current XP toward next level
   ageTicks: int
   starvingSeconds: float
   factionId: string|null
@@ -57,8 +59,15 @@ Agent {
   path: Cell[]|null
   pathIdx: int
   lockMsRemaining: float    // movement lock for non-attack interactions
+
+  // Needs system
+  fullness: float           // 0..100; passive decay, restored by eating
+  hygiene: float            // 0..100 (placeholder, not active)
+  social: float             // 0..100 (placeholder, not active)
+  inspiration: float        // 0..100 (placeholder, not active)
+
   action: null | {
-    type: 'talk'|'quarrel'|'attack'|'under_attack'|'heal'|'help'|'attack_wall'|'attack_flag'|'reproduce'
+    type: 'talk'|'quarrel'|'attack'|'under_attack'|'heal'|'help'|'attack_wall'|'attack_flag'|'reproduce'|'sleep'
     remainingMs: float
     tickCounterMs: float
     payload?: { targetId?: ID, ... }
@@ -90,19 +99,43 @@ Agent {
   * Prevents path reset loops when adjacent to crops
 * **Movement locks:** while performing **non-attack** interactions (talk/heal/help/reproduce), participants are **locked** in place; lock is ignored if the agent is being **attacked** (they may move to escape)
 
-### 3.2 Energy & Food-Seeking
+### 3.2 Energy, Fullness & Needs
 
-* **Low-energy override threshold:** 40
+#### Energy
 
-  * Cancel current non-reproduction action
-  * Attempt immediate adjacent-crop step and harvest
-  * If none adjacent, plan path to nearest crop/farm area
-* **Food planning threshold (well-fed behavior):** 70
-  If energy ≥ 70, agents **do not** actively seek crops (but still harvest if they step onto one). This preserves time for social, reproduction, and building behaviors.
+Energy is restored **only** via the **sleep** action (not eating). Per-agent `maxEnergy` starts at 200, +5 per level (level 20 = 295).
+
+* **Passive drain:** 0.0625/tick (~0.25/sec)
+* **Movement drain:** 0.12/cell
+* **Mandatory sleep:** energy < 20
+* **Voluntary sleep:** energy < 40
+* Starvation is **not** triggered by energy = 0 (moved to fullness system)
+* Health regen is **not** tied to energy (moved to fullness system)
+
+#### Fullness (0–100)
+
+Fullness is a new survival resource. Eating crops restores fullness (not energy).
+
+* **Starting value:** 100
+* **Passive decay:** −0.03/tick
+* **Movement decay:** −0.08/cell
+* **Action decay:** −0.02/sec during any action
+* **Recovery:** eating a crop → +20 fullness
+* **Starvation:** fullness = 0 → −1 HP/sec
+* **Health regen:** fullness > 90 → +0.5 HP/sec
+* **Proactive food seeking:** fullness < 40
+
+#### Placeholder Needs (fields added, not active yet)
+
+* **Hygiene:** starts 100
+* **Social:** starts 50
+* **Inspiration:** starts 50
+
+These are tracked on agents but have no gameplay effect in Phase 1.
 
 ### 3.3 Resources
 
-* **Crops (green triangle)**: restore energy; small sharing to adjacent same-faction agents
+* **Crops (green triangle)**: restore **fullness** (+20); small sharing to adjacent same-faction agents
 * **Farms (yellow square)**: increase nearby crop spawn probability within radius 3
 * **Global crop cap:** **150** concurrent crops (hard limit)
 
@@ -142,17 +175,20 @@ Agent {
 * Upfront small energy **reserve** is consumed to commit; additional **finishing cost** on success
 * Spawns child in adjacent free cell
 
-### 3.8 Leveling
+### 3.8 Leveling (XP-Based)
 
-* Triggered by energy surplus
-* Grants +max HP and +attack
+* Triggered by accumulating XP (replaces energy-surplus leveling)
+* **XP sources:** kill +50, eat +5, heal complete +10, share complete +5, build farm +15, harvest +2
+* **Level curve:** level × 50 XP required per level
+* **Level-up effects:** maxHealth += 8, attack += 1.5, maxEnergy += 5
 * **Level cap:** **20**
 
-### 3.9 Health, Energy, Starvation
+### 3.9 Health, Fullness, Starvation
 
 * Health decays slowly over time
-* Movement costs energy
-* Starvation kills agent after threshold time at 0 energy
+* Movement costs energy and fullness
+* **Starvation:** triggered by fullness = 0 (not energy = 0); deals −1 HP/sec
+* **Health regen:** fullness > 90 → +0.5 HP/sec
 * Flags apply heal aura within radius
 
 ### 3.10 Action System (durations, costs, distance rules)
@@ -162,12 +198,15 @@ Agent {
   * talk/quarrel/heal/help: **0.9–1.8s**
   * **attack:** **0.45–0.9s** (faster)
   * reproduce: **2.0–3.2s**
+  * **sleep:** **8–12s** (new)
 * **Distance rules:**
 
   * Non-attack actions: distance **=1**
   * Attack: distance **≤2**
+  * Sleep: no target (solo action)
 * **Tick cadence:** effects apply roughly every **0.5s** during actions
-* **Per-second energy costs** (approx.): talk 0.4, quarrel 0.8, **attack 2.2**, heal 3.0, help 1.6, attack\_wall 1.5, attack\_flag 2.0, **reproduce 1.2**
+* **Per-second energy costs** (approx., halved from v1.3): talk 0.2, quarrel 0.4, **attack 1.1**, heal 1.5, help 0.8, attack\_wall 0.75, attack\_flag 1.0, **reproduce 1.5**
+* **Sleep:** restores +8 energy per 500ms tick (total 128–192 energy over full duration); mandatory at energy < 20, voluntary at energy < 40; interruptible by attack; emoji 😴
 * **Damage:** base 8; attack deals periodic damage scaled by level
 
 ---
@@ -222,26 +261,31 @@ Agent {
 
 **Economy & thresholds**
 
-* Move cost: **0.10** energy / step
-* Crop gain: **28** energy (pre-sharing)
-* **Food planning threshold:** 70 (only seek food below this)
-* **Low-energy override:** 40
-  Starvation: \~18s at 0 energy
+* Move cost: **0.12** energy / step, **0.08** fullness / step
+* Crop gain: **+20 fullness** (no longer gives energy)
+* **Mandatory sleep threshold:** energy < 20
+* **Voluntary sleep threshold:** energy < 40
+* **Proactive food seeking:** fullness < 40
+* **Urgent food seeking:** fullness < 20
+* Starvation: fullness = 0 → −1 HP/sec
 
-**Actions (energy/sec)**
+**Actions (energy/sec) — halved from v1.3**
 
-* talk 0.4, quarrel 0.8, **attack 2.2**, heal 3.0, help 1.6, attack\_wall 1.5, attack\_flag 2.0, **reproduce 1.2**
+* talk 0.2, quarrel 0.4, **attack 1.1**, heal 1.5, help 0.8, attack\_wall 0.75, attack\_flag 1.0, **reproduce 1.5**
 
 **Action durations**
 
 * talk/quarrel/heal/help: **0.9–1.8s**
 * **attack:** **0.45–0.9s**
 * reproduce: **2.0–3.2s**
+* **sleep:** **8–12s** (restores +8 energy per 500ms tick)
 
-**Combat & leveling**
+**Combat & leveling (XP-based)**
 
 * Base damage/tick: 8 (scales with level)
-* Level-up trigger: energy > 220 ⇒ +8 max HP, +1.5 attack, energy reset to 140
+* Level-up trigger: accumulate level × 50 XP
+* XP sources: kill +50, eat +5, heal complete +10, share complete +5, build farm +15, harvest +2
+* Level-up effects: +8 max HP, +1.5 attack, +5 maxEnergy
 * **Level cap:** **20**
 
 **World objects**
@@ -267,21 +311,29 @@ Agent {
 3. For each agent:
 
    * Age & passive health decay
+   * Passive fullness decay (−0.03/tick)
+   * Passive energy drain (−0.0625/tick)
    * Decrement movement **lock** time
-   * Low-energy override check (except reproduction)
+   * **Decision priority:**
+     1. Energy < 20 → mandatory sleep
+     2. Under attack → flee/retaliate
+     3. Health < 30% maxHP → seek faction flag
+     4. Fullness < 20 → urgent food seeking
+     5. Energy < 40 → voluntary sleep
+     6. Normal state:
+        a. Fullness < 40 → proactive food seeking
+        b. Reproduction, attack, help/heal/talk
+        c. Roam
    * If acting: process action (distance rules; energy drain; effects)
    * If not acting:
 
      * If **not locked** (or locked but being attacked):
-       **Move-first**: walk one path step (harvest if landed on crop)
-       **Plan-second**: if no path,
-
-       * Seek food only if energy < 70 (adjacent → nearest crop/farm)
-       * Otherwise short wander to encourage interactions
+       **Move-first**: walk one path step (harvest if landed on crop; crops give +20 fullness)
+       **Plan-second**: if no path, follow decision priority above
      * Consider interactions (reproduce first, then social, then combat with range 2)
      * Try building (wall or farm; farm consumes energy)
-   * Starvation death check
-   * Level-up check (respect level cap)
+   * Starvation death check (fullness = 0 → −1 HP/sec)
+   * XP-based level-up check (respect level cap)
 4. Recompute factions on interval (with union-find)
 5. Apply flag healing aura
 6. Remove destroyed objects / dead agents
@@ -317,8 +369,9 @@ Agent {
 5. **Adjacency rule**: all non-attack actions (including reproduction) only occur at **distance = 1**; actions cancel if distance rule is violated.
 6. **Reproduction**: occurs noticeably over long runs (under default settings); upfront commitment and finishing energy costs are deducted from parents.
 7. **Farm building**: agents occasionally **build farms** on adjacent cells when well-fed, consuming **12 energy**; farms block movement and increase local crop spawns.
-8. **Well-fed behavior**: agents with energy ≥ **70** do not actively seek crops (but harvest if already on one), allowing time for social, reproduction, and construction.
-9. **Level cap**: agent level never exceeds **20**; leveling grants stated bonuses and resets energy to 140.
+8. **Fullness-driven food seeking**: agents with fullness < 40 proactively seek crops; fullness < 20 triggers urgent food seeking. Eating crops restores +20 fullness (not energy).
+9. **Level cap**: agent level never exceeds **20**; leveling is XP-based and grants +8 maxHP, +1.5 attack, +5 maxEnergy.
+10. **Sleep action**: agents sleep when energy < 20 (mandatory) or < 40 (voluntary); sleep lasts 8–12s and restores +8 energy per 500ms tick; interruptible by attack.
 10. **Faction visuals**: flags use faction colors; faction list shows ID, members, avg level, and flag status.
 11. **UI overflow**: factions list and log are scrollable and do not overflow their containers.
 
@@ -330,10 +383,18 @@ Agent {
 * **Attack** is **faster** and **range-2**.
 * **Farm construction** by agents (energy-consuming).
 * **Global crop cap** (**150**).
-* **Well-fed behavior** (seek food only below **70** energy).
 * **Level cap** (**20**).
-* Economy tuned (cheaper movement, higher crop gain, cheaper/shorter reproduction, softened hostility bias).
 * UI lists made scrollable to prevent overflow.
+
+### Phase 1 Changes (v1.4.0)
+
+* **Fullness system** added (0–100): eating restores fullness, not energy. Starvation and health regen moved from energy to fullness.
+* **Sleep action** added: only way to recover energy. Mandatory at energy < 20, voluntary at < 40.
+* **XP-based leveling** replaces energy-surplus leveling. Multiple XP sources (kill, eat, heal, share, build, harvest).
+* **maxEnergy is per-agent:** starts 200, +5 per level.
+* **Action energy costs halved** across the board.
+* **Needs system scaffolding:** hygiene, social, inspiration fields added (placeholder, not active).
+* **Decision hierarchy rewritten** with sleep, fullness-based food seeking, and health-based flag seeking.
 
 
 --- 
