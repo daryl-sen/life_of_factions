@@ -821,7 +821,7 @@ export class SimulationEngine {
         }
         world.deadMarkers.push({
           cellX: a.cellX, cellY: a.cellY,
-          cause, msRemaining: 3000,
+          cause, msRemaining: 10000,
         });
 
         log(world, 'death', `${a.name} died`, a.id, {});
@@ -1237,7 +1237,7 @@ export class SimulationEngine {
       const tree = world.treeBlocks.get(k);
       world.treeBlocks.delete(k);
       if (tree) {
-        world.deadMarkers.push({ cellX: tree.x, cellY: tree.y, cause: 'tree', msRemaining: 3000 });
+        world.deadMarkers.push({ cellX: tree.x, cellY: tree.y, cause: 'tree', msRemaining: 10000 });
         log(world, 'death', `Tree @${tree.x},${tree.y} died of old age`, null, { x: tree.x, y: tree.y });
       }
     }

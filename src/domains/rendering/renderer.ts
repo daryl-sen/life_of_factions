@@ -9,7 +9,7 @@ const DEATH_CAUSE_EMOJI: Record<DeathCause, string> = {
   hunger: '\u{1F9B4}',   // 🦴
   killed: '\u{1FA78}',   // 🩸
   disease: '\u{1F9A0}',  // 🦠
-  old_age: '\u{1F9B4}',  // 🦴
+  old_age: '\u{1F550}',  // 🕐
   tree: '\u{1FABE}',     // 🪾
 };
 
@@ -245,7 +245,7 @@ export class Renderer {
     for (const marker of world.deadMarkers) {
       const x = marker.cellX * CELL;
       const y = marker.cellY * CELL;
-      const fade = Math.min(1, marker.msRemaining / 1000);
+      const fade = Math.min(1, marker.msRemaining / 3000);
       ctx.globalAlpha = fade;
 
       if (marker.cause === 'tree') {

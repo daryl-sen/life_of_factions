@@ -356,7 +356,7 @@ export class ActionProcessor {
 
     if (tree.units <= 0) {
       world.treeBlocks.delete(k);
-      world.deadMarkers.push({ cellX: tree.x, cellY: tree.y, cause: 'tree', msRemaining: 3000 });
+      world.deadMarkers.push({ cellX: tree.x, cellY: tree.y, cause: 'tree', msRemaining: 10000 });
     }
     ActionProcessor._checkLevelUp(world, agent);
   }
