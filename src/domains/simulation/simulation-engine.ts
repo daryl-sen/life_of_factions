@@ -340,15 +340,16 @@ export class SimulationEngine {
       return;
     }
 
-    // 2. Harvest adjacent food block if not inventory full
+    // 2. Harvest nearby food block if not inventory full
     if (!agent.inventoryFull()) {
-      const adj: [number, number][] = [
+      const nearby: [number, number][] = [
+        [agent.cellX, agent.cellY],
         [agent.cellX + 1, agent.cellY],
         [agent.cellX - 1, agent.cellY],
         [agent.cellX, agent.cellY + 1],
         [agent.cellX, agent.cellY - 1],
       ];
-      for (const [nx, ny] of adj) {
+      for (const [nx, ny] of nearby) {
         const k = key(nx, ny);
         const block = world.foodBlocks.get(k);
         if (block && block.units > 0 && !world.flagCells.has(k)) {
@@ -413,15 +414,16 @@ export class SimulationEngine {
       return;
     }
 
-    // 2. Harvest adjacent water block if not inventory full
+    // 2. Harvest nearby water block if not inventory full
     if (!agent.inventoryFull()) {
-      const adj: [number, number][] = [
+      const nearby: [number, number][] = [
+        [agent.cellX, agent.cellY],
         [agent.cellX + 1, agent.cellY],
         [agent.cellX - 1, agent.cellY],
         [agent.cellX, agent.cellY + 1],
         [agent.cellX, agent.cellY - 1],
       ];
-      for (const [nx, ny] of adj) {
+      for (const [nx, ny] of nearby) {
         const k = key(nx, ny);
         const block = world.waterBlocks.get(k);
         if (block && block.units > 0) {
@@ -472,6 +474,7 @@ export class SimulationEngine {
   static tryHarvestAdjacentFood(world: World, agent: Agent): boolean {
     if (agent.inventoryFull()) return false;
     const adj: [number, number][] = [
+      [agent.cellX, agent.cellY],
       [agent.cellX + 1, agent.cellY],
       [agent.cellX - 1, agent.cellY],
       [agent.cellX, agent.cellY + 1],
@@ -494,6 +497,7 @@ export class SimulationEngine {
   static tryHarvestAdjacentWood(world: World, agent: Agent): boolean {
     if (agent.inventoryFull()) return false;
     const adj: [number, number][] = [
+      [agent.cellX, agent.cellY],
       [agent.cellX + 1, agent.cellY],
       [agent.cellX - 1, agent.cellY],
       [agent.cellX, agent.cellY + 1],
