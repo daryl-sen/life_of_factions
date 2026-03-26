@@ -108,7 +108,7 @@
   // package.json
   var package_default = {
     name: "emoji-life",
-    version: "3.1.1",
+    version: "3.1.2",
     private: true,
     scripts: {
       build: "esbuild src/main.ts --bundle --outfile=dist/app.js",
@@ -301,13 +301,16 @@
       this.activeLogCats = new Set(LOG_CATS);
       this.activeLogAgentId = null;
       this.tick = 0;
-      this.speedPct = 50;
+      this.totalBirths = 0;
+      this.totalDeaths = 0;
+      this.speedPct = 100;
       this.spawnMult = 1;
       this.running = false;
       this.selectedId = null;
       this.paintMode = "none";
       this.pauseOnBlur = false;
       this.drawGrid = false;
+      this.factionSort = "members";
       this.pathBudgetMax = Number.isFinite(TUNE.pathBudgetPerTick) ? TUNE.pathBudgetPerTick : 30;
       this.pathBudget = 0;
       this._pathRR = 0;
@@ -689,7 +692,9 @@
           stFps: qs("#stFps"),
           stTickAvg: qs("#stTickAvg"),
           stTickMin: qs("#stTickMin"),
-          stTickMax: qs("#stTickMax")
+          stTickMax: qs("#stTickMax"),
+          stBirths: qs("#stBirths"),
+          stDeaths: qs("#stDeaths")
         },
         barEls: {
           barAgents: qs("#barAgents"),
@@ -703,6 +708,12 @@
         pauseChk: qs("#cbPauseOnBlur"),
         gridChk: qs("#cbDrawGrid")
       };
+    }
+    static formatTickCount(n) {
+      if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+      if (n >= 1e5) return (n / 1e3).toFixed(0) + "K";
+      if (n >= 1e4) return (n / 1e3).toFixed(1) + "K";
+      return String(n);
     }
     static renderLog(world, logList) {
       if (!world || !world.log || !logList) return;
@@ -796,7 +807,9 @@
       if (s.stFarms) s.stFarms.textContent = String(world.farms.size);
       if (s.stWalls) s.stWalls.textContent = String(world.walls.size);
       if (s.stFlags) s.stFlags.textContent = String(world.flags.size);
-      if (s.stTick) s.stTick.textContent = String(world.tick);
+      if (s.stBirths) s.stBirths.textContent = String(world.totalBirths);
+      if (s.stDeaths) s.stDeaths.textContent = String(world.totalDeaths);
+      if (s.stTick) s.stTick.textContent = _UIManager.formatTickCount(world.tick);
       if (s.stFps) s.stFps.textContent = fps.toFixed(0);
       if (s.stTickAvg) s.stTickAvg.textContent = tAvg.toFixed(1);
       if (s.stTickMin) s.stTickMin.textContent = tMin.toFixed(1);
@@ -808,19 +821,36 @@
     static rebuildFactionsListIfNeeded(world, factionsList) {
       if (!factionsList) return;
       const now = performance.now();
-      const sig = world.factions.size + "|" + [...world.factions].map(([fid, f]) => fid + ":" + f.members.size).join(",");
+      const sig = world.factions.size + "|" + world.factionSort + "|" + [...world.factions].map(([fid, f]) => fid + ":" + f.members.size).join(",");
       if (sig !== world._lastFactionsSig || now - world._lastFactionsDomAt >= 2e3) {
         factionsList.innerHTML = "";
-        for (const [fid, f] of world.factions) {
-          const color = f.color;
+        const entries = [...world.factions].map(([fid, f]) => {
           const members = [...f.members].map((id) => world.agentsById.get(id)).filter(Boolean);
-          const avgLvl = (members.reduce((s, a) => s + a.level, 0) / (members.length || 1)).toFixed(1);
+          const avgLvl = members.reduce((s, a) => s + a.level, 0) / (members.length || 1);
+          return { fid, f, members, avgLvl };
+        });
+        switch (world.factionSort) {
+          case "members":
+            entries.sort((a, b) => b.members.length - a.members.length);
+            break;
+          case "created":
+            entries.sort((a, b) => a.f.createdAtTick - b.f.createdAtTick);
+            break;
+          case "name":
+            entries.sort((a, b) => a.fid.localeCompare(b.fid));
+            break;
+          case "level":
+            entries.sort((a, b) => b.avgLvl - a.avgLvl);
+            break;
+        }
+        for (const { fid, f, members, avgLvl } of entries) {
+          const color = f.color;
           const div = document.createElement("div");
           div.className = "faction-item";
           div.innerHTML = `
           <div class="faction-color" style="background:${color}"></div>
           <span class="faction-name">${fid.slice(0, 8)}</span>
-          <span class="faction-detail">${members.length} members &middot; Lv ${avgLvl}</span>
+          <span class="faction-detail">${members.length} members &middot; Lv ${avgLvl.toFixed(1)}</span>
         `;
           factionsList.appendChild(div);
         }
@@ -880,6 +910,14 @@
             <div class="agent-stat-fill energy" style="width:${Math.min(100, a.energy / 2)}%"></div>
           </div>
         </div>
+      </div>
+      <div class="agent-details" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border)">
+        <div style="color:var(--muted)">POSITION</div><div>${a.cellX}, ${a.cellY}</div>
+        <div style="color:var(--muted)">ATTACK</div><div>${a.attack.toFixed(1)}</div>
+        <div style="color:var(--muted)">AGE</div><div>${a.ageTicks} ticks</div>
+        <div style="color:var(--muted)">TRAVEL</div><div>${a.travelPref}</div>
+        <div style="color:var(--muted)">AGGRESSION</div><div>${a.aggression.toFixed(2)}</div>
+        <div style="color:var(--muted)">COOPERATION</div><div>${a.cooperation.toFixed(2)}</div>
       </div>`;
     }
     static showNotification(agent) {
@@ -1311,10 +1349,11 @@
 
   // src/domains/faction/faction.ts
   var Faction = class {
-    constructor(id, color, members) {
+    constructor(id, color, members, createdAtTick) {
       this.id = id;
       this.color = color;
       this.members = members ?? /* @__PURE__ */ new Set();
+      this.createdAtTick = createdAtTick ?? 0;
     }
     get size() {
       return this.members.size;
@@ -1362,7 +1401,7 @@
     static create(world, members) {
       const fid = generatePronounceableString(6);
       const color = _FactionManager._nextColor(world);
-      const faction = new Faction(fid, color);
+      const faction = new Faction(fid, color, void 0, world.tick);
       world.factions.set(fid, faction);
       for (const a of members) {
         if (a.factionId) {
@@ -1408,7 +1447,7 @@
       if (newFid) {
         if (!world.factions.has(newFid)) {
           const color = _FactionManager._nextColor(world);
-          const faction = new Faction(newFid, color);
+          const faction = new Faction(newFid, color, void 0, world.tick);
           world.factions.set(newFid, faction);
           _FactionManager._placeFlag(world, newFid, [agent]);
         }
@@ -1459,7 +1498,7 @@
       for (const [fid, set] of actual) {
         if (!world.factions.has(fid)) {
           const color = _FactionManager._nextColor(world);
-          const faction = new Faction(fid, color, set);
+          const faction = new Faction(fid, color, set, world.tick);
           world.factions.set(fid, faction);
         } else {
           const f = world.factions.get(fid);
@@ -1717,6 +1756,7 @@
             if (pa && pb) chosen = Math.random() < 0.5 ? pa : pb;
             else chosen = pa || pb;
             if (chosen) FactionManager.setFaction(world, child, chosen, "birth");
+            world.totalBirths++;
             log(world, "reproduce", `${agent.name} & ${targ.name} had ${child.name}`, agent.id, { child: child.id });
           }
         }
@@ -1961,6 +2001,7 @@
           if (a.factionId && world.factions.has(a.factionId)) {
             world.factions.get(a.factionId).members.delete(a.id);
           }
+          world.totalDeaths++;
           log(world, "death", `${a.name} died`, a.id, {});
           return false;
         }
@@ -2094,7 +2135,8 @@
       const factions = [...world.factions.values()].map((f) => ({
         id: f.id,
         color: f.color,
-        members: [...f.members]
+        members: [...f.members],
+        createdAtTick: f.createdAtTick
       }));
       const flags = [...world.flags.values()];
       const walls = [...world.walls.values()];
@@ -2133,7 +2175,10 @@
           tick: world.tick,
           speedPct: world.speedPct,
           spawnMult: world.spawnMult,
-          drawGrid: world.drawGrid
+          drawGrid: world.drawGrid,
+          pauseOnBlur: world.pauseOnBlur,
+          totalBirths: world.totalBirths,
+          totalDeaths: world.totalDeaths
         },
         factions,
         flags,
@@ -2181,8 +2226,11 @@
       world.speedPct = d.state?.speedPct ?? world.speedPct;
       world.spawnMult = d.state?.spawnMult ?? world.spawnMult;
       world.drawGrid = d.state?.drawGrid ?? true;
+      world.pauseOnBlur = d.state?.pauseOnBlur ?? false;
+      world.totalBirths = d.state?.totalBirths ?? 0;
+      world.totalDeaths = d.state?.totalDeaths ?? 0;
       for (const f of d.factions || []) {
-        const faction = new Faction(f.id, f.color, new Set(f.members || []));
+        const faction = new Faction(f.id, f.color, new Set(f.members || []), f.createdAtTick ?? 0);
         world.factions.set(f.id, faction);
       }
       for (const fl of d.flags || []) {
@@ -2236,6 +2284,7 @@
         extra: {}
       });
       if (opts.gridChk) opts.gridChk.checked = world.drawGrid;
+      if (opts.pauseChk) opts.pauseChk.checked = world.pauseOnBlur;
     }
   };
 
@@ -2299,10 +2348,12 @@
         world.factions.clear();
         world.log = new RingLog(200);
         world.tick = 0;
+        world.totalBirths = 0;
+        world.totalDeaths = 0;
         world.selectedId = null;
         world.activeLogCats = new Set(LOG_CATS);
         UIManager.setupLogFilters(world, dom.logFilters, doRenderLog);
-        world.speedPct = Number(ranges.rngSpeed?.value || 50);
+        world.speedPct = Number(ranges.rngSpeed?.value || 100);
         world.spawnMult = Number(ranges.rngSpawn?.value || 1);
         seedEnvironment(world);
         spawnAgents(Number(ranges.rngAgents?.value || 20));
@@ -2310,6 +2361,8 @@
         if (buttons.btnStart) buttons.btnStart.disabled = true;
         if (buttons.btnPause) buttons.btnPause.disabled = false;
         if (buttons.btnResume) buttons.btnResume.disabled = true;
+        if (ranges.rngAgents) ranges.rngAgents.disabled = true;
+        if (nums.numAgents) nums.numAgents.disabled = true;
         world.log.push({
           t: performance.now(),
           cat: "info",
@@ -2341,10 +2394,12 @@
         reader.onload = () => {
           try {
             const data = JSON.parse(reader.result);
-            PersistenceManager.restore(world, data, { doRenderLog, gridChk: dom.gridChk });
+            PersistenceManager.restore(world, data, { doRenderLog, gridChk: dom.gridChk, pauseChk: dom.pauseChk });
             if (buttons.btnPause) buttons.btnPause.disabled = true;
             if (buttons.btnResume) buttons.btnResume.disabled = false;
             if (buttons.btnStart) buttons.btnStart.disabled = true;
+            if (ranges.rngAgents) ranges.rngAgents.disabled = true;
+            if (nums.numAgents) nums.numAgents.disabled = true;
           } catch (err) {
             alert("Failed to load save: " + err.message);
           } finally {
@@ -2389,6 +2444,13 @@
     window.addEventListener("resize", refreshCanvasSize);
     InputHandler.setup(canvas, camera, world, dom);
     Controls.wire(world, dom, doRenderLog);
+    const factionSortEl = document.getElementById("factionSort");
+    if (factionSortEl) {
+      factionSortEl.addEventListener("change", () => {
+        world.factionSort = factionSortEl.value;
+        world._lastFactionsSig = "";
+      });
+    }
     const sidebarPlay = document.getElementById("sidebarPlay");
     if (sidebarPlay) {
       sidebarPlay.addEventListener("click", () => {
@@ -2473,6 +2535,9 @@
         }
       }
       UIManager.rebuildFactionsListIfNeeded(world, factionsList);
+      if (sidebarPlay) {
+        sidebarPlay.innerHTML = world.running ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>' : '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+      }
       if (world.selectedId && world.selectedId !== lastSelectedId) {
         const agent = world.agentsById.get(world.selectedId);
         if (agent) UIManager.showNotification(agent);

@@ -52,6 +52,15 @@ document.addEventListener('DOMContentLoaded', () => {
   InputHandler.setup(canvas, camera, world, dom);
   Controls.wire(world, dom, doRenderLog);
 
+  // Faction sort dropdown
+  const factionSortEl = document.getElementById('factionSort') as HTMLSelectElement | null;
+  if (factionSortEl) {
+    factionSortEl.addEventListener('change', () => {
+      world.factionSort = factionSortEl.value as 'members' | 'created' | 'name' | 'level';
+      world._lastFactionsSig = ''; // force rebuild
+    });
+  }
+
   // Sidebar play button
   const sidebarPlay = document.getElementById('sidebarPlay');
   if (sidebarPlay) {
@@ -151,6 +160,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
     UIManager.rebuildFactionsListIfNeeded(world, factionsList);
+
+    // Update sidebar play button icon
+    if (sidebarPlay) {
+      sidebarPlay.innerHTML = world.running
+        ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>'
+        : '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+    }
 
     if (world.selectedId && world.selectedId !== lastSelectedId) {
       const agent = world.agentsById.get(world.selectedId);

@@ -11,6 +11,7 @@ export class PersistenceManager {
       id: f.id,
       color: f.color,
       members: [...f.members],
+      createdAtTick: f.createdAtTick,
     }));
     const flags = [...world.flags.values()];
     const walls = [...world.walls.values()];
@@ -52,6 +53,9 @@ export class PersistenceManager {
         speedPct: world.speedPct,
         spawnMult: world.spawnMult,
         drawGrid: world.drawGrid,
+        pauseOnBlur: world.pauseOnBlur,
+        totalBirths: world.totalBirths,
+        totalDeaths: world.totalDeaths,
       },
       factions,
       flags,
@@ -96,7 +100,7 @@ export class PersistenceManager {
   static restore(
     world: World,
     data: Record<string, unknown>,
-    opts: { doRenderLog: () => void; gridChk: HTMLInputElement | null }
+    opts: { doRenderLog: () => void; gridChk: HTMLInputElement | null; pauseChk: HTMLInputElement | null }
   ): void {
     const d = data as Record<string, any>;
     world.running = false;
@@ -108,9 +112,12 @@ export class PersistenceManager {
     world.speedPct = d.state?.speedPct ?? world.speedPct;
     world.spawnMult = d.state?.spawnMult ?? world.spawnMult;
     world.drawGrid = d.state?.drawGrid ?? true;
+    world.pauseOnBlur = d.state?.pauseOnBlur ?? false;
+    world.totalBirths = d.state?.totalBirths ?? 0;
+    world.totalDeaths = d.state?.totalDeaths ?? 0;
 
     for (const f of d.factions || []) {
-      const faction = new Faction(f.id, f.color, new Set(f.members || []));
+      const faction = new Faction(f.id, f.color, new Set(f.members || []), f.createdAtTick ?? 0);
       world.factions.set(f.id, faction);
     }
     for (const fl of d.flags || []) {
@@ -169,5 +176,6 @@ export class PersistenceManager {
       extra: {},
     });
     if (opts.gridChk) opts.gridChk.checked = world.drawGrid;
+    if (opts.pauseChk) opts.pauseChk.checked = world.pauseOnBlur;
   }
 }

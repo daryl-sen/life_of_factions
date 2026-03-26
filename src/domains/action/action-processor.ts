@@ -140,6 +140,7 @@ export class ActionProcessor {
           if (pa && pb) chosen = Math.random() < 0.5 ? pa : pb;
           else chosen = pa || pb;
           if (chosen) FactionManager.setFaction(world, child, chosen, 'birth');
+          world.totalBirths++;
           log(world, 'reproduce', `${agent.name} & ${targ.name} had ${child.name}`, agent.id, { child: child.id });
         }
       }
