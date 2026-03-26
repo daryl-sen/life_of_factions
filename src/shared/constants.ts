@@ -51,9 +51,9 @@ export const TUNE = {
   fullness: {
     max: 100,
     start: 50,
-    passiveDecay: 0.03,
-    moveDecay: 0.08,
-    actionDecayPerSec: 0.02,
+    passiveDecay: 0.12,
+    moveDecay: 0.2,
+    actionDecayPerSec: 0.08,
     cropGain: 20,
     regenThreshold: 90,
     seekThreshold: 40,

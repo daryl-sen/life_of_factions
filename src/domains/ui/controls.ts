@@ -1,5 +1,5 @@
 import { key, rndi, uuid } from '../../shared/utils';
-import { LOG_CATS, OBSTACLE_EMOJIS } from '../../shared/constants';
+import { GRID, LOG_CATS, OBSTACLE_EMOJIS, TUNE } from '../../shared/constants';
 import { RingLog } from '../../shared/utils';
 import type { World } from '../world';
 import { AgentFactory } from '../agent';
@@ -126,6 +126,13 @@ export class Controls {
 
     buttons.btnSpawnTree?.addEventListener('click', () => {
       SimulationEngine.addTree(world);
+    });
+
+    buttons.btnSpawnCloud?.addEventListener('click', () => {
+      const x = rndi(0, GRID - 1);
+      const y = rndi(0, GRID - 1);
+      const lifetime = rndi(TUNE.cloud.lifetimeRange[0], TUNE.cloud.lifetimeRange[1]);
+      world.clouds.push({ id: uuid(), x, y, spawnedAtMs: performance.now(), lifetimeMs: lifetime, rained: false });
     });
 
     buttons.btnSave?.addEventListener('click', () => PersistenceManager.export(world, doRenderLog));

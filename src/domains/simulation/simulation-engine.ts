@@ -467,7 +467,29 @@ export class SimulationEngine {
     }
   }
 
-  // ── Opportunistic wood harvest ──
+  // ── Opportunistic resource harvest ──
+
+  static tryHarvestAdjacentFood(world: World, agent: Agent): boolean {
+    if (agent.inventoryFull()) return false;
+    const adj: [number, number][] = [
+      [agent.cellX + 1, agent.cellY],
+      [agent.cellX - 1, agent.cellY],
+      [agent.cellX, agent.cellY + 1],
+      [agent.cellX, agent.cellY - 1],
+    ];
+    for (const [nx, ny] of adj) {
+      const k = key(nx, ny);
+      const block = world.foodBlocks.get(k);
+      if (block && block.units > 0 && !world.flagCells.has(k)) {
+        if (!agent.action) {
+          const resourceType = block.quality === 'hq' ? 'food_hq' : 'food_lq';
+          agent.action = ActionFactory.createHarvest(resourceType, { x: nx, y: ny }, agent.inspiration);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
 
   static tryHarvestAdjacentWood(world: World, agent: Agent): boolean {
     if (agent.inventoryFull()) return false;
@@ -756,8 +778,11 @@ export class SimulationEngine {
                 }
 
                 if (!agent.action) {
-                  // Opportunistic wood harvest when passing near trees
-                  if (!agent.inventoryFull() && Math.random() < 0.3) {
+                  // Opportunistic food/wood harvest when passing near resources
+                  if (!agent.inventoryFull() && Math.random() < 0.4) {
+                    SimulationEngine.tryHarvestAdjacentFood(world, agent);
+                  }
+                  if (!agent.action && !agent.inventoryFull() && Math.random() < 0.3) {
                     SimulationEngine.tryHarvestAdjacentWood(world, agent);
                   }
                   if (!agent.action) {

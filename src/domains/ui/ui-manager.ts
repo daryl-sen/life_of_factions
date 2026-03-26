@@ -58,6 +58,7 @@ export interface DomRefs {
     btnSave: HTMLButtonElement | null;
     btnLoad: HTMLButtonElement | null;
     btnSpawnTree: HTMLButtonElement | null;
+    btnSpawnCloud: HTMLButtonElement | null;
   };
   fileLoad: HTMLInputElement | null;
   ranges: {
@@ -121,6 +122,7 @@ export class UIManager {
         btnSave: qs('#btnSave') as HTMLButtonElement | null,
         btnLoad: qs('#btnLoad') as HTMLButtonElement | null,
         btnSpawnTree: qs('#btnSpawnTree') as HTMLButtonElement | null,
+        btnSpawnCloud: qs('#btnSpawnCloud') as HTMLButtonElement | null,
       },
       fileLoad: qs('#fileLoad') as HTMLInputElement | null,
       ranges: {
