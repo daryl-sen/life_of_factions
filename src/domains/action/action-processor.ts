@@ -262,6 +262,7 @@ export class ActionProcessor {
           else chosen = pa || pb;
           if (chosen) FactionManager.setFaction(world, child, chosen, 'birth');
           world.totalBirths++;
+          world.birthTimestamps.push(performance.now());
           log(world, 'reproduce', `${agent.name} & ${targ.name} had ${child.name}`, agent.id, { child: child.id });
         }
       }
@@ -353,7 +354,10 @@ export class ActionProcessor {
       if (hasPoop) SimulationEngine.trySpawnFoodNearTree(world, tree.x, tree.y);
     }
 
-    if (tree.units <= 0) world.treeBlocks.delete(k);
+    if (tree.units <= 0) {
+      world.treeBlocks.delete(k);
+      world.deadMarkers.push({ cellX: tree.x, cellY: tree.y, cause: 'tree', msRemaining: 10000 });
+    }
     ActionProcessor._checkLevelUp(world, agent);
   }
 

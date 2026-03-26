@@ -196,6 +196,10 @@ export class InputHandler {
       }
 
       world.selectedId = id || null;
+      world.activeLogAgentId = id || null;
+      // Sync the agent filter dropdown
+      const agentSelect = document.getElementById('agentFilterSelect') as HTMLSelectElement | null;
+      if (agentSelect) agentSelect.value = id || '';
       UIManager.updateInspector(world, dom.inspector);
     });
   }

@@ -278,6 +278,16 @@ export class UIManager {
     }
   }
 
+  private static _ratePerMinute(timestamps: number[]): number {
+    const now = performance.now();
+    const cutoff = now - 60_000;
+    // Evict old entries
+    while (timestamps.length > 0 && timestamps[0] < cutoff) {
+      timestamps.shift();
+    }
+    return timestamps.length;
+  }
+
   static renderHUD(world: World, _hud: HTMLElement | null, stats: Record<string, unknown>): void {
     const fps = (stats.fps as number) || 0;
     const tAvg = (stats.tickAvg as number) || 0;
@@ -291,8 +301,11 @@ export class UIManager {
     if (s.stFarms) s.stFarms.textContent = String(world.farms.size);
     if (s.stObstacles) s.stObstacles.textContent = String(world.obstacles.size);
     if (s.stFlags) s.stFlags.textContent = String(world.flags.size);
-    if (s.stBirths) s.stBirths.textContent = String(world.totalBirths);
-    if (s.stDeaths) s.stDeaths.textContent = String(world.totalDeaths);
+
+    const birthsPerMin = UIManager._ratePerMinute(world.birthTimestamps);
+    const deathsPerMin = UIManager._ratePerMinute(world.deathTimestamps);
+    if (s.stBirths) s.stBirths.textContent = `${world.totalBirths} (${birthsPerMin}/m)`;
+    if (s.stDeaths) s.stDeaths.textContent = `${world.totalDeaths} (${deathsPerMin}/m)`;
     // Count unique water blocks (large blocks share references across cells)
     const seenWater = new Set<string>();
     for (const wb of world.waterBlocks.values()) seenWater.add(wb.id);
@@ -485,6 +498,16 @@ export class UIManager {
         <div style="color:var(--muted)">ATTACK</div><div>${a.attack.toFixed(1)}</div>
         <div style="color:var(--muted)">XP</div><div>${a.xp} / ${a.xpToNextLevel()}</div>
         <div style="color:var(--muted)">AGE</div><div>${a.ageTicks} ticks</div>
+      </div>
+      <div style="font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border)">
+        <div style="color:var(--muted);margin-bottom:4px;font-weight:600">MEMORY</div>
+        ${(['food', 'water', 'wood'] as const).map(type => {
+          const entries = a.resourceMemory.get(type) || [];
+          const icon = type === 'food' ? '\u{1F356}' : type === 'water' ? '\u{1F4A7}' : '\u{1FAB5}';
+          return entries.length > 0
+            ? `<div>${icon} ${type}: ${entries.map(e => `(${e.x},${e.y})`).join(' ')}</div>`
+            : `<div style="color:var(--muted)">${icon} ${type}: none</div>`;
+        }).join('')}
       </div>`;
   }
 

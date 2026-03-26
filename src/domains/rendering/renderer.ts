@@ -1,9 +1,17 @@
 import { CELL, GRID, COLORS, AGENT_EMOJIS, IDLE_EMOJIS, WORLD_EMOJIS, FOOD_EMOJIS, TUNE } from '../../shared/constants';
 import { getIdleEmoji } from '../../shared/utils';
-import type { World } from '../world';
+import type { World, DeathCause } from '../world';
 import type { Agent } from '../agent';
 import { Camera } from './camera';
 import { EmojiCache } from './emoji-cache';
+
+const DEATH_CAUSE_EMOJI: Record<DeathCause, string> = {
+  hunger: '\u{1F9B4}',   // 🦴
+  killed: '\u{1FA78}',   // 🩸
+  disease: '\u{1F9A0}',  // 🦠
+  old_age: '\u{1F550}',  // 🕐
+  tree: '\u{1FABE}',     // 🪾
+};
 
 export class Renderer {
   private readonly _emojiCache = new EmojiCache();
@@ -31,6 +39,7 @@ export class Renderer {
 
     const pendingAttackLines: [Agent, Agent][] = [];
     this._drawAgents(ctx, world, pendingAttackLines);
+    this._drawDeadMarkers(ctx, world);
     this._drawAttackLines(ctx, camera, pendingAttackLines);
 
     this._drawClouds(ctx, world, camera);
@@ -230,6 +239,40 @@ export class Renderer {
     ctx.fill();
     ctx.stroke();
     ctx.restore();
+  }
+
+  private _drawDeadMarkers(ctx: CanvasRenderingContext2D, world: World): void {
+    for (const marker of world.deadMarkers) {
+      const x = marker.cellX * CELL;
+      const y = marker.cellY * CELL;
+      const fade = Math.min(1, marker.msRemaining / 3000);
+      ctx.globalAlpha = fade;
+
+      if (marker.cause === 'tree') {
+        // Tree death: show stump emoji at full cell size
+        const stumpEmoji = DEATH_CAUSE_EMOJI.tree;
+        const { canvas: sc, w: sw, h: sh } = this._emojiCache.get(stumpEmoji);
+        const drawSize = CELL - 2;
+        const scale = Math.min(drawSize / sw, drawSize / sh);
+        ctx.drawImage(sc, x + (CELL - sw * scale) / 2, y + (CELL - sh * scale) / 2, sw * scale, sh * scale);
+      } else {
+        // Agent death: draw 😵 at full agent size
+        const deadEmoji = '\u{1F635}'; // 😵
+        const { canvas: ec, w, h } = this._emojiCache.get(deadEmoji);
+        const drawSize = CELL - 4;
+        const scale = Math.min(drawSize / w, drawSize / h);
+        ctx.drawImage(ec, x + (CELL - w * scale) / 2, y + (CELL - h * scale) / 2, w * scale, h * scale);
+
+        // Draw cause icon at 1/4 size, offset to top-right
+        const causeEmoji = DEATH_CAUSE_EMOJI[marker.cause];
+        const { canvas: cc, w: cw, h: ch } = this._emojiCache.get(causeEmoji);
+        const causeSize = CELL / 4;
+        const cScale = Math.min(causeSize / cw, causeSize / ch);
+        ctx.drawImage(cc, x + CELL - cw * cScale - 1, y + 1, cw * cScale, ch * cScale);
+      }
+
+      ctx.globalAlpha = 1;
+    }
   }
 
   private _drawAttackLines(ctx: CanvasRenderingContext2D, camera: Camera, lines: [Agent, Agent][]): void {
