@@ -6,7 +6,7 @@ import { FoodField } from '../world/food-field';
 import { WaterField } from '../world/water-field';
 import { LootBagManager } from '../world/loot-bag-manager';
 import { PoopBlockManager } from '../world/poop-block-manager';
-import type { World } from '../world';
+import type { World, DeathCause } from '../world';
 import type { Agent } from '../agent';
 import { ActionFactory, ActionProcessor, InteractionEngine } from '../action';
 import { AgentFactory } from '../agent/agent-factory';
@@ -434,7 +434,7 @@ export class SimulationEngine {
     if (entries.length === 0) return false;
 
     // Check each remembered location — if resource is gone, forget it
-    let bestIdx = -1;
+    let bestEntry: { x: number; y: number; tick: number } | null = null;
     let bestDist = Infinity;
     for (let i = entries.length - 1; i >= 0; i--) {
       const e = entries[i];
@@ -454,12 +454,12 @@ export class SimulationEngine {
       const d = manhattan(agent.cellX, agent.cellY, e.x, e.y);
       if (d < bestDist) {
         bestDist = d;
-        bestIdx = i;
+        bestEntry = e;
       }
     }
 
-    if (bestIdx < 0) return false;
-    const target = entries[bestIdx];
+    if (!bestEntry) return false;
+    const target = bestEntry;
     // For water, target adjacent cell (water is impassable)
     if (type === 'water') {
       const adjCells: [number, number][] = [
@@ -797,6 +797,7 @@ export class SimulationEngine {
 
   private static _cleanDead(world: World): void {
     const removedIds: string[] = [];
+    const now = performance.now();
     world.agents = world.agents.filter((a) => {
       if (a.health <= 0) {
         LootBagManager.dropOnDeath(world, a);
@@ -807,6 +808,22 @@ export class SimulationEngine {
           world.factions.get(a.factionId)!.members.delete(a.id);
         }
         world.totalDeaths++;
+        world.deathTimestamps.push(now);
+
+        // Determine death cause
+        let cause: DeathCause = 'killed';
+        if (a.ageTicks >= a.maxAgeTicks) {
+          cause = 'old_age';
+        } else if (a.fullness <= 0) {
+          cause = 'hunger';
+        } else if (a.diseased) {
+          cause = 'disease';
+        }
+        world.deadMarkers.push({
+          cellX: a.cellX, cellY: a.cellY,
+          cause, msRemaining: 3000,
+        });
+
         log(world, 'death', `${a.name} died`, a.id, {});
         return false;
       }
@@ -1219,7 +1236,10 @@ export class SimulationEngine {
     for (const k of toRemove) {
       const tree = world.treeBlocks.get(k);
       world.treeBlocks.delete(k);
-      if (tree) log(world, 'death', `Tree @${tree.x},${tree.y} died of old age`, null, { x: tree.x, y: tree.y });
+      if (tree) {
+        world.deadMarkers.push({ cellX: tree.x, cellY: tree.y, cause: 'tree', msRemaining: 3000 });
+        log(world, 'death', `Tree @${tree.x},${tree.y} died of old age`, null, { x: tree.x, y: tree.y });
+      }
     }
   }
 
@@ -1262,6 +1282,7 @@ export class SimulationEngine {
       agent.energy = 60;
       agent.fullness = 50;
       world.totalBirths++;
+      world.birthTimestamps.push(performance.now());
       log(world, 'spawn', `Egg hatched into ${agent.name} @${egg.x},${egg.y}`, agent.id, {});
     }
   }

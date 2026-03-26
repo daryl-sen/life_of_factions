@@ -206,6 +206,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
     }
+
+    // Tick down death markers
+    for (let i = world.deadMarkers.length - 1; i >= 0; i--) {
+      world.deadMarkers[i].msRemaining -= dt;
+      if (world.deadMarkers[i].msRemaining <= 0) {
+        world.deadMarkers.splice(i, 1);
+      }
+    }
     renderer.render(world, ctx, canvas, camera);
     requestAnimationFrame(loop);
   }

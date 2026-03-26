@@ -7,6 +7,15 @@ import { Grid } from './grid';
 import { FoodField } from './food-field';
 import { WaterField } from './water-field';
 
+export type DeathCause = 'hunger' | 'killed' | 'disease' | 'old_age' | 'tree';
+
+export interface DeadAgentMarker {
+  cellX: number;
+  cellY: number;
+  cause: DeathCause;
+  msRemaining: number;
+}
+
 export class World {
   readonly grid: Grid = new Grid();
   readonly foodField: FoodField = new FoodField();
@@ -23,6 +32,13 @@ export class World {
   tick = 0;
   totalBirths = 0;
   totalDeaths = 0;
+
+  // Death animation markers
+  deadMarkers: DeadAgentMarker[] = [];
+
+  // Birth/death timestamps for per-minute rate tracking
+  birthTimestamps: number[] = [];
+  deathTimestamps: number[] = [];
   speedPct = 100;
   cloudSpawnRate = 1;
   running = false;
