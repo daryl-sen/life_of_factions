@@ -176,7 +176,7 @@ export class Controls {
       const x = rndi(0, GRID - 1);
       const y = rndi(0, GRID - 1);
       const lifetime = rndi(TUNE.cloud.lifetimeRange[0], TUNE.cloud.lifetimeRange[1]);
-      world.clouds.push({ id: uuid(), x, y, spawnedAtMs: performance.now(), lifetimeMs: lifetime, rained: false });
+      world.clouds.push({ id: uuid(), x, y, xF: x, spawnedAtMs: performance.now(), lifetimeMs: lifetime, totalLifetimeMs: lifetime, rained: false });
     });
 
     buttons.btnReplenish?.addEventListener('click', () => {
