@@ -28,6 +28,16 @@ export class InteractionEngine {
    *    e. Share/Heal/Talk
    */
   static consider(world: World, agent: Agent): void {
+    // Babies can only eat/drink from inventory — no harvesting or other actions
+    if (agent.babyMsRemaining > 0) {
+      if (agent.fullness < TUNE.fullness.seekThreshold && agent.inventory.food > 0) {
+        ActionFactory.tryStart(agent, 'eat');
+      } else if (agent.hygiene < TUNE.hygiene.seekThreshold && agent.inventory.water > 0) {
+        ActionFactory.tryStart(agent, 'drink');
+      }
+      return;
+    }
+
     // 1. Mandatory sleep
     if (agent.energy < TUNE.sleep.mandatoryThreshold) {
       if (InteractionEngine._trySleep(agent)) return;

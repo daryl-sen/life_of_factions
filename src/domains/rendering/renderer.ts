@@ -1,4 +1,4 @@
-import { CELL, GRID, COLORS, AGENT_EMOJIS, WORLD_EMOJIS, FOOD_EMOJIS, TUNE } from '../../shared/constants';
+import { CELL, GRID, COLORS, AGENT_EMOJIS, IDLE_EMOJIS, WORLD_EMOJIS, FOOD_EMOJIS, TUNE } from '../../shared/constants';
 import { getIdleEmoji } from '../../shared/utils';
 import type { World } from '../world';
 import type { Agent } from '../agent';
@@ -164,7 +164,12 @@ export class Renderer {
         ? world.factions.get(agent.factionId)?.color || '#fff'
         : '#6b7280';
       const actionType = agent.action?.type;
-      const emoji = AGENT_EMOJIS[actionType as string] || getIdleEmoji(agent);
+      let emoji: string;
+      if (agent.babyMsRemaining > 0 && (actionType === 'eat' || actionType === 'drink')) {
+        emoji = IDLE_EMOJIS.babyEating;
+      } else {
+        emoji = AGENT_EMOJIS[actionType as string] || getIdleEmoji(agent);
+      }
 
       this._drawAgentEmoji(ctx, x, y, CELL / 2 - 3, col, emoji);
 

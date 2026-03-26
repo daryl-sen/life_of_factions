@@ -95,6 +95,32 @@ function completeReproduction(world, agent, partner) {
 | Health | 80 |
 | Level | 1 |
 | Attack | 8 (base) |
+| Fullness | Transferred from parents (see below) |
+
+### Fullness Transfer
+
+Fullness is not materialized from nothing — it is transferred from the parents:
+
+```
+p1Donate = random(15, 25), capped at parent1.fullness
+p2Donate = random(15, 25), capped at parent2.fullness
+child.fullness = min(100, p1Donate + p2Donate)
+parent1.fullness -= p1Donate
+parent2.fullness -= p2Donate
+```
+
+### Baby Stage
+
+Newborns begin in a baby stage lasting a random duration (~60s):
+
+```
+babyMs = random(50000, 70000)  // ms
+```
+
+While `babyMsRemaining > 0`:
+- The agent displays the 👶 emoji
+- No actions can be taken (only movement is allowed)
+- The timer decrements each simulation tick until it reaches 0
 
 ### Inherited Traits
 
@@ -142,8 +168,10 @@ if (childFaction):
 |-----------|---------------------|
 | Upfront reserve | 4 |
 | Action duration | ~2.2 (avg) |
-| Completion | 12 |
-| **Total** | **18.2** |
+| Completion (energy) | 12 |
+| Completion (fullness) | 15–25 |
+| **Total energy** | **~18.2** |
+| **Total fullness** | **~15–25** |
 
 ### Energy After Reproduction
 
