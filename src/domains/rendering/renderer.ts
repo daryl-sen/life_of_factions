@@ -25,7 +25,7 @@ export class Renderer {
     this._drawFoodBlocks(ctx, world);
     this._drawLootBags(ctx, world);
     this._drawFarms(ctx, world);
-    this._drawWalls(ctx, world);
+    this._drawObstacles(ctx, world);
     this._drawFlags(ctx, world);
 
     const pendingAttackLines: [Agent, Agent][] = [];
@@ -127,11 +127,11 @@ export class Renderer {
       this._drawCellEmoji(ctx, f.x, f.y, WORLD_EMOJIS.farm);
   }
 
-  private _drawWalls(ctx: CanvasRenderingContext2D, world: World): void {
-    for (const w of world.walls.values()) {
-      const dmg = 1 - w.hp / w.maxHp;
+  private _drawObstacles(ctx: CanvasRenderingContext2D, world: World): void {
+    for (const o of world.obstacles.values()) {
+      const dmg = 1 - o.hp / o.maxHp;
       ctx.globalAlpha = dmg > 0 ? 1 - Math.min(0.7, dmg) : 1;
-      this._drawCellEmoji(ctx, w.x, w.y, WORLD_EMOJIS.wall);
+      this._drawCellEmoji(ctx, o.x, o.y, o.emoji);
       ctx.globalAlpha = 1;
     }
   }

@@ -15,7 +15,7 @@ export class PersistenceManager {
       createdAtTick: f.createdAtTick,
     }));
     const flags = [...world.flags.values()];
-    const walls = [...world.walls.values()];
+    const obstacles = [...world.obstacles.values()];
     const farms = [...world.farms.values()];
     const foodBlocks = [...world.foodBlocks.values()];
     const agents = world.agents.map((a) => ({
@@ -69,7 +69,7 @@ export class PersistenceManager {
       },
       factions,
       flags,
-      walls,
+      obstacles,
       farms,
       foodBlocks,
       waterBlocks: PersistenceManager._serializeWaterBlocks(world),
@@ -158,8 +158,8 @@ export class PersistenceManager {
       });
       world.flagCells.add(key(fl.x, fl.y));
     }
-    for (const w of d.walls || [])
-      world.walls.set(key(w.x, w.y), { ...w });
+    for (const o of d.obstacles || d.walls || [])
+      world.obstacles.set(key(o.x, o.y), { ...o, emoji: o.emoji || '🪨' });
     for (const fm of d.farms || []) {
       world.farms.set(key(fm.x, fm.y), {
         ...fm,

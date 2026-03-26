@@ -535,14 +535,14 @@ export class SimulationEngine {
       for (const id of f.members) if (world.agentsById.has(id)) aliveCount++;
       if (aliveCount <= 1) FactionManager.disband(world, fid, 'no members');
     }
-    const wallsToDelete: string[] = [];
-    for (const [k, w] of world.walls) {
-      if (w.hp <= 0) wallsToDelete.push(k);
+    const obstaclesToDelete: string[] = [];
+    for (const [k, o] of world.obstacles) {
+      if (o.hp <= 0) obstaclesToDelete.push(k);
     }
-    for (const k of wallsToDelete) {
-      const w = world.walls.get(k);
-      world.walls.delete(k);
-      if (w) log(world, 'destroy', `Wall @${w.x},${w.y} destroyed`, null, {});
+    for (const k of obstaclesToDelete) {
+      const o = world.obstacles.get(k);
+      world.obstacles.delete(k);
+      if (o) log(world, 'destroy', `Obstacle @${o.x},${o.y} destroyed`, null, {});
     }
   }
 

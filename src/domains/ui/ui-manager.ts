@@ -53,8 +53,8 @@ export interface DomRefs {
     btnPause: HTMLButtonElement | null;
     btnResume: HTMLButtonElement | null;
     btnSpawnCrop: HTMLButtonElement | null;
-    btnDrawWalls: HTMLButtonElement | null;
-    btnEraseWalls: HTMLButtonElement | null;
+    btnDrawObstacles: HTMLButtonElement | null;
+    btnEraseObstacles: HTMLButtonElement | null;
     btnSave: HTMLButtonElement | null;
     btnLoad: HTMLButtonElement | null;
     btnSpawnTree: HTMLButtonElement | null;
@@ -80,7 +80,7 @@ export interface DomRefs {
     stFactions: HTMLElement | null;
     stCrops: HTMLElement | null;
     stFarms: HTMLElement | null;
-    stWalls: HTMLElement | null;
+    stObstacles: HTMLElement | null;
     stFlags: HTMLElement | null;
     stTick: HTMLElement | null;
     stFps: HTMLElement | null;
@@ -116,8 +116,8 @@ export class UIManager {
         btnPause: qs('#btnPause') as HTMLButtonElement | null,
         btnResume: qs('#btnResume') as HTMLButtonElement | null,
         btnSpawnCrop: qs('#btnSpawnCrop') as HTMLButtonElement | null,
-        btnDrawWalls: qs('#btnDrawWalls') as HTMLButtonElement | null,
-        btnEraseWalls: qs('#btnEraseWalls') as HTMLButtonElement | null,
+        btnDrawObstacles: qs('#btnDrawObstacles') as HTMLButtonElement | null,
+        btnEraseObstacles: qs('#btnEraseObstacles') as HTMLButtonElement | null,
         btnSave: qs('#btnSave') as HTMLButtonElement | null,
         btnLoad: qs('#btnLoad') as HTMLButtonElement | null,
         btnSpawnTree: qs('#btnSpawnTree') as HTMLButtonElement | null,
@@ -143,7 +143,7 @@ export class UIManager {
         stFactions: qs('#stFactions'),
         stCrops: qs('#stCrops'),
         stFarms: qs('#stFarms'),
-        stWalls: qs('#stWalls'),
+        stObstacles: qs('#stObstacles'),
         stFlags: qs('#stFlags'),
         stTick: qs('#stTick'),
         stFps: qs('#stFps'),
@@ -279,7 +279,7 @@ export class UIManager {
     if (s.stFactions) s.stFactions.textContent = String(world.factions.size);
     if (s.stCrops) s.stCrops.textContent = String(world.foodBlocks.size);
     if (s.stFarms) s.stFarms.textContent = String(world.farms.size);
-    if (s.stWalls) s.stWalls.textContent = String(world.walls.size);
+    if (s.stObstacles) s.stObstacles.textContent = String(world.obstacles.size);
     if (s.stFlags) s.stFlags.textContent = String(world.flags.size);
     if (s.stBirths) s.stBirths.textContent = String(world.totalBirths);
     if (s.stDeaths) s.stDeaths.textContent = String(world.totalDeaths);

@@ -1,4 +1,4 @@
-import { CELL, GRID } from '../../shared/constants';
+import { CELL, GRID, OBSTACLE_EMOJIS } from '../../shared/constants';
 import { key, log, uuid } from '../../shared/utils';
 import type { World } from '../world';
 import type { Camera } from '../rendering/camera';
@@ -7,16 +7,16 @@ import { UIManager } from './ui-manager';
 
 export class InputHandler {
   static setup(canvas: HTMLCanvasElement, camera: Camera, world: World, dom: DomRefs): void {
-    const { btnDrawWalls, btnEraseWalls } = dom.buttons;
+    const { btnDrawObstacles, btnEraseObstacles } = dom.buttons;
 
     function setPaintMode(mode: 'draw' | 'erase') {
       const next = world.paintMode === mode ? 'none' as const : mode;
       world.paintMode = next;
-      if (btnDrawWalls) btnDrawWalls.classList.toggle('toggled', next === 'draw');
-      if (btnEraseWalls) btnEraseWalls.classList.toggle('toggled', next === 'erase');
+      if (btnDrawObstacles) btnDrawObstacles.classList.toggle('toggled', next === 'draw');
+      if (btnEraseObstacles) btnEraseObstacles.classList.toggle('toggled', next === 'erase');
     }
-    btnDrawWalls?.addEventListener('click', () => setPaintMode('draw'));
-    btnEraseWalls?.addEventListener('click', () => setPaintMode('erase'));
+    btnDrawObstacles?.addEventListener('click', () => setPaintMode('draw'));
+    btnEraseObstacles?.addEventListener('click', () => setPaintMode('erase'));
 
     let dragging = false;
     let lastX = 0;
@@ -38,7 +38,7 @@ export class InputHandler {
       lastPaintKey = k;
       if (world.paintMode === 'draw') {
         if (
-          !world.walls.has(k) &&
+          !world.obstacles.has(k) &&
           !world.farms.has(k) &&
           !world.flagCells.has(k) &&
           !world.foodBlocks.has(k) &&
@@ -47,13 +47,14 @@ export class InputHandler {
           !world.seedlings.has(k) &&
           !world.agentsByCell.has(k)
         ) {
-          world.walls.set(k, { id: uuid(), x, y, hp: 12, maxHp: 12 });
-          log(world, 'build', `Wall @${x},${y} (user)`, null, { x, y });
+          const emoji = OBSTACLE_EMOJIS[Math.floor(Math.random() * OBSTACLE_EMOJIS.length)];
+          world.obstacles.set(k, { id: uuid(), x, y, emoji, hp: 12, maxHp: 12 });
+          log(world, 'build', `Obstacle @${x},${y} (user)`, null, { x, y });
         }
       } else if (world.paintMode === 'erase') {
-        if (world.walls.has(k)) {
-          world.walls.delete(k);
-          log(world, 'destroy', `Wall @${x},${y} removed (user)`, null, { x, y });
+        if (world.obstacles.has(k)) {
+          world.obstacles.delete(k);
+          log(world, 'destroy', `Obstacle @${x},${y} removed (user)`, null, { x, y });
         }
       }
     }

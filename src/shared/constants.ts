@@ -46,7 +46,7 @@ export const TUNE = {
   energyLowThreshold: 40,
   levelCap: 20,
   maxCrops: 100,
-  reproduction: { relationshipThreshold: 0.1, relationshipEnergy: 85 },
+  reproduction: { relationshipThreshold: 0.4, relationshipEnergy: 90 },
   pathBudgetPerTick: 30,
   fullness: {
     max: 100,
@@ -149,7 +149,7 @@ export const TUNE = {
     spreadBlockThreshold: 60,
     cureHygieneThreshold: 80,
     energyDrainMultiplier: 2,
-    hpDrainPerSec: 0.5,
+    hpDrainPerSec: 1.5,
   },
   flagStorage: {
     capacityPerType: 30,

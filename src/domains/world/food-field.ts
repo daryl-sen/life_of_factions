@@ -29,7 +29,7 @@ export class FoodField {
     const staticBlocked = (x: number, y: number): boolean => {
       if (x < 0 || y < 0 || x >= GRID || y >= GRID) return true;
       const k = key(x, y);
-      if (grid.walls.has(k)) return true;
+      if (grid.obstacles.has(k)) return true;
       if (grid.farms.has(k)) return true;
       if (grid.flagCells.has(k)) return true;
       if (grid.waterBlocks.has(k)) return true;
