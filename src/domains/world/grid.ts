@@ -29,6 +29,18 @@ export class Grid {
     return false;
   }
 
+  /** Checks terrain blocking only — agents are ignored. Used for pathfinding so agents can route through each other. */
+  isBlockedTerrain(x: number, y: number): boolean {
+    if (x < 0 || y < 0 || x >= this.size || y >= this.size) return true;
+    const k = key(x, y);
+    if (this.obstacles.has(k)) return true;
+    if (this.farms.has(k)) return true;
+    if (this.flagCells.has(k)) return true;
+    if (this.waterBlocks.has(k)) return true;
+    if (this.treeBlocks.has(k)) return true;
+    return false;
+  }
+
   /** Checks if any interactable block occupies the cell (for spawn no-stacking rule). */
   isCellOccupied(x: number, y: number): boolean {
     if (x < 0 || y < 0 || x >= this.size || y >= this.size) return true;

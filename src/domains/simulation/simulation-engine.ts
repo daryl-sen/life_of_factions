@@ -529,6 +529,19 @@ export class SimulationEngine {
     }
   }
 
+  /** Find an adjacent cell (4-directional) that is not blocked by terrain or another agent. */
+  private static _findAdjacentOpen(
+    world: World, cx: number, cy: number, selfId: string
+  ): { x: number; y: number } | null {
+    const dirs: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const [dx, dy] of dirs) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (!world.grid.isBlocked(nx, ny, selfId)) return { x: nx, y: ny };
+    }
+    return null;
+  }
+
   private static _cleanDead(world: World): void {
     const removedIds: string[] = [];
     world.agents = world.agents.filter((a) => {
@@ -657,27 +670,56 @@ export class SimulationEngine {
       } else {
         const locked = agent.lockMsRemaining > 0 && !agent._underAttack;
         if (!locked) {
-          // Follow path
+          // Follow path — agents walk through each other but cannot land on the same cell
           if (agent.path && agent.pathIdx < agent.path.length) {
             const step = agent.path[agent.pathIdx];
-            if (!world.grid.isBlocked(step.x, step.y, agent.id)) {
-              agent.prevCellX = agent.cellX;
-              agent.prevCellY = agent.cellY;
-              agent.lerpT = 0;
-              world.agentsByCell.delete(key(agent.cellX, agent.cellY));
-              agent.cellX = step.x;
-              agent.cellY = step.y;
-              world.agentsByCell.set(key(agent.cellX, agent.cellY), agent.id);
-              agent.pathIdx++;
-              agent.energy -= TUNE.moveEnergy;
-              agent.drainFullness(TUNE.fullness.moveDecay);
-              agent.hygiene = Math.max(0, agent.hygiene - TUNE.hygiene.moveDecay);
-              // Step-on-poop hygiene penalty
-              if (world.poopBlocks.has(key(agent.cellX, agent.cellY))) {
-                agent.hygiene = Math.max(0, agent.hygiene - TUNE.hygiene.stepOnPoopDecay);
-              }
-            } else {
+            // Terrain blocked → abandon path
+            if (world.grid.isBlockedTerrain(step.x, step.y)) {
               agent.path = null;
+            } else {
+              const cellKey = key(step.x, step.y);
+              const occupant = world.grid.agentsByCell.get(cellKey);
+              const hasOtherAgent = occupant != null && occupant !== agent.id;
+              const isLastStep = agent.pathIdx === agent.path.length - 1;
+
+              let targetX = step.x;
+              let targetY = step.y;
+              let canMove = true;
+
+              if (hasOtherAgent && isLastStep) {
+                // Final destination occupied — fall back to an adjacent open cell
+                const fallback = SimulationEngine._findAdjacentOpen(world, step.x, step.y, agent.id);
+                if (fallback) {
+                  targetX = fallback.x;
+                  targetY = fallback.y;
+                } else {
+                  canMove = false;
+                }
+              }
+              // Intermediate steps: walk through other agents freely
+
+              if (canMove) {
+                agent.prevCellX = agent.cellX;
+                agent.prevCellY = agent.cellY;
+                agent.lerpT = 0;
+                // Conditional delete: only remove if we still own this cell
+                const oldKey = key(agent.cellX, agent.cellY);
+                if (world.agentsByCell.get(oldKey) === agent.id) {
+                  world.agentsByCell.delete(oldKey);
+                }
+                agent.cellX = targetX;
+                agent.cellY = targetY;
+                world.agentsByCell.set(key(agent.cellX, agent.cellY), agent.id);
+                agent.pathIdx++;
+                agent.energy -= TUNE.moveEnergy;
+                agent.drainFullness(TUNE.fullness.moveDecay);
+                agent.hygiene = Math.max(0, agent.hygiene - TUNE.hygiene.moveDecay);
+                if (world.poopBlocks.has(key(agent.cellX, agent.cellY))) {
+                  agent.hygiene = Math.max(0, agent.hygiene - TUNE.hygiene.stepOnPoopDecay);
+                }
+              } else {
+                agent.path = null;
+              }
             }
           } else {
             agent.path = null;
