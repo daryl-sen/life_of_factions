@@ -41,6 +41,7 @@ export class Renderer {
     this._drawAgents(ctx, world, pendingAttackLines);
     this._drawDeadMarkers(ctx, world);
     this._drawAttackLines(ctx, camera, pendingAttackLines);
+    this._drawSelectedAgentPath(ctx, world);
 
     this._drawClouds(ctx, world, camera);
 
@@ -94,14 +95,20 @@ export class Renderer {
     for (const tree of world.treeBlocks.values()) {
       const pct = tree.units / tree.maxUnits;
       ctx.globalAlpha = 0.4 + 0.6 * pct;
+      let nearWater = false;
+      for (const wb of world.waterBlocks.values()) {
+        if (Math.abs(tree.x - wb.x) + Math.abs(tree.y - wb.y) <= 5) { nearWater = true; break; }
+      }
+      if (!nearWater) ctx.filter = 'saturate(0.2)';
       this._drawCellEmoji(ctx, tree.x, tree.y, tree.emoji);
+      ctx.filter = 'none';
       ctx.globalAlpha = 1;
     }
   }
 
   private _drawSeedlings(ctx: CanvasRenderingContext2D, world: World): void {
     for (const s of world.seedlings.values()) {
-      this._drawCellEmoji(ctx, s.x, s.y, WORLD_EMOJIS.seedling);
+      this._drawCellEmoji(ctx, s.x, s.y, WORLD_EMOJIS.seedling, CELL / 2);
     }
   }
 
@@ -115,7 +122,7 @@ export class Renderer {
     for (const poop of world.poopBlocks.values()) {
       const fadeRatio = Math.max(0.3, poop.decayMs / TUNE.poop.decayMs);
       ctx.globalAlpha = fadeRatio;
-      this._drawCellEmoji(ctx, poop.x, poop.y, WORLD_EMOJIS.poop);
+      this._drawCellEmoji(ctx, poop.x, poop.y, WORLD_EMOJIS.poop, CELL / 2);
       ctx.globalAlpha = 1;
     }
   }
@@ -124,7 +131,7 @@ export class Renderer {
     for (const fb of world.foodBlocks.values()) {
       const pct = fb.units / fb.maxUnits;
       ctx.globalAlpha = 0.4 + 0.6 * pct;
-      this._drawCellEmoji(ctx, fb.x, fb.y, fb.emoji || FOOD_EMOJIS.lq[0]);
+      this._drawCellEmoji(ctx, fb.x, fb.y, fb.emoji || FOOD_EMOJIS.lq[0], CELL / 2);
       ctx.globalAlpha = 1;
     }
   }
@@ -144,10 +151,25 @@ export class Renderer {
   }
 
   private _drawObstacles(ctx: CanvasRenderingContext2D, world: World): void {
+    const drawn = new Set<string>();
     for (const o of world.obstacles.values()) {
+      if (drawn.has(o.id)) continue;
+      drawn.add(o.id);
       const dmg = 1 - o.hp / o.maxHp;
       ctx.globalAlpha = dmg > 0 ? 1 - Math.min(0.7, dmg) : 1;
-      this._drawCellEmoji(ctx, o.x, o.y, o.emoji);
+      if (o.size === '2x2') {
+        // Draw one large emoji centered on the 2x2 block
+        const { canvas: ec, w, h } = this._emojiCache.get(o.emoji);
+        const drawSize = CELL * 2 - 2;
+        const scale = Math.min(drawSize / w, drawSize / h);
+        const dw = w * scale;
+        const dh = h * scale;
+        const bx = o.x * CELL;
+        const by = o.y * CELL;
+        ctx.drawImage(ec, bx + (CELL * 2 - dw) / 2, by + (CELL * 2 - dh) / 2, dw, dh);
+      } else {
+        this._drawCellEmoji(ctx, o.x, o.y, o.emoji);
+      }
       ctx.globalAlpha = 1;
     }
   }
@@ -275,10 +297,14 @@ export class Renderer {
     }
   }
 
-  private _drawAttackLines(ctx: CanvasRenderingContext2D, camera: Camera, lines: [Agent, Agent][]): void {
-    ctx.strokeStyle = COLORS.attackLine;
-    ctx.globalAlpha = 0.7;
-    ctx.lineWidth = 1 / camera.scale;
+  private _drawAttackLines(ctx: CanvasRenderingContext2D, _camera: Camera, lines: [Agent, Agent][]): void {
+    const daggerEmoji = '\uD83D\uDDE1\uFE0F'; // 🗡️
+    const { canvas: ec, w, h } = this._emojiCache.get(daggerEmoji);
+    const daggerSize = CELL - 2;
+    const scale = Math.min(daggerSize / w, daggerSize / h);
+    const dw = w * scale;
+    const dh = h * scale;
+
     for (const [att, tgt] of lines) {
       const at = att.lerpT != null ? att.lerpT : 1;
       const ax = ((att.prevCellX ?? att.cellX) + (att.cellX - (att.prevCellX ?? att.cellX)) * at) * CELL + CELL / 2;
@@ -286,12 +312,19 @@ export class Renderer {
       const tt = tgt.lerpT != null ? tgt.lerpT : 1;
       const tx = ((tgt.prevCellX ?? tgt.cellX) + (tgt.cellX - (tgt.prevCellX ?? tgt.cellX)) * tt) * CELL + CELL / 2;
       const ty = ((tgt.prevCellY ?? tgt.cellY) + (tgt.cellY - (tgt.prevCellY ?? tgt.cellY)) * tt) * CELL + CELL / 2;
-      ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.lineTo(tx, ty);
-      ctx.stroke();
+
+      const mx = (ax + tx) / 2;
+      const my = (ay + ty) / 2;
+      // Angle from attacker toward target; 🗡️ naturally points up-right (~-45°), offset accordingly
+      const angle = Math.atan2(ty - ay, tx - ax) + Math.PI * 1.25;
+
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.translate(mx, my);
+      ctx.rotate(angle);
+      ctx.drawImage(ec, -dw / 2, -dh / 2, dw, dh);
+      ctx.restore();
     }
-    ctx.globalAlpha = 1;
   }
 
   private _drawClouds(ctx: CanvasRenderingContext2D, world: World, _camera: Camera): void {
@@ -299,6 +332,44 @@ export class Renderer {
       const fadeRatio = Math.max(0, cloud.lifetimeMs / 5000);
       ctx.globalAlpha = Math.min(0.7, fadeRatio);
       this._drawCellEmoji(ctx, cloud.x, cloud.y, WORLD_EMOJIS.cloud, CELL * 2);
+      ctx.globalAlpha = Math.min(0.45, fadeRatio * 0.65);
+      this._drawCellEmoji(ctx, cloud.x - 1, cloud.y, WORLD_EMOJIS.cloud, CELL * 1.6);
+      this._drawCellEmoji(ctx, cloud.x + 1, cloud.y - 1, WORLD_EMOJIS.cloud, CELL * 1.6);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  private _drawSelectedAgentPath(ctx: CanvasRenderingContext2D, world: World): void {
+    if (!world.selectedId) return;
+    const agent = world.agentsById.get(world.selectedId);
+    if (!agent || !agent.path || agent.path.length === 0) return;
+    const remaining = agent.path.slice(agent.pathIdx);
+    if (remaining.length === 0) return;
+
+    const t = agent.lerpT != null ? agent.lerpT : 1;
+    const px = agent.prevCellX != null ? agent.prevCellX : agent.cellX;
+    const py = agent.prevCellY != null ? agent.prevCellY : agent.cellY;
+    const lx = px + (agent.cellX - px) * t;
+    const ly = py + (agent.cellY - py) * t;
+
+    ctx.save();
+    ctx.strokeStyle = '#ff4444';
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.65;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(lx * CELL + CELL / 2, ly * CELL + CELL / 2);
+    for (const pos of remaining) {
+      ctx.lineTo(pos.x * CELL + CELL / 2, pos.y * CELL + CELL / 2);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    const goalPos = agent.goal ?? remaining[remaining.length - 1];
+    if (goalPos) {
+      ctx.globalAlpha = 0.9;
+      this._drawCellEmoji(ctx, goalPos.x, goalPos.y, '\uD83D\uDCCD', CELL - 2);
       ctx.globalAlpha = 1;
     }
   }

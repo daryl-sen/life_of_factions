@@ -1,6 +1,6 @@
 {
   "name": "emoji-life",
-  "version": "3.2.5",
+  "version": "3.2.6",
   "private": true,
   "scripts": {
     "build": "esbuild src/main.ts --bundle --outfile=dist/app.js",

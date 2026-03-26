@@ -82,6 +82,42 @@ export class InteractionEngine {
 
     // 7. Normal state (energy >= 40)
 
+    // 7 (early). End-of-life reproduction priority: agents past 80% of max age try to reproduce first
+    if (
+      agent.ageTicks > agent.maxAgeTicks * 0.8 &&
+      agent.fullness >= TUNE.fullness.seekThreshold &&
+      agent.hygiene >= TUNE.hygiene.seekThreshold
+    ) {
+      const eolAdj: [number, number][] = [
+        [agent.cellX + 1, agent.cellY],
+        [agent.cellX - 1, agent.cellY],
+        [agent.cellX, agent.cellY + 1],
+        [agent.cellX, agent.cellY - 1],
+      ];
+      for (const [nx, ny] of eolAdj) {
+        const bid = world.agentsByCell.get(key(nx, ny));
+        if (!bid) continue;
+        const b = world.agentsById.get(bid);
+        if (!b) continue;
+        const rel = agent.relationships.get(b.id);
+        if (
+          rel >= TUNE.reproduction.relationshipThreshold &&
+          agent.energy >= TUNE.reproduction.relationshipEnergy &&
+          b.energy >= TUNE.reproduction.relationshipEnergy &&
+          !agent.diseased && !b.diseased
+        ) {
+          if (ActionFactory.tryStart(agent, 'reproduce', { targetId: b.id })) {
+            const dur = agent.action!.remainingMs;
+            agent.drainEnergy(4);
+            b.drainEnergy(4);
+            lockAgent(world, agent.id, dur);
+            lockAgent(world, b.id, dur);
+            return;
+          }
+        }
+      }
+    }
+
     // 7a. Proactive food seeking
     if (agent.fullness < TUNE.fullness.seekThreshold) {
       if (agent.inventory.food > 0) {

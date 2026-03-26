@@ -471,7 +471,7 @@ export class UIManager {
             <span>${a.social.toFixed(1)}/100</span>
           </div>
           <div class="agent-stat-bar">
-            <div class="agent-stat-fill" style="background:#fb923c;width:${a.social}%"></div>
+            <div class="agent-stat-fill" style="background:#f472b6;width:${a.social}%"></div>
           </div>
         </div>
         <div>

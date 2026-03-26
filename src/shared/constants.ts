@@ -87,7 +87,7 @@ export const TUNE = {
     perShare: 5,
     perBuildFarm: 15,
     perHarvest: 2,
-    perLevel: 50,
+    perLevel: 25,
   },
   maxEnergyBase: 200,
   maxEnergyPerLevel: 5,
@@ -151,7 +151,7 @@ export const TUNE = {
   cloud: {
     spawnIntervalRange: [60000, 120000] as [number, number],
     lifetimeRange: [5000, 10000] as [number, number],
-    smallChance: 0.9,
+    smallChance: 0.5,
     targetWaterCoverage: 0.05,
   },
   hygiene: {
