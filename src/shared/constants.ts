@@ -52,6 +52,8 @@ export const TUNE = {
   levelCap: 20,
   agent: {
     maxAgeRange: [240000, 360000] as [number, number],
+    visionRange: 10,
+    maxResourceMemory: 2,
   },
   reproduction: { relationshipThreshold: 0.4, relationshipEnergy: 90 },
   baby: {
@@ -74,6 +76,9 @@ export const TUNE = {
     hygieneStart: 50,
     socialStart: 50,
     inspirationStart: 50,
+  },
+  social: {
+    passiveDecay: 0.01,
   },
   xp: {
     perKill: 50,
@@ -121,6 +126,7 @@ export const TUNE = {
     largeUnits: 20,
     spawnRange: [3, 6] as [number, number],
     shrinkThreshold: 0.25,
+    baseDecayPerTick: 0.008,
   },
   tree: {
     spawnRange: [8, 15] as [number, number],
@@ -136,6 +142,7 @@ export const TUNE = {
     waterRequiredForSeedling: 5,
     poopBoostSeedlingRadius: 3,
     foodRequiresPoopRadius: 3,
+    seedlingNearWaterChance: 0.0005,
   },
   egg: {
     hatchTimeMs: 60000,
@@ -145,6 +152,7 @@ export const TUNE = {
     spawnIntervalRange: [60000, 120000] as [number, number],
     lifetimeRange: [5000, 10000] as [number, number],
     smallChance: 0.9,
+    targetWaterCoverage: 0.05,
   },
   hygiene: {
     criticalThreshold: 20,

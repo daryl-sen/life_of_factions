@@ -1,4 +1,4 @@
-import type { IActionState, IInventory, IPosition } from '../../shared/types';
+import type { IActionState, IInventory, IPosition, ResourceMemoryType, IResourceMemoryEntry } from '../../shared/types';
 import { TUNE, BASE_TICK_MS } from '../../shared/constants';
 import { RelationshipMap } from './relationships';
 
@@ -46,6 +46,9 @@ export class Agent {
 
   // Aging
   maxAgeTicks: number;
+
+  // Resource memory: remembers where resources were last seen
+  resourceMemory: Map<ResourceMemoryType, IResourceMemoryEntry[]>;
 
   constructor(opts: {
     id: string;
@@ -116,6 +119,10 @@ export class Agent {
     this.poopTimerMs = opts.poopTimerMs ?? 0;
     this.diseased = opts.diseased ?? false;
     this.babyMsRemaining = opts.babyMsRemaining ?? 0;
+
+    this.resourceMemory = new Map<ResourceMemoryType, IResourceMemoryEntry[]>([
+      ['food', []], ['water', []], ['wood', []],
+    ]);
 
     if (opts.maxAgeTicks != null) {
       this.maxAgeTicks = opts.maxAgeTicks;
@@ -210,5 +217,33 @@ export class Agent {
     const actual = Math.min(this.inventory[type], amount);
     this.inventory[type] -= actual;
     return actual;
+  }
+
+  // ── Resource Memory ──
+
+  rememberResource(type: ResourceMemoryType, x: number, y: number, tick: number): void {
+    const entries = this.resourceMemory.get(type)!;
+    // Don't duplicate same position
+    const existing = entries.findIndex(e => e.x === x && e.y === y);
+    if (existing >= 0) {
+      entries[existing].tick = tick;
+      return;
+    }
+    if (entries.length >= TUNE.agent.maxResourceMemory) {
+      // Replace oldest entry
+      let oldestIdx = 0;
+      for (let i = 1; i < entries.length; i++) {
+        if (entries[i].tick < entries[oldestIdx].tick) oldestIdx = i;
+      }
+      entries[oldestIdx] = { x, y, tick };
+    } else {
+      entries.push({ x, y, tick });
+    }
+  }
+
+  forgetResource(type: ResourceMemoryType, x: number, y: number): void {
+    const entries = this.resourceMemory.get(type)!;
+    const idx = entries.findIndex(e => e.x === x && e.y === y);
+    if (idx >= 0) entries.splice(idx, 1);
   }
 }
