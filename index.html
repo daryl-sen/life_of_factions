@@ -835,18 +835,17 @@
         line-height: 1.4;
       }
 
-      /* ── HUD ───────────────────────────────── */
-      #hud {
-        position: fixed;
-        right: calc(var(--panel-offset, 0px) + 12px);
-        bottom: 12px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-          monospace;
-        font-size: 11px;
+      /* ── Telemetry sections ─────────────────── */
+      .telemetry-section-label {
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 2px;
         color: var(--muted);
-        letter-spacing: 0.5px;
-        z-index: 20;
-        pointer-events: none;
+        margin-top: 12px;
+        margin-bottom: 4px;
+      }
+      .telemetry-section-label:first-child {
+        margin-top: 0;
       }
 
       /* ── Utility ───────────────────────────── */
@@ -992,6 +991,7 @@
           <button class="panel-close btn-close-panel" title="Close">&times;</button>
         </div>
         <div class="panel-body">
+          <div class="telemetry-section-label">WORLD</div>
           <div class="telemetry-grid">
             <div class="telemetry-item"><span class="telemetry-value" id="stAgents">0</span><span class="telemetry-label">AGENTS</span></div>
             <div class="telemetry-item"><span class="telemetry-value" id="stFactions">0</span><span class="telemetry-label">FACTIONS</span></div>
@@ -999,6 +999,14 @@
             <div class="telemetry-item"><span class="telemetry-value" id="stFarms">0</span><span class="telemetry-label">FARMS</span></div>
             <div class="telemetry-item"><span class="telemetry-value" id="stWalls">0</span><span class="telemetry-label">WALLS</span></div>
             <div class="telemetry-item"><span class="telemetry-value" id="stFlags">0</span><span class="telemetry-label">FLAGS</span></div>
+          </div>
+          <div class="telemetry-section-label">PERFORMANCE</div>
+          <div class="telemetry-grid">
+            <div class="telemetry-item"><span class="telemetry-value" id="stTick">0</span><span class="telemetry-label">TICK</span></div>
+            <div class="telemetry-item"><span class="telemetry-value" id="stFps">0</span><span class="telemetry-label">FPS</span></div>
+            <div class="telemetry-item"><span class="telemetry-value" id="stTickAvg">0.0</span><span class="telemetry-label">AVG MS</span></div>
+            <div class="telemetry-item"><span class="telemetry-value" id="stTickMin">0.0</span><span class="telemetry-label">MIN MS</span></div>
+            <div class="telemetry-item"><span class="telemetry-value" id="stTickMax">0.0</span><span class="telemetry-label">MAX MS</span></div>
           </div>
         </div>
       </div>
@@ -1071,8 +1079,6 @@
       <div class="notification-body" id="notificationBody">&mdash;</div>
     </div>
 
-    <!-- ── HUD ─────────────────────────────── -->
-    <div id="hud">TICK:0 | FPS:0 | AGENTS:0</div>
 
     <!-- Hidden inputs for JS compatibility -->
     <div style="display: none">

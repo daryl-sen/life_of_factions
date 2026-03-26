@@ -79,6 +79,11 @@ export interface DomRefs {
     stFarms: HTMLElement | null;
     stWalls: HTMLElement | null;
     stFlags: HTMLElement | null;
+    stTick: HTMLElement | null;
+    stFps: HTMLElement | null;
+    stTickAvg: HTMLElement | null;
+    stTickMin: HTMLElement | null;
+    stTickMax: HTMLElement | null;
   };
   barEls: {
     barAgents: HTMLElement | null;
@@ -131,6 +136,11 @@ export class UIManager {
         stFarms: qs('#stFarms'),
         stWalls: qs('#stWalls'),
         stFlags: qs('#stFlags'),
+        stTick: qs('#stTick'),
+        stFps: qs('#stFps'),
+        stTickAvg: qs('#stTickAvg'),
+        stTickMin: qs('#stTickMin'),
+        stTickMax: qs('#stTickMax'),
       },
       barEls: {
         barAgents: qs('#barAgents'),
@@ -237,10 +247,11 @@ export class UIManager {
     }
   }
 
-  static renderHUD(world: World, hud: HTMLElement | null, stats: Record<string, unknown>): void {
-    if (!hud) return;
+  static renderHUD(world: World, _hud: HTMLElement | null, stats: Record<string, unknown>): void {
     const fps = (stats.fps as number) || 0;
-    hud.textContent = `TICK:${world.tick}  |  FPS:${fps.toFixed(0)}  |  AGENTS:${world.agents.length}`;
+    const tAvg = (stats.tickAvg as number) || 0;
+    const tMin = (stats.tickMin as number) || 0;
+    const tMax = (stats.tickMax as number) || 0;
 
     const s = stats as Record<string, HTMLElement | null>;
     if (s.stAgents) s.stAgents.textContent = String(world.agents.length);
@@ -249,6 +260,11 @@ export class UIManager {
     if (s.stFarms) s.stFarms.textContent = String(world.farms.size);
     if (s.stWalls) s.stWalls.textContent = String(world.walls.size);
     if (s.stFlags) s.stFlags.textContent = String(world.flags.size);
+    if (s.stTick) s.stTick.textContent = String(world.tick);
+    if (s.stFps) s.stFps.textContent = fps.toFixed(0);
+    if (s.stTickAvg) s.stTickAvg.textContent = tAvg.toFixed(1);
+    if (s.stTickMin) s.stTickMin.textContent = tMin.toFixed(1);
+    if (s.stTickMax) s.stTickMax.textContent = tMax.toFixed(1);
     if (s.barAgents) s.barAgents.textContent = String(world.agents.length).padStart(2, '0');
     if (s.barFactions) s.barFactions.textContent = String(world.factions.size).padStart(2, '0');
     if (s.barCrops) s.barCrops.textContent = String(world.crops.size).padStart(2, '0');

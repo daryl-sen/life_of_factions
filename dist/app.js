@@ -684,7 +684,12 @@
           stCrops: qs("#stCrops"),
           stFarms: qs("#stFarms"),
           stWalls: qs("#stWalls"),
-          stFlags: qs("#stFlags")
+          stFlags: qs("#stFlags"),
+          stTick: qs("#stTick"),
+          stFps: qs("#stFps"),
+          stTickAvg: qs("#stTickAvg"),
+          stTickMin: qs("#stTickMin"),
+          stTickMax: qs("#stTickMax")
         },
         barEls: {
           barAgents: qs("#barAgents"),
@@ -779,10 +784,11 @@
         });
       }
     }
-    static renderHUD(world, hud, stats) {
-      if (!hud) return;
+    static renderHUD(world, _hud, stats) {
       const fps = stats.fps || 0;
-      hud.textContent = `TICK:${world.tick}  |  FPS:${fps.toFixed(0)}  |  AGENTS:${world.agents.length}`;
+      const tAvg = stats.tickAvg || 0;
+      const tMin = stats.tickMin || 0;
+      const tMax = stats.tickMax || 0;
       const s = stats;
       if (s.stAgents) s.stAgents.textContent = String(world.agents.length);
       if (s.stFactions) s.stFactions.textContent = String(world.factions.size);
@@ -790,6 +796,11 @@
       if (s.stFarms) s.stFarms.textContent = String(world.farms.size);
       if (s.stWalls) s.stWalls.textContent = String(world.walls.size);
       if (s.stFlags) s.stFlags.textContent = String(world.flags.size);
+      if (s.stTick) s.stTick.textContent = String(world.tick);
+      if (s.stFps) s.stFps.textContent = fps.toFixed(0);
+      if (s.stTickAvg) s.stTickAvg.textContent = tAvg.toFixed(1);
+      if (s.stTickMin) s.stTickMin.textContent = tMin.toFixed(1);
+      if (s.stTickMax) s.stTickMax.textContent = tMax.toFixed(1);
       if (s.barAgents) s.barAgents.textContent = String(world.agents.length).padStart(2, "0");
       if (s.barFactions) s.barFactions.textContent = String(world.factions.size).padStart(2, "0");
       if (s.barCrops) s.barCrops.textContent = String(world.crops.size).padStart(2, "0");
@@ -2395,11 +2406,38 @@
     let fps = 0;
     let fpsAcc = 0;
     let fpsCount = 0;
+    const PROFILE_WINDOW_MS = 6e4;
+    const tickSamples = [];
+    let tickAvg = 0;
+    let tickMin = 0;
+    let tickMax = 0;
+    function recordTickSample(dur) {
+      const now = performance.now();
+      tickSamples.push({ ts: now, dur });
+      const cutoff = now - PROFILE_WINDOW_MS;
+      while (tickSamples.length > 0 && tickSamples[0].ts < cutoff) {
+        tickSamples.shift();
+      }
+      let sum = 0;
+      let min = Infinity;
+      let max = -Infinity;
+      for (const s of tickSamples) {
+        sum += s.dur;
+        if (s.dur < min) min = s.dur;
+        if (s.dur > max) max = s.dur;
+      }
+      tickAvg = sum / tickSamples.length;
+      tickMin = min === Infinity ? 0 : min;
+      tickMax = max === -Infinity ? 0 : max;
+    }
     const statsWithFps = new Proxy(
       { ...dom.statsEls, ...dom.barEls },
       {
         get(target, prop) {
           if (prop === "fps") return fps;
+          if (prop === "tickAvg") return tickAvg;
+          if (prop === "tickMin") return tickMin;
+          if (prop === "tickMax") return tickMax;
           return target[prop];
         }
       }
@@ -2458,7 +2496,9 @@
         acc += dt;
         let steps = 0;
         while (acc >= effTick && steps < MAX_STEPS) {
+          const t0 = performance.now();
           SimulationEngine.tick(world);
+          recordTickSample(performance.now() - t0);
           acc -= effTick;
           steps++;
         }
