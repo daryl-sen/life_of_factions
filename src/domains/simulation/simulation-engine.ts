@@ -227,7 +227,12 @@ export class SimulationEngine {
   private static _tickSeedlings(world: World): void {
     const toConvert: string[] = [];
     for (const [k, s] of world.seedlings) {
-      s.growthElapsedMs += BASE_TICK_MS;
+      // Near water (within 5 cells): normal speed. Otherwise: 100x slower.
+      let nearWater = false;
+      for (const wb of world.waterBlocks.values()) {
+        if (manhattan(s.x, s.y, wb.x, wb.y) <= 5) { nearWater = true; break; }
+      }
+      s.growthElapsedMs += nearWater ? BASE_TICK_MS : BASE_TICK_MS / 100;
       if (s.growthElapsedMs >= s.growthDurationMs) {
         toConvert.push(k);
       }

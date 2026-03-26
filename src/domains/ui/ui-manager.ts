@@ -444,6 +444,15 @@ export class UIManager {
         </div>
         <div>
           <div class="agent-stat-header">
+            <span>HYGIENE</span>
+            <span>${a.hygiene.toFixed(1)}/100</span>
+          </div>
+          <div class="agent-stat-bar">
+            <div class="agent-stat-fill" style="background:#38bdf8;width:${a.hygiene}%"></div>
+          </div>
+        </div>
+        <div>
+          <div class="agent-stat-header">
             <span>INVENTORY</span>
             <span>${a.inventoryTotal()}/${TUNE.inventory.capacity}</span>
           </div>
@@ -458,7 +467,6 @@ export class UIManager {
         <div style="color:var(--muted)">XP</div><div>${a.xp} / ${a.xpToNextLevel()}</div>
         <div style="color:var(--muted)">AGE</div><div>${a.ageTicks} ticks</div>
         <div style="color:var(--muted)">TRAVEL</div><div>${a.travelPref}</div>
-        <div style="color:var(--muted)">HYGIENE</div><div>${a.hygiene.toFixed(0)}</div>
         <div style="color:var(--muted)">SOCIAL</div><div>${a.social.toFixed(0)}</div>
         <div style="color:var(--muted)">INSPIRATION</div><div>${a.inspiration.toFixed(0)}</div>
       </div>`;

@@ -115,7 +115,7 @@ export const TUNE = {
     spawnRange: [8, 15] as [number, number],
     unitRange: [3, 6] as [number, number],
     seedlingChanceOnHarvest: 0.10,
-    seedlingPassiveChance: 0.02,
+    seedlingPassiveChance: 0.002,
     foodChanceOnHarvest: 0.05,
     foodPassiveChance: 0.01,
     seedlingRadius: 5,
