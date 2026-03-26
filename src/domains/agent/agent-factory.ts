@@ -24,7 +24,9 @@ export class AgentFactory {
     parent1: Agent,
     parent2: Agent,
     x: number,
-    y: number
+    y: number,
+    fullness: number,
+    babyMsRemaining: number
   ): Agent {
     const child = new Agent({
       id: uuid(),
@@ -33,12 +35,13 @@ export class AgentFactory {
       cellY: y,
       energy: 60,
       health: 80,
-      fullness: 100,
+      fullness,
       hygiene: 80,
       social: 50,
       inspiration: 50,
       aggression: clamp((parent1.aggression + parent2.aggression) / 2, 0, 1),
       cooperation: clamp((parent1.cooperation + parent2.cooperation) / 2, 0, 1),
+      babyMsRemaining,
     });
     world.agents.push(child);
     world.agentsById.set(child.id, child);

@@ -41,6 +41,9 @@ export class Agent {
   poopTimerMs: number;
   diseased: boolean;
 
+  // Baby stage
+  babyMsRemaining: number;
+
   constructor(opts: {
     id: string;
     name: string;
@@ -71,6 +74,7 @@ export class Agent {
     inventory?: IInventory;
     poopTimerMs?: number;
     diseased?: boolean;
+    babyMsRemaining?: number;
   }) {
     this.id = opts.id;
     this.name = opts.name;
@@ -107,6 +111,7 @@ export class Agent {
     this.inventory = opts.inventory ?? { food: 0, water: 0, wood: 0 };
     this.poopTimerMs = opts.poopTimerMs ?? 0;
     this.diseased = opts.diseased ?? false;
+    this.babyMsRemaining = opts.babyMsRemaining ?? 0;
   }
 
   takeDamage(amount: number): void {

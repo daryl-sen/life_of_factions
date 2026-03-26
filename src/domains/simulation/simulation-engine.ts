@@ -644,6 +644,7 @@ export class SimulationEngine {
       // Poop timer decay
       if (agent.poopTimerMs > 0) agent.poopTimerMs -= BASE_TICK_MS;
       agent.lockMsRemaining = Math.max(0, (agent.lockMsRemaining || 0) - BASE_TICK_MS);
+      if (agent.babyMsRemaining > 0) agent.babyMsRemaining = Math.max(0, agent.babyMsRemaining - BASE_TICK_MS);
 
       // Don't cancel sleep, attack, harvest, eat, drink, or short utility actions on low energy
       if (agent.energy < TUNE.energyLowThreshold) {

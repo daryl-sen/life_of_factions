@@ -244,8 +244,17 @@ export class ActionProcessor {
         if (free) {
           agent.drainEnergy(12);
           targ.drainEnergy(12);
+          // Transfer fullness from parents to child
+          const p1Range = TUNE.baby.fullnessPerParent;
+          const p2Range = TUNE.baby.fullnessPerParent;
+          const p1Donate = Math.min(agent.fullness, p1Range[0] + Math.random() * (p1Range[1] - p1Range[0]));
+          const p2Donate = Math.min(targ.fullness, p2Range[0] + Math.random() * (p2Range[1] - p2Range[0]));
+          agent.drainFullness(p1Donate);
+          targ.drainFullness(p2Donate);
+          const childFullness = Math.min(TUNE.fullness.max, p1Donate + p2Donate);
+          const babyMs = TUNE.baby.durationRange[0] + Math.random() * (TUNE.baby.durationRange[1] - TUNE.baby.durationRange[0]);
           const [x, y] = free;
-          const child = AgentFactory.createChild(world, agent, targ, x, y);
+          const child = AgentFactory.createChild(world, agent, targ, x, y, childFullness, babyMs);
           const pa = agent.factionId || null;
           const pb = targ.factionId || null;
           let chosen: string | null = null;

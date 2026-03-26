@@ -47,6 +47,10 @@ export const TUNE = {
   levelCap: 20,
   maxCrops: 100,
   reproduction: { relationshipThreshold: 0.4, relationshipEnergy: 90 },
+  baby: {
+    durationRange: [50000, 70000] as [number, number],
+    fullnessPerParent: [15, 25] as [number, number],
+  },
   pathBudgetPerTick: 30,
   fullness: {
     max: 100,
@@ -252,6 +256,8 @@ export const AGENT_EMOJIS: Record<string, string> = {
 };
 
 export const IDLE_EMOJIS = {
+  baby: '👶',
+  babyEating: '👼',
   lowEnergy: '🤤',
   lowHealth: '🤕',
   lowFullness: '😩',

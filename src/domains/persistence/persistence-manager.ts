@@ -53,6 +53,7 @@ export class PersistenceManager {
       inventory: a.inventory,
       poopTimerMs: a.poopTimerMs,
       diseased: a.diseased,
+      babyMsRemaining: a.babyMsRemaining,
     }));
     return {
       meta: { version: VERSION, savedAt: Date.now() },
@@ -269,6 +270,7 @@ export class PersistenceManager {
         inventory: a.inventory ?? { food: 0, water: 0, wood: 0 },
         poopTimerMs: a.poopTimerMs ?? 0,
         diseased: a.diseased ?? false,
+        babyMsRemaining: a.babyMsRemaining ?? 0,
       });
       world.agents.push(agent);
       world.agentsById.set(agent.id, agent);
