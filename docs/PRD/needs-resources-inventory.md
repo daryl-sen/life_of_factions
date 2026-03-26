@@ -11,7 +11,7 @@ Agents currently have a flat motivation loop: eat, fight, reproduce. Energy serv
 
 ## 2. Goals
 
-- Introduce **5 distinct needs** (energy, health, hygiene, social, inspiration) each with unique recovery mechanics, creating richer decision-making
+- Introduce **6 distinct needs** (energy, health, fullness, hygiene, social, inspiration) each with unique recovery mechanics, creating richer decision-making
 - Add **2 new resource types** (water, wood) alongside a reworked food system, giving agents more reasons to explore and interact with the world
 - Add an **inventory system** so agents carry, store, and share resources — enabling faction logistics and resource economy
 - Replace energy-based leveling with an **XP system** tied to meaningful actions
@@ -23,18 +23,19 @@ Agents currently have a flat motivation loop: eat, fight, reproduce. Energy serv
 
 | Need | Range | Decay | Recovery | Critical Threshold | Effect When Critical |
 |------|-------|-------|----------|-------------------|---------------------|
-| Energy | 0-200 | Passive (0.0625/tick) + movement (0.12/step) | **Sleep** action | < 40 | Auto-sleep |
-| Health | 0-maxHP | Combat damage, starvation, disease | **Eating food** from inventory | < 30% maxHP | Seek food urgently |
+| Energy | 0-maxEnergy (starts 200, increases on level-up) | Passive (0.0625/tick) + movement (0.12/step) | **Sleep** action | < 40 | Auto-sleep |
+| Health | 0-maxHP | Combat damage, disease, starvation (fullness = 0) | **Fullness > 90** (passive regen), flag aura, heal action | < 30% maxHP | Seek flag or healing |
+| Fullness | 0-100 | Passive + movement + actions | **Eating food** from inventory | < 20 | Starvation (HP drain) |
 | Hygiene | 0-100 | Movement, social interactions, pooping | **Consuming water** (inventory or source) | < 20 | Disease risk, 🤢 emoji |
 | Social | 0-100 | Passive time-based decay | Positive interactions (talk, share, heal) with any agent | < 20 | Reduced cooperation probability |
-| Inspiration | 0-100 | Passive time-based decay | **Play** action, **Clean** action | < 20 | Actions take 50% longer |
+| Inspiration | 0-100 | Passive time-based decay | **Play** action, **Clean** action, **Build** action | < 20 | Actions take 50% longer |
 
 Agents **proactively** manage needs — they will seek resources before needs hit critical thresholds (e.g., seek water when hygiene drops below 40, play when inspiration drops below 40), not only when in crisis.
 
 ### 3.2 Energy (reworked)
 
 **Current:** Recovered by eating crops. Used for everything.
-**New:** Recovered **only by sleeping**. Eating food now restores **health** instead. Action energy costs are **halved** across the board since energy is harder to recover.
+**New:** Recovered **only by sleeping**. Max energy increases on level-up (+5 per level, so level 20 = 295 max energy). Action energy costs are **halved** across the board since energy is harder to recover.
 
 **Halved energy costs:**
 
@@ -53,27 +54,47 @@ Agents **proactively** manage needs — they will seek resources before needs hi
 |----------|-------|
 | Trigger | Auto-selected when energy < 40 (replaces current food-seeking override) |
 | Can also be chosen | When energy < 80 and no threats nearby |
-| Duration | 3000-6000ms |
-| Energy restored | 8 per 500ms tick (~48-96 total) |
+| Duration | 8000-12000ms (~10 seconds) |
+| Energy restored | 8 per 500ms tick (~128-192 total) |
 | Interruptible | Yes — cancelled if attacked (agent._underAttack) |
 | Movement | Agent is stationary, locked |
-| Emoji | 💤 |
+| Emoji | 😴 |
 
-### 3.3 Health (reworked)
+### 3.3 Fullness (new — decouples hunger from health)
 
-**Current:** Passive regen at high energy, lost to combat/starvation.
-**New:** Recovered **by eating food** from inventory. No more passive regen from high energy.
+**Motivation:** Previously, energy served as both "stamina" and "hunger." Now fullness is a separate need representing how fed the agent is. This decouples eating from energy recovery and creates a distinct hunger-driven behavior loop.
 
 | Property | Value |
 |----------|-------|
-| Recovery | Eating food from inventory: +15 HP per unit consumed |
-| Starvation | Still lose 1 HP/sec at 0 energy |
-| Disease drain | 0.5 HP/sec while diseased (can kill) |
+| Range | 0-100 |
+| Starting value | 100 (newborn agents also start at 100) |
+| Passive decay | -0.03 per tick |
+| Decay: movement | -0.08 per cell moved |
+| Decay: actions | -0.02/sec during any action |
+| Recovery | Eating food from inventory: **+20 fullness per unit consumed** |
+| Starvation threshold | Fullness = 0 → lose **1 HP/sec** (replaces old energy-based starvation) |
+| Health regen threshold | Fullness > 90 → passive health regen at **+0.5 HP/sec** |
+| Proactive threshold | Agent seeks food when fullness < 40 |
+
+**Key change:** Energy = 0 no longer causes starvation. Only fullness = 0 causes HP drain.
+
+**Poop trigger:** After an agent eats food, there is a **10% chance per tick** of triggering a poop action for the next 30 seconds. Poop only triggers when the agent is **idle** (not performing another action).
+
+### 3.4 Health (reworked)
+
+**Current:** Passive regen at high energy, lost to combat/starvation.
+**New:** Passive regen only when **fullness > 90**. No longer tied to energy. Health is the only need where hitting 0 = death.
+
+| Property | Value |
+|----------|-------|
+| Passive regen | +0.5 HP/sec when fullness > 90 |
+| Starvation drain | -1 HP/sec when fullness = 0 |
+| Disease drain | -0.5 HP/sec while diseased (can kill) |
 | Flag aura | Still heals faction members near flag (unchanged) |
+| Heal action | Another agent can heal this agent (unchanged) |
+| Critical behavior | When health < 30% maxHP: agent seeks own faction flag for aura healing |
 
-Note: Food in inventory has no quality distinction. HQ and LQ food blocks differ in harvest speed and yield, but once in inventory it's all just "food" that restores +15 HP per unit.
-
-### 3.4 Hygiene (new)
+### 3.5 Hygiene (new)
 
 | Property | Value |
 |----------|-------|
@@ -81,24 +102,24 @@ Note: Food in inventory has no quality distinction. HQ and LQ food blocks differ
 | Decay: movement | -0.05 per cell moved |
 | Decay: social interactions | -0.5 per social action completed (talk, share, heal, quarrel) |
 | Decay: combat | No decay from combat |
-| Decay: poop | -15 instant on poop action |
+| Decay: poop | **-5** instant on poop action |
 | Decay: stepping on poop | -5 instant per step |
 | Decay: playing near poop | -3 per play action near poop block |
 | Recovery | Consume 1 water from inventory or adjacent water block → +30 hygiene |
 | Proactive threshold | Agent seeks water when hygiene < 40 |
 | Disease threshold | < 20 hygiene → 5% chance per tick of contracting disease |
 | Disease spread | Diseased agent adjacent to another agent → 3% chance per tick to spread (blocked if target hygiene > 60) |
-| Disease duration | 10-20 seconds, or until hygiene > 50 |
+| Disease cure | **Heal action from another agent**, or hygiene recovers to **> 80** |
 | Disease effects | 🤢 idle emoji, energy drain 2x normal rate, -0.5 HP/sec, **can kill** |
 
 **Poop action:**
 
 | Property | Value |
 |----------|-------|
-| Trigger | Random chance (2% per tick) when energy > 60 **and agent is idle** (not performing another action) |
+| Trigger | 10% chance per tick for 30 seconds after eating, **only when idle** |
 | Duration | 500-1000ms |
 | Cost | None |
-| Effect | Spawns 💩 block on agent's cell (or adjacent free cell if occupied). Agent hygiene -15. |
+| Effect | Spawns 💩 block on agent's cell (or adjacent free cell if occupied). Agent hygiene **-5**. |
 | Poop block | Passable. Causes -5 hygiene per step. Decays after 30 seconds naturally. |
 | Spawn rule | Will not spawn on another interactable block. |
 
@@ -108,10 +129,10 @@ Note: Food in inventory has no quality distinction. HQ and LQ food blocks differ
 |----------|-------|
 | Target | Adjacent 💩 block |
 | Duration | 800-1200ms |
-| Cost | 0.25 energy/sec (halved from draft) |
+| Cost | 0.25 energy/sec |
 | Effect | Removes poop block, +10 inspiration to cleaner |
 
-### 3.5 Social (new)
+### 3.6 Social (new)
 
 Social interactions can be performed with **any agent**, not just faction members.
 
@@ -125,9 +146,9 @@ Social interactions can be performed with **any agent**, not just faction member
 | Recovery: quarrel | +2 (still social, just negative) |
 | Proactive threshold | Agent seeks interactions when social < 40 |
 | Low social effect | When < 20: cooperation probability halved, reproduction relationship threshold raised to 0.3 (from 0.1) |
-| High social effect | When > 70: reproduction relationship threshold lowered to 0.05 |
+| High social effect | When > 70: reproduction relationship threshold lowered to 0.05, **reproduction probability increased** (agents with high social are more likely to attempt reproduction when eligible) |
 
-### 3.6 Inspiration (new)
+### 3.7 Inspiration (new)
 
 | Property | Value |
 |----------|-------|
@@ -135,6 +156,7 @@ Social interactions can be performed with **any agent**, not just faction member
 | Passive decay | -0.015 per tick |
 | Recovery: play | +15 per completed play action |
 | Recovery: clean | +10 per completed clean action |
+| Recovery: build | **+25** per completed build action (farm or any future building) |
 | Proactive threshold | Agent seeks play when inspiration < 40 |
 | Low effect (< 20) | All action durations × 1.5 |
 | High effect (> 70) | All action durations × 0.75 |
@@ -145,11 +167,11 @@ Social interactions can be performed with **any agent**, not just faction member
 |----------|-------|
 | Target | Must be adjacent to any interactable block (water, wood, food, farm, poop) |
 | Duration | 1500-2500ms |
-| Cost | 0.15 energy/sec (halved from draft) |
-| Emoji | 🎭 |
+| Cost | 0.15 energy/sec |
+| Emoji | 🤪 |
 | Effect | +15 inspiration on completion. If played near poop block: also -3 hygiene. |
 
-### 3.7 XP and Leveling System (replaces energy-based leveling)
+### 3.8 XP and Leveling System (replaces energy-based leveling)
 
 **Old system:** Level up when energy > 140.
 **New system:** XP-based with scaling level curve.
@@ -176,31 +198,34 @@ Social interactions can be performed with **any agent**, not just faction member
 | 15 | 750 | 5,750 |
 | 20 | 1,000 | 10,250 |
 
-**Level-up effects (unchanged):**
+**Level-up effects:**
 - maxHealth += 8
 - attack += 1.5
+- **maxEnergy += 5** (starts at 200, level 20 = 295)
 - Level cap: 20
 
-### 3.8 Decision Priority (revised)
+### 3.9 Decision Priority (revised)
 
 The agent decision hierarchy changes to accommodate new needs. Agents proactively manage needs before they become critical.
 
 ```
 1. Energy < 20:            → Sleep (mandatory, highest priority)
 2. Under attack:           → Flee or retaliate
-3. Health < 30%:           → Eat food from inventory, or seek food
-4. Hygiene < 20:           → Drink water from inventory, or seek water source
-5. Energy < 40:            → Sleep (voluntary)
-6. Poop check:             → 2% chance per tick if energy > 60 and idle
-7. Energy >= 40 (normal state), proactive need management:
-   a. Hygiene < 40:        → Seek water
-   b. Social < 40:         → Seek agent to interact with
-   c. Inspiration < 40:    → Seek resource block to play near, or clean poop
-8. Energy >= 40 (normal state), standard behaviors:
-   a. Check reproduction (if social > 50)
+3. Health < 30%:           → Go to faction flag for aura healing
+4. Fullness < 20:          → Eat food from inventory, or seek food to harvest
+5. Hygiene < 20:           → Drink water from inventory, or seek water source
+6. Energy < 40:            → Sleep (voluntary)
+7. Poop check:             → 10% chance per tick if recently ate and idle
+8. Energy >= 40 (normal state), proactive need management:
+   a. Fullness < 40:       → Seek food
+   b. Hygiene < 40:        → Seek water
+   c. Social < 40:         → Seek agent to interact with
+   d. Inspiration < 40:    → Seek resource block to play near, or clean poop
+9. Energy >= 40 (normal state), standard behaviors:
+   a. Check reproduction (if social > 50, higher probability when social > 70)
    b. Check harvest nearby resources (if inventory not full)
    c. Check interactions (attack / share / heal / talk)
-   d. Check build farm (if has >= 3 wood)
+   d. Check build farm (if has >= 3 wood and >= 6 energy)
    e. Check deposit at flag (if near flag and has resources)
    f. Biased roam
 ```
@@ -278,7 +303,7 @@ The agent decision hierarchy changes to accommodate new needs. Agents proactivel
 ### 4.4 Food (reworked)
 
 **Current:** Spawns randomly, instant consumption for energy.
-**New:** Two quality tiers affecting harvest speed and yield. Once harvested into inventory, food is fungible — no quality distinction in inventory.
+**New:** Two quality tiers affecting harvest speed and yield. Once harvested into inventory, food is fungible — no quality distinction in inventory. Food now restores **fullness**, not energy or health directly.
 
 | Property | High Quality (HQ) | Low Quality (LQ) |
 |----------|-------------------|-------------------|
@@ -288,7 +313,7 @@ The agent decision hierarchy changes to accommodate new needs. Agents proactivel
 | Harvest time per unit | 600ms | 1200ms |
 | Spawn | Farms spawn in 1-cell radius | Trees 5% on harvest / 1% passive; 5-10 at world gen near trees |
 
-**In inventory:** All food is just "food." Consuming 1 food unit restores **+15 HP**.
+**In inventory:** All food is just "food." Consuming 1 food unit restores **+20 fullness** and grants **+5 XP**.
 
 **Random food spawning:** Removed. Food only comes from farms, trees, and world gen.
 
@@ -338,13 +363,14 @@ A generic "harvest" action that applies to all resource blocks:
 | Target | Adjacent resource block (food, water, wood) or loot bag or faction flag (withdraw) |
 | Duration (resource blocks) | Varies by resource type (food HQ: 600ms, food LQ: 1200ms, water: 1000ms, wood: 1500ms) |
 | Duration (loot bag/flag) | 300-500ms (short action) |
-| Cost | 0.25 energy/sec (halved from draft) |
+| Cost | 0.25 energy/sec |
 | Effect | Transfers 1 unit from resource block to agent inventory |
+| Emoji | 🫨 |
 | Inventory full | Action blocked; agent will not attempt |
 
 ### 5.3 Consume Actions (from inventory)
 
-Short actions for consuming resources from inventory:
+Short actions for consuming resources from inventory. All consume actions use the 🤔 emoji.
 
 **Eat (from inventory):**
 
@@ -352,7 +378,8 @@ Short actions for consuming resources from inventory:
 |----------|-------|
 | Duration | 300-500ms |
 | Cost | None |
-| Effect | -1 food from inventory, +15 HP, +5 XP |
+| Emoji | 🤔 |
+| Effect | -1 food from inventory, **+20 fullness**, +5 XP. 10% chance per tick of poop trigger for next 30 seconds. |
 
 **Drink (from inventory):**
 
@@ -360,6 +387,7 @@ Short actions for consuming resources from inventory:
 |----------|-------|
 | Duration | 300-500ms |
 | Cost | None |
+| Emoji | 🤔 |
 | Effect | -1 water from inventory, +30 hygiene |
 
 ### 5.4 Share Action (replaces Help)
@@ -369,7 +397,7 @@ The old "help" action transferred energy to another agent. Renamed to **"share"*
 | Property | Value |
 |----------|-------|
 | Duration | 300-500ms (short action) |
-| Cost | 0.4 energy/sec (halved from 0.8) |
+| Cost | 0.4 energy/sec |
 | Target | Adjacent agent |
 | Effect | Transfer chosen resource units from sharer's inventory to target's inventory |
 | Transfer amount | Agent chooses specific resource type and amount |
@@ -402,7 +430,7 @@ The old "help" action transferred energy to another agent. Renamed to **"share"*
 
 ### 5.7 Gift Receiving
 
-When an agent receives resources via the share action, or withdraws from a flag, or picks up a loot bag, these are all **short actions (300-500ms)**.
+When an agent receives resources via the share action, or withdraws from a flag, or picks up a loot bag, these are all **short actions (300-500ms)** using the 🤔 emoji.
 
 ## 6. Impact on Existing Systems
 
@@ -423,19 +451,22 @@ When an agent receives resources via the share action, or withdraws from a flag,
 
 - **Energy cost unchanged** (still requires energy >= 85 each parent)
 - **Social requirement added**: Both parents need social > 50
-- **Child starts with**: energy 60, health 80, hygiene 80, social 50, inspiration 50, empty inventory, 0 XP, level 1
+- **High social bonus**: When social > 70, reproduction probability is increased
+- **Child starts with**: energy 60, health 80, fullness 100, hygiene 80, social 50, inspiration 50, empty inventory, 0 XP, level 1
 
 ### 6.4 Leveling
 
-Old energy-based leveling is **removed**. See Section 3.7 for the new XP system.
+Old energy-based leveling is **removed**. See Section 3.8 for the new XP system.
 
 ### 6.5 Persistence / Save-Load
 
 Save format must now include:
 - Agent inventory (food, water, wood counts)
-- Agent needs (hygiene, social, inspiration — all as numbers)
+- Agent needs (fullness, hygiene, social, inspiration — all as numbers)
+- Agent max energy (increases with level)
 - Agent XP (current XP, current level)
 - Agent disease state (diseased: boolean, diseaseRemainingMs: number)
+- Agent poop timer (poopTriggerRemainingMs: number, for post-eat poop chance)
 - Resource block units remaining (water, wood, food blocks each track current/max units)
 - Resource block metadata (large water block links to its 4 cells; farm tracks spawns remaining)
 - Faction flag storage (food, water, wood counts)
@@ -466,25 +497,25 @@ Save format must now include:
 | Talk | 900-1800ms | 0.2/sec | +5 social on completion |
 | Quarrel | 900-1800ms | 0.4/sec | +2 social on completion |
 | Attack | 450-900ms | 1.1/sec | +50 XP on kill |
-| Heal | 900-1800ms | 1.5/sec | +6 social, +10 XP on completion |
+| Heal | 900-1800ms | 1.5/sec | +6 social, +10 XP on completion. **Also cures disease on target.** |
 | Share (was Help) | 300-500ms | 0.4/sec | Transfers inventory resources instead of energy. +8 social, +5 XP. Keeps recruitment mechanic. |
-| Reproduce | 2000-3200ms | 1.5/sec | Requires social > 50 for both parents |
+| Reproduce | 2000-3200ms | 1.5/sec | Requires social > 50 for both parents. Higher probability when social > 70. |
 
 ### New Actions
 
 | Action | Duration | Energy Cost | Target | Effect |
 |--------|----------|-------------|--------|--------|
-| Sleep | 3000-6000ms | Restores +8/500ms tick | Self | Recovers energy. Interruptible by attack. 💤 |
-| Harvest | 600-1500ms (varies) | 0.25/sec | Adjacent resource block | +1 unit to inventory. +2 XP. |
-| Poop | 500-1000ms | None | Self (idle only) | Spawns 💩 block. -15 hygiene. |
+| Sleep | 8000-12000ms | Restores +8/500ms tick | Self | Recovers energy. Interruptible by attack. 😴 |
+| Harvest | 600-1500ms (varies) | 0.25/sec | Adjacent resource block | +1 unit to inventory. +2 XP. 🫨 |
+| Poop | 500-1000ms | None | Self (idle only, after eating) | Spawns 💩 block. -5 hygiene. |
 | Clean | 800-1200ms | 0.25/sec | Adjacent 💩 | Removes poop. +10 inspiration. |
-| Play | 1500-2500ms | 0.15/sec | Adjacent to any interactable block | +15 inspiration. -3 hygiene if near poop. 🎭 |
-| Build Farm | 2000ms | 0.25/sec | Adjacent free cell | -3 wood -6 energy. Spawns 🌾. +15 XP. |
-| Eat | 300-500ms | None | Self (from inventory) | -1 food. +15 HP. +5 XP. |
-| Drink | 300-500ms | None | Self (from inventory) | -1 water. +30 hygiene. |
+| Play | 1500-2500ms | 0.15/sec | Adjacent to any interactable block | +15 inspiration. -3 hygiene if near poop. 🤪 |
+| Build Farm | 2000ms | 0.25/sec | Adjacent free cell | -3 wood -6 energy. Spawns 🌾. +15 XP. +25 inspiration. |
+| Eat | 300-500ms | None | Self (from inventory) | -1 food. +20 fullness. +5 XP. 🤔 |
+| Drink | 300-500ms | None | Self (from inventory) | -1 water. +30 hygiene. 🤔 |
 | Deposit | 300-500ms | None | Own faction flag | Transfer chosen resources: inventory → flag storage. |
 | Withdraw | 300-500ms | None | Own faction flag | Transfer chosen resources: flag storage → inventory. |
-| Pickup | 300-500ms | None | Adjacent 👝 loot bag | Take contents up to inventory cap. |
+| Pickup | 300-500ms | None | Adjacent 👝 loot bag | Take contents up to inventory cap. 🤔 |
 
 ## 9. Future Considerations
 
@@ -500,20 +531,26 @@ This PRD does NOT implement genetics — it just ensures the architecture suppor
 
 ## 10. Implementation Phases
 
-**Phase 1 — Core Needs, Sleep, and XP**
-- Add hygiene, social, inspiration fields to agent
+**Phase 1 — Core Needs, Sleep, Fullness, and XP**
+- Add fullness, hygiene, social, inspiration fields to agent
 - Add XP field and scaling level curve
-- Implement sleep action
+- Add maxEnergy field (+5 per level)
+- Implement sleep action (8-12s, 😴)
+- Implement fullness need with passive/movement/action decay
+- Implement eat action (restores fullness, not health/energy)
+- Implement health regen when fullness > 90
+- Starvation now triggered by fullness = 0 (not energy = 0)
 - Remove energy recovery from eating
 - Remove energy-based leveling
+- Halve all action energy costs
 - Update decision engine with new priority hierarchy
 
 **Phase 2 — Inventory and Resource Rework**
 - Add agent inventory (food, water, wood with 20-unit cap)
 - Add resource units (current/max) to food blocks
 - Split food into HQ/LQ block types (fungible once in inventory)
-- Implement universal harvest action
-- Implement eat/drink consume actions
+- Implement universal harvest action (🫨)
+- Implement eat/drink consume actions (🤔)
 - Rework food: remove random spawning, add world-gen food near trees
 
 **Phase 3 — Water and Trees**
@@ -534,14 +571,15 @@ This PRD does NOT implement genetics — it just ensures the architecture suppor
 - Remove old 30% energy sharing mechanic
 
 **Phase 5 — Hygiene and Disease**
-- Hygiene decay from movement, interactions, poop
-- Poop action (idle-only trigger) and 💩 blocks (30s decay)
+- Hygiene decay from movement, social interactions, poop
+- Poop action (10% after eating, idle-only) and 💩 blocks (30s decay)
 - Clean action (+10 inspiration)
-- Disease mechanic (contraction at hygiene < 20, spread blocked by hygiene > 60, 10-20s duration, 🤢 emoji, 2× energy drain, -0.5 HP/sec, can kill)
+- Disease mechanic (contraction at hygiene < 20, spread blocked by hygiene > 60, cured by heal action or hygiene > 80, 🤢 emoji, 2× energy drain, -0.5 HP/sec, can kill)
 - No-stacking rule enforcement for all interactable blocks
 
 **Phase 6 — Inspiration, Play, and Farms**
-- Play action (near any interactable block, -3 hygiene if near poop)
+- Play action (near any interactable block, -3 hygiene if near poop, 🤪)
+- Build action grants +25 inspiration
 - Inspiration effects on action durations (< 20: ×1.5, > 70: ×0.75)
 - Farm rework: 3 wood + 6 energy cost, 10 spawn limit before destruction
 - Farm HQ food spawning (every 15-25s, max 4 nearby)
@@ -577,3 +615,19 @@ For reference, these questions were raised during design and resolved:
 | 23 | Social recovery | Any agent, not faction-only |
 | 24 | Large water depletion | Shrinks to 1×1 at < 25% (below 5 units) |
 | 25 | Food quality in inventory | No distinction — fungible once harvested |
+| 26 | Separate hunger need | Yes — "fullness" need (0-100), decoupled from health and energy |
+| 27 | Starvation trigger | Fullness = 0 (not energy = 0) |
+| 28 | Health regen | Passive +0.5 HP/sec only when fullness > 90 |
+| 29 | Food restores | Fullness (+20 per unit), not health directly |
+| 30 | Disease cure | Heal action from another agent, or hygiene > 80 |
+| 31 | Poop trigger | 10% chance per tick for 30s after eating (not random energy-based) |
+| 32 | Poop hygiene decay | -5 (reduced from -15) |
+| 33 | Max energy scaling | +5 per level (200 at level 1, 295 at level 20) |
+| 34 | Sleep duration | 8-12 seconds (longer than original draft) |
+| 35 | Sleep emoji | 😴 |
+| 36 | Play emoji | 🤪 |
+| 37 | Harvest emoji | 🫨 |
+| 38 | Consume emoji | 🤔 |
+| 39 | Building inspiration | +25 inspiration per build action |
+| 40 | High social reproduction | Social > 70 increases reproduction probability |
+| 41 | Critical health behavior | Seek faction flag for aura healing |
