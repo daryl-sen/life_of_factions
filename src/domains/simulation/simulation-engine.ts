@@ -710,7 +710,12 @@ export class SimulationEngine {
                 }
                 agent.cellX = targetX;
                 agent.cellY = targetY;
-                world.agentsByCell.set(key(agent.cellX, agent.cellY), agent.id);
+                // Only register in cell map if not passing through another agent
+                const newKey = key(agent.cellX, agent.cellY);
+                const newOccupant = world.agentsByCell.get(newKey);
+                if (!newOccupant || newOccupant === agent.id) {
+                  world.agentsByCell.set(newKey, agent.id);
+                }
                 agent.pathIdx++;
                 agent.energy -= TUNE.moveEnergy;
                 agent.drainFullness(TUNE.fullness.moveDecay);
@@ -724,6 +729,27 @@ export class SimulationEngine {
             }
           } else {
             agent.path = null;
+          }
+
+          // Ensure stationary agents are registered on a unique cell
+          // (handles agents who passed through an occupied cell and then stopped)
+          if (!agent.path || agent.pathIdx >= agent.path.length) {
+            const ck = key(agent.cellX, agent.cellY);
+            const occupant = world.agentsByCell.get(ck);
+            if (occupant && occupant !== agent.id) {
+              const open = SimulationEngine._findAdjacentOpen(world, agent.cellX, agent.cellY, agent.id);
+              if (open) {
+                agent.prevCellX = agent.cellX;
+                agent.prevCellY = agent.cellY;
+                agent.lerpT = 0;
+                agent.cellX = open.x;
+                agent.cellY = open.y;
+                world.agentsByCell.set(key(open.x, open.y), agent.id);
+              }
+              // If no open cell, agent stays unregistered temporarily — next tick will retry
+            } else if (!occupant) {
+              world.agentsByCell.set(ck, agent.id);
+            }
           }
 
           // Idle decision — delegate to InteractionEngine for priority hierarchy

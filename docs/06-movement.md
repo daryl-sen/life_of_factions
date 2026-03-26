@@ -49,9 +49,10 @@ function astar(start, goal, isBlocked) {
 | Trees | Tree blocks |
 | Out of bounds | Grid edges (0 and 61) |
 
-**For movement (agents can pass through each other):** Agents walk freely through cells occupied by other agents on intermediate path steps. Two agents may briefly share a cell during transit. However, an agent cannot **end** its path on an occupied cell:
-- **Intermediate step with agent:** The moving agent passes through (briefly shares the cell).
+**For movement (agents can pass through each other):** Moving agents can freely pass through cells occupied by other agents (both stationary and moving). However, agents can **never occupy the same cell when stationary**:
+- **Intermediate step with agent:** The moving agent passes through without claiming the cell in the occupancy map. The existing occupant's registration is preserved.
 - **Final destination with agent:** The agent falls back to an adjacent open cell. If no adjacent cell is free, the path is abandoned.
+- **Stationary safety net:** When an agent finishes its path on an occupied cell (e.g., path was abandoned mid-transit), it is automatically relocated to an adjacent open cell.
 
 ### Path Execution
 
@@ -64,13 +65,19 @@ if (path && pathIdx < path.length) {
     // Fall back to adjacent open cell
     fallback = findAdjacentOpen(step.x, step.y)
     if (fallback) moveTo(fallback)
-    path = null
-  } else if (hasOtherAgent) {
-    // Wait — keep path, try again next tick
+    else path = null
   } else {
+    // Move freely — if cell is occupied, pass through without claiming it
     moveTo(step)
+    if (!hasOtherAgent) registerInCell(step)
     pathIdx++
   }
+}
+
+// After movement: ensure stationary agents own a unique cell
+if (!path) {
+  if (cellOccupiedByOther) relocateToAdjacentOpen()
+  else registerInCell(currentPos)
 }
 ```
 
