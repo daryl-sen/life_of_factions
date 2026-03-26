@@ -123,7 +123,7 @@ export class Controls {
       reader.onload = () => {
         try {
           const data = JSON.parse(reader.result as string);
-          PersistenceManager.restore(world, data, { doRenderLog, gridChk: dom.gridChk, pauseChk: dom.pauseChk });
+          PersistenceManager.restore(world, data, { doRenderLog, dom });
           if (buttons.btnPause) buttons.btnPause.disabled = true;
           if (buttons.btnResume) buttons.btnResume.disabled = false;
           if (buttons.btnStart) buttons.btnStart.disabled = true;

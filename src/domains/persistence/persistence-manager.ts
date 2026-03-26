@@ -2,6 +2,7 @@ import { CELL, GRID } from '../../shared/constants';
 import { VERSION } from '../../shared/version';
 import { key } from '../../shared/utils';
 import type { World } from '../world';
+import type { DomRefs } from '../ui/ui-manager';
 import { Agent } from '../agent';
 import { Faction, FactionManager } from '../faction';
 
@@ -56,6 +57,7 @@ export class PersistenceManager {
         pauseOnBlur: world.pauseOnBlur,
         totalBirths: world.totalBirths,
         totalDeaths: world.totalDeaths,
+        factionSort: world.factionSort,
       },
       factions,
       flags,
@@ -100,7 +102,7 @@ export class PersistenceManager {
   static restore(
     world: World,
     data: Record<string, unknown>,
-    opts: { doRenderLog: () => void; gridChk: HTMLInputElement | null; pauseChk: HTMLInputElement | null }
+    opts: { doRenderLog: () => void; dom: DomRefs }
   ): void {
     const d = data as Record<string, any>;
     world.running = false;
@@ -115,6 +117,7 @@ export class PersistenceManager {
     world.pauseOnBlur = d.state?.pauseOnBlur ?? false;
     world.totalBirths = d.state?.totalBirths ?? 0;
     world.totalDeaths = d.state?.totalDeaths ?? 0;
+    world.factionSort = d.state?.factionSort ?? 'members';
 
     for (const f of d.factions || []) {
       const faction = new Faction(f.id, f.color, new Set(f.members || []), f.createdAtTick ?? 0);
@@ -175,7 +178,15 @@ export class PersistenceManager {
       actorId: null,
       extra: {},
     });
-    if (opts.gridChk) opts.gridChk.checked = world.drawGrid;
-    if (opts.pauseChk) opts.pauseChk.checked = world.pauseOnBlur;
+    const { dom } = opts;
+    if (dom.gridChk) dom.gridChk.checked = world.drawGrid;
+    if (dom.pauseChk) dom.pauseChk.checked = world.pauseOnBlur;
+    if (dom.factionSortEl) dom.factionSortEl.value = world.factionSort;
+    if (dom.ranges.rngSpeed) dom.ranges.rngSpeed.value = String(world.speedPct);
+    if (dom.nums.numSpeed) dom.nums.numSpeed.value = String(world.speedPct);
+    if (dom.labels.lblSpeed) dom.labels.lblSpeed.textContent = `${world.speedPct}%`;
+    if (dom.ranges.rngSpawn) dom.ranges.rngSpawn.value = String(world.spawnMult);
+    if (dom.nums.numSpawn) dom.nums.numSpawn.value = String(world.spawnMult);
+    if (dom.labels.lblSpawn) dom.labels.lblSpawn.textContent = world.spawnMult.toFixed(1) + '\u00d7';
   }
 }

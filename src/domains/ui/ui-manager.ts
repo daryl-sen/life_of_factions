@@ -98,6 +98,7 @@ export interface DomRefs {
   logFilters: HTMLElement | null;
   pauseChk: HTMLInputElement | null;
   gridChk: HTMLInputElement | null;
+  factionSortEl: HTMLSelectElement | null;
 }
 
 export class UIManager {
@@ -157,6 +158,7 @@ export class UIManager {
       logFilters: qs('#logFilters'),
       pauseChk: qs('#cbPauseOnBlur') as HTMLInputElement | null,
       gridChk: qs('#cbDrawGrid') as HTMLInputElement | null,
+      factionSortEl: qs('#factionSort') as HTMLSelectElement | null,
     };
   }
 

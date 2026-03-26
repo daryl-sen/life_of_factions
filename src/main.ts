@@ -53,10 +53,9 @@ document.addEventListener('DOMContentLoaded', () => {
   Controls.wire(world, dom, doRenderLog);
 
   // Faction sort dropdown
-  const factionSortEl = document.getElementById('factionSort') as HTMLSelectElement | null;
-  if (factionSortEl) {
-    factionSortEl.addEventListener('change', () => {
-      world.factionSort = factionSortEl.value as 'members' | 'created' | 'name' | 'level';
+  if (dom.factionSortEl) {
+    dom.factionSortEl.addEventListener('change', () => {
+      world.factionSort = dom.factionSortEl!.value as 'members' | 'created' | 'name' | 'level';
       world._lastFactionsSig = ''; // force rebuild
     });
   }
