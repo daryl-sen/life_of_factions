@@ -21,6 +21,7 @@ export class Renderer {
     this._drawWaterBlocks(ctx, world);
     this._drawTreeBlocks(ctx, world);
     this._drawSeedlings(ctx, world);
+    this._drawPoopBlocks(ctx, world);
     this._drawFoodBlocks(ctx, world);
     this._drawLootBags(ctx, world);
     this._drawFarms(ctx, world);
@@ -91,6 +92,15 @@ export class Renderer {
   private _drawSeedlings(ctx: CanvasRenderingContext2D, world: World): void {
     for (const s of world.seedlings.values()) {
       this._drawCellEmoji(ctx, s.x, s.y, WORLD_EMOJIS.seedling);
+    }
+  }
+
+  private _drawPoopBlocks(ctx: CanvasRenderingContext2D, world: World): void {
+    for (const poop of world.poopBlocks.values()) {
+      const fadeRatio = Math.max(0.3, poop.decayMs / TUNE.poop.decayMs);
+      ctx.globalAlpha = fadeRatio;
+      this._drawCellEmoji(ctx, poop.x, poop.y, WORLD_EMOJIS.poop);
+      ctx.globalAlpha = 1;
     }
   }
 

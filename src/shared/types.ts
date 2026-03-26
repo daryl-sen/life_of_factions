@@ -19,7 +19,9 @@ export type ActionType =
   | 'drink'
   | 'deposit'
   | 'withdraw'
-  | 'pickup';
+  | 'pickup'
+  | 'poop'
+  | 'clean';
 
 export type LogCategory =
   | 'talk'
@@ -38,7 +40,8 @@ export type LogCategory =
   | 'sleep'
   | 'eat'
   | 'harvest'
-  | 'loot';
+  | 'loot'
+  | 'hygiene';
 
 export type PaintMode = 'none' | 'draw' | 'erase';
 
@@ -155,6 +158,13 @@ export interface ICloud {
   spawnedAtMs: number;
   lifetimeMs: number;
   rained: boolean;
+}
+
+export interface IPoopBlock {
+  id: string;
+  x: number;
+  y: number;
+  decayMs: number;
 }
 
 export interface ICameraState {

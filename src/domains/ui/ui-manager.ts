@@ -17,6 +17,7 @@ const CAT_ICONS: Record<string, string> = {
   heal: '\u{1F49A}',
   share: '\u{1F91D}',
   loot: '\uD83D\uDC5D',
+  hygiene: '\uD83E\uDDFC',
   reproduce: '\u{1F495}',
   build: '\u{1F528}',
   destroy: '\u{1F4A5}',
@@ -30,7 +31,7 @@ const CAT_ICONS: Record<string, string> = {
 function catClass(cat: string): string {
   if (cat === 'attack' || cat === 'quarrel' || cat === 'destroy' || cat === 'death') return 'cat-bad';
   if (cat === 'heal' || cat === 'share' || cat === 'faction' || cat === 'level') return 'cat-good';
-  if (cat === 'reproduce' || cat === 'spawn' || cat === 'build' || cat === 'loot') return 'cat-warn';
+  if (cat === 'reproduce' || cat === 'spawn' || cat === 'build' || cat === 'loot' || cat === 'hygiene') return 'cat-warn';
   return 'cat-info';
 }
 
@@ -391,6 +392,10 @@ export class UIManager {
           <div class="agent-badges">
             ${a.factionId
               ? `<span class="badge-faction" style="background:${factionColor}22;color:${factionColor};border-color:${factionColor}55">${a.factionId.slice(0, 8).toUpperCase()}</span>`
+              : ''
+            }
+            ${a.diseased
+              ? `<span class="badge-action" style="background:#4ade8022;color:#4ade80;border-color:#4ade8055">🤢 DISEASED</span>`
               : ''
             }
             ${actionType

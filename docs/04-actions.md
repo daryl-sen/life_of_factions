@@ -21,8 +21,10 @@ Actions are discrete behaviors agents perform. Each action has a duration, energ
 | `deposit` | 300-500ms | 0 | 1 (adjacent own flag) | Yes | |
 | `withdraw` | 300-500ms | 0 | 1 (adjacent own flag) | Yes | |
 | `pickup` | 300-500ms | 0 | on cell or adjacent loot bag | Yes | |
+| `poop` | 500-1000ms | 0 | self | Yes | 💩 |
+| `clean` | 800-1200ms | 0.25 | 1 (adjacent poop block) | Yes | |
 
-> **Note:** All action energy costs were halved in Phase 1 to account for the new sleep-based energy economy. Harvest, eat, and drink actions were added in Phase 2. Water harvest, wood harvest, and hygiene-driven water seeking were added in Phase 3. Share (renamed from help), deposit, withdraw, and pickup actions were added in Phase 4.
+> **Note:** All action energy costs were halved in Phase 1 to account for the new sleep-based energy economy. Harvest, eat, and drink actions were added in Phase 2. Water harvest, wood harvest, and hygiene-driven water seeking were added in Phase 3. Share (renamed from help), deposit, withdraw, and pickup actions were added in Phase 4. Poop and clean actions were added in Phase 5.
 
 ## Social Actions
 
@@ -56,14 +58,16 @@ setRelationship(both agents, current + delta)
 
 ### Heal
 
-**Purpose:** Restore target's health.
+**Purpose:** Restore target's health and cure disease.
 
-**Requirements:** Target health < 85% of max.
+**Requirements:** Target health < 85% of max, or target is diseased.
 
 **Effect (every 500ms):**
 ```javascript
 target.health = min(target.maxHealth, target.health + 2)
 ```
+
+**Disease cure (Phase 5):** On heal completion, if the target is diseased, the disease is cured (diseased flag set to false).
 
 ### Share (formerly Help)
 
@@ -409,6 +413,58 @@ When multiple loot bags exist on the same cell, they merge into a single bag:
 
 Any agent can pick up a loot bag via the pickup action (300–500ms, no energy cost). The agent takes all contents up to their inventory cap.
 
+## Hygiene Actions (Phase 5)
+
+### Poop
+
+**Purpose:** Involuntary action that spawns a poop block on the agent's cell.
+
+**Duration:** 500–1000ms
+
+**Energy cost:** None
+
+**Trigger:** 10% chance per tick for 30 seconds after the agent completes an eat action. Only triggers when the agent is idle (no current action).
+
+**Effect (on completion):**
+```javascript
+// Spawn poop block at agent's current cell
+world.poopBlocks.set(key(agent.cellX, agent.cellY), {
+  x: agent.cellX,
+  y: agent.cellY,
+  decayTimer: 30  // seconds
+})
+agent.hygiene -= 5
+```
+
+**Properties:**
+- Solo action (no target required)
+- Agent is locked in place during poop
+- Emoji: 💩
+- Will not spawn on interactable blocks (food, water, trees, farms, flags, walls, seedlings)
+- Only one poop block per cell (no stacking)
+
+### Clean
+
+**Purpose:** Remove an adjacent poop block and gain inspiration.
+
+**Duration:** 800–1200ms
+
+**Energy cost:** 0.25/sec
+
+**Requirements:**
+- Adjacent to a poop block (Manhattan distance = 1)
+
+**Effect (on completion):**
+```javascript
+world.poopBlocks.delete(key(poopBlock.x, poopBlock.y))
+agent.inspiration += 10
+```
+
+**Properties:**
+- Agent is locked in place during clean
+- Opportunistic: agents clean when adjacent to poop blocks during normal state
+- Grants +10 inspiration
+
 ---
 
 ## Action Mechanics
@@ -482,8 +538,10 @@ Locks are applied to both agents for social actions. Locks are decremented each 
 | deposit | 0 | 0 | 0 |
 | withdraw | 0 | 0 | 0 |
 | pickup | 0 | 0 | 0 |
+| poop | 0 | 0 | 0 |
+| clean | 0.20 | 0.30 | 0.25 |
 
-> **Note:** Costs halved from previous version to balance with sleep-only energy recovery. Eat, drink, deposit, withdraw, and pickup have zero energy cost.
+> **Note:** Costs halved from previous version to balance with sleep-only energy recovery. Eat, drink, deposit, withdraw, pickup, and poop have zero energy cost.
 
 ## Action Completion Effects
 
@@ -497,6 +555,7 @@ Locks are applied to both agents for social actions. Locks are decremented each 
 | Share complete | +5 |
 | Build farm | +15 |
 | Harvest (per unit) | +2 |
+| Clean complete | +0 (grants +10 inspiration instead) |
 
 ## Decision Priority (Action Selection)
 
@@ -512,11 +571,13 @@ Agents select actions based on the following priority order. Higher-priority nee
 | 6 | Energy < 40 | Voluntary sleep |
 | 7a | Fullness < 40 | Proactive food seeking (same priority as #4) |
 | 7b | Hygiene < 40 | Proactive water seeking (same priority as #5) |
-| 7c | Near own flag with inventory >= 3 | Deposit resources to faction flag (opportunistic) |
-| 7d | Adjacent resource block & inventory not full | Harvest nearby resources (wood harvesting is opportunistic) |
-| 7e | Loot bag nearby | Pickup loot bag |
-| 7f | Normal social/combat | Reproduction, attack, share/heal/talk |
-| 7g | Nothing else to do | Roam |
+| 7c | In poop cooldown & idle & 10% roll | Poop action (involuntary, 30s window after eating) |
+| 7d | Near own flag with inventory >= 3 | Deposit resources to faction flag (opportunistic) |
+| 7e | Adjacent resource block & inventory not full | Harvest nearby resources (wood harvesting is opportunistic) |
+| 7f | Loot bag nearby | Pickup loot bag |
+| 7g | Adjacent poop block | Clean poop block (opportunistic) |
+| 7h | Normal social/combat | Reproduction, attack, share/heal/talk |
+| 7i | Nothing else to do | Roam |
 
 ### Faction Formation
 

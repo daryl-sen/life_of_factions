@@ -23,6 +23,8 @@ export const TUNE = {
     deposit: 0,
     withdraw: 0,
     pickup: 0,
+    poop: 0,
+    clean: 0.25,
   } as Record<ActionType, number>,
   cropGain: 28,
   starveHpPerSec: 1.0,
@@ -126,6 +128,26 @@ export const TUNE = {
   hygiene: {
     criticalThreshold: 20,
     seekThreshold: 40,
+    moveDecay: 0.05,
+    socialDecay: 0.5,
+    poopDecay: 5,
+    stepOnPoopDecay: 5,
+  },
+  poop: {
+    decayMs: 30000,
+    chancePerTick: 0.10,
+  },
+  clean: {
+    inspirationGain: 10,
+  },
+  disease: {
+    contractionThreshold: 20,
+    contractionChance: 0.05,
+    spreadChance: 0.03,
+    spreadBlockThreshold: 60,
+    cureHygieneThreshold: 80,
+    energyDrainMultiplier: 2,
+    hpDrainPerSec: 0.5,
   },
   flagStorage: {
     capacityPerType: 30,
@@ -155,6 +177,8 @@ export const ACTION_DURATIONS: Record<ActionType, [number, number]> = {
   deposit: [300, 500],
   withdraw: [300, 500],
   pickup: [300, 500],
+  poop: [500, 1000],
+  clean: [800, 1200],
 };
 
 
@@ -196,12 +220,15 @@ export const AGENT_EMOJIS: Record<string, string> = {
   deposit: '📦',
   withdraw: '📦',
   pickup: '🤔',
+  poop: '😣',
+  clean: '🧹',
 };
 
 export const IDLE_EMOJIS = {
   lowEnergy: '🤤',
   lowHealth: '🤕',
   lowFullness: '😩',
+  diseased: '🤢',
   highEnergy: '😀',
   default: '🙂',
 };
@@ -219,6 +246,7 @@ export const WORLD_EMOJIS = {
   cloud: '🌧️',
   seedling: '🌱',
   lootBag: '👝',
+  poop: '💩',
 } as const;
 
 export const TREE_EMOJIS: readonly string[] = ['🌲', '🌳', '🌴', '🎄'];
@@ -241,4 +269,5 @@ export const LOG_CATS: readonly LogCategory[] = [
   'eat',
   'harvest',
   'loot',
+  'hygiene',
 ];

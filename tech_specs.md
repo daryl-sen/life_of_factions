@@ -62,9 +62,13 @@ Agent {
 
   // Needs system
   fullness: float           // 0..100; passive decay, restored by eating
-  hygiene: float            // 0..100; passive decay, restored by drinking water (Phase 3)
+  hygiene: float            // 0..100; decay from movement/actions/poop, restored by drinking water
   social: float             // 0..100 (placeholder, not active)
-  inspiration: float        // 0..100 (placeholder, not active)
+  inspiration: float        // 0..100 (+10 from clean action)
+
+  // Disease system (Phase 5)
+  diseased: boolean         // true if agent is currently sick
+  poopCooldown: float       // seconds remaining in post-eat poop window (30s after eating)
 
   // Inventory (Phase 2)
   inventory: {
@@ -74,7 +78,7 @@ Agent {
   }                         // Total units across all types capped at 20
 
   action: null | {
-    type: 'talk'|'quarrel'|'attack'|'under_attack'|'heal'|'share'|'attack_wall'|'attack_flag'|'reproduce'|'sleep'|'harvest'|'harvest_water'|'harvest_wood'|'eat'|'drink'|'deposit'|'withdraw'|'pickup'
+    type: 'talk'|'quarrel'|'attack'|'under_attack'|'heal'|'share'|'attack_wall'|'attack_flag'|'reproduce'|'sleep'|'harvest'|'harvest_water'|'harvest_wood'|'eat'|'drink'|'deposit'|'withdraw'|'pickup'|'poop'|'clean'
     remainingMs: float
     tickCounterMs: float
     payload?: { targetId?: ID, ... }
@@ -94,6 +98,7 @@ Agent {
 * **Water block (large)**: 2×2 cells, impassable, 20 units (single entity); shrinks to small water block at 25% threshold (≤5 units). Harvest 1 unit per 1000ms
 * **Tree block**: 1-cell, impassable, 3–6 units; random emoji from 🌲🌳🌴🎄; harvest 1 unit (wood) per 1500ms
 * **Seedling**: 🌱, 1-cell, passable, protected from other block spawns; grows into a tree in 45–90 seconds
+* **Poop block**: 💩, 1-cell, passable, −5 hygiene per step through it, decays after 30 seconds; will not spawn on interactable blocks
 
 ---
 
@@ -139,14 +144,31 @@ Fullness is a new survival resource. Eating crops restores fullness (not energy)
 
 #### Hygiene (0–100)
 
-Hygiene is a survival need restored by drinking water from inventory.
+Hygiene is a survival need restored by drinking water from inventory. In Phase 5, hygiene gains additional decay sources and drives the disease system.
 
 * **Starting value:** 100
 * **Passive decay:** −0.02/tick
+* **Movement decay:** −0.05/cell
+* **Social action decay:** −0.5 on completion of talk, quarrel, share, or heal
+* **Poop action decay:** −5 on poop action completion
+* **Stepping on poop block:** −5 per step through a 💩 block
 * **Recovery:** drinking water from inventory → +30 hygiene
 * **Proactive water seeking:** hygiene < 40 (decision priority 7b)
 * **Critical water seeking:** hygiene < 20 (decision priority 5)
 * **Water seeking behavior:** drink from inventory first; if no water in inventory, harvest adjacent water block; if none adjacent, pathfind to nearest water block
+
+#### Disease System (Phase 5)
+
+Disease is a condition caused by low hygiene that drains health and energy at an accelerated rate.
+
+* **Contraction:** when hygiene < 20, 5% chance per tick to become diseased
+* **Spread:** diseased agents spread disease to adjacent agents at 3% per tick; blocked if target's hygiene > 60
+* **Effects:**
+  * Emoji: 🤢
+  * Energy drain: 2× normal passive energy drain (0.125/tick instead of 0.0625/tick)
+  * Health drain: −0.5 HP/sec
+  * Disease can kill (health reaches 0)
+* **Cure:** heal action from another agent, or hygiene recovers above 80
 
 #### Placeholder Needs (fields added, not active yet)
 
@@ -337,6 +359,40 @@ The former "help" action is renamed to "share." Instead of transferring energy, 
 | Energy cost | None |
 | Effect | Takes all contents from loot bag up to agent's inventory cap |
 
+#### Poop Action (Phase 5)
+
+| Property | Value |
+|----------|-------|
+| Duration | 500–1000ms |
+| Energy cost | None |
+| Effect | Spawns 💩 block on agent's cell, −5 hygiene |
+| Trigger | 10% chance per tick for 30 seconds after eating, only when idle (no current action) |
+| Spawn rules | Will not spawn on interactable blocks (food, water, trees, farms, flags, walls, seedlings) |
+
+**Poop cooldown:** After an agent completes the eat action, a 30-second poop window begins. During this window, each tick has a 10% chance of triggering the poop action (only if the agent is idle).
+
+#### Clean Action (Phase 5)
+
+| Property | Value |
+|----------|-------|
+| Target | Adjacent poop block (distance = 1) |
+| Duration | 800–1200ms |
+| Energy cost | 0.25/sec |
+| Effect | Removes adjacent poop block, +10 inspiration |
+
+#### Poop Blocks (Phase 5)
+
+💩 blocks are passable terrain hazards spawned by the poop action.
+
+| Property | Value |
+|----------|-------|
+| Emoji | 💩 |
+| Passable | Yes |
+| Hygiene penalty | −5 per step through the block |
+| Decay timer | 30 seconds (removed from grid on expiry) |
+| Spawn rules | Will not spawn on cells with interactable blocks (food, water, trees, farms, flags, walls, seedlings) |
+| Stacking | No stacking — only one poop block per cell |
+
 #### Loot Bags (Phase 4)
 
 Loot bags (👝) are temporary resource containers that spawn on the grid.
@@ -426,17 +482,21 @@ Faction flags now store resources for the faction.
   * **harvest:** HQ food 600ms, LQ food 1200ms, water 1000ms, wood 1500ms
   * **eat/drink:** **300–500ms**
   * **deposit/withdraw/pickup:** **300–500ms**
+  * **poop:** **500–1000ms**
+  * **clean:** **800–1200ms**
 * **Distance rules:**
 
   * Non-attack actions: distance **=1**
   * Attack: distance **≤2**
-  * Sleep, eat, drink: no target (solo/self actions)
+  * Sleep, eat, drink, poop: no target (solo/self actions)
   * Harvest: adjacent to resource block (distance **=1**; applies to food, water, and tree blocks)
+  * Clean: adjacent to poop block (distance **=1**)
   * Deposit/withdraw: adjacent to own faction flag (distance **=1**)
   * Pickup: on loot bag cell or adjacent
 * **Tick cadence:** effects apply roughly every **0.5s** during actions
 * **Per-second energy costs** (approx., halved from v1.3): talk 0.2, quarrel 0.4, **attack 1.1**, heal 1.5, **share 0.4**, attack\_wall 0.75, attack\_flag 1.0, **reproduce 1.5**, **harvest 0.25**
-* **Zero-cost actions:** eat, drink, deposit, withdraw, pickup
+* **Zero-cost actions:** eat, drink, deposit, withdraw, pickup, poop
+* **Clean:** 0.25 energy/sec
 * **Sleep:** restores +8 energy per 500ms tick (total 128–192 energy over full duration); mandatory at energy < 20, voluntary at energy < 40; interruptible by attack; emoji 😴
 * **Damage:** base 8; attack deals periodic damage scaled by level
 
@@ -517,6 +577,23 @@ Faction flags now store resources for the faction.
 * **harvest:** HQ food 600ms, LQ food 1200ms, water 1000ms, wood 1500ms
 * **eat/drink:** **300–500ms**
 * **deposit/withdraw/pickup:** **300–500ms** (no energy cost)
+* **poop:** **500–1000ms** (no energy cost)
+* **clean:** **800–1200ms** (0.25 energy/sec)
+
+**Hygiene decay sources (Phase 5)**
+
+* Passive: −0.02/tick
+* Movement: −0.05/cell
+* Social action completion (talk, quarrel, share, heal): −0.5
+* Poop action: −5
+* Stepping on 💩 block: −5/step
+
+**Disease (Phase 5)**
+
+* Contraction: hygiene < 20 → 5% chance/tick
+* Spread: 3%/tick to adjacent agents (blocked if target hygiene > 60)
+* Effects: 2× energy drain, −0.5 HP/sec, 🤢 emoji
+* Cure: heal from another agent, or hygiene > 80
 
 **Combat & leveling (XP-based)**
 
@@ -555,6 +632,7 @@ Faction flags now store resources for the faction.
 1b. Process cloud/rain system (spawn clouds on timer, rain spawns water blocks; 90% small, 10% large)
 1c. Process seedling growth (seedlings that have reached maturity grow into trees)
 1d. Process tree passive effects (2% per tick seedling spawn chance; 1% per tick LQ food spawn in 3-cell radius)
+1e. Process poop block decay (remove blocks whose 30s timer has expired)
 2. Compute “under attack” set for this tick (for lock exceptions)
 3. For each agent:
 
@@ -573,11 +651,13 @@ Faction flags now store resources for the faction.
      7. Normal state:
         a. Fullness < 40 → proactive food seeking (same eat/harvest/pathfind priority as above); withdraw from own flag if nearby and flag has food
         b. Hygiene < 40 → proactive water seeking (same drink/harvest/pathfind priority as water seeking above); withdraw from own flag if nearby and flag has water
-        c. Deposit resources to own faction flag (opportunistic: near own flag with inventory ≥ 3)
-        d. Harvest nearby resources (if inventory not full and adjacent to resource block; wood harvesting is opportunistic)
-        e. Pickup loot bags (before roaming)
-        f. Reproduction, attack, share/heal/talk
-        g. Roam
+        c. Poop check: if in poop cooldown window (30s after eating), 10% chance per tick to poop (only when idle)
+        d. Deposit resources to own faction flag (opportunistic: near own flag with inventory ≥ 3)
+        e. Harvest nearby resources (if inventory not full and adjacent to resource block; wood harvesting is opportunistic)
+        f. Pickup loot bags (before roaming)
+        g. Clean adjacent poop block (opportunistic)
+        h. Reproduction, attack, share/heal/talk
+        i. Roam
    * If acting: process action (distance rules; energy drain; effects)
    * If not acting:
 
@@ -586,6 +666,9 @@ Faction flags now store resources for the faction.
        **Plan-second**: if no path, follow decision priority above
      * Consider interactions (reproduce first, then social, then combat with range 2)
      * Try building (wall or farm; farm consumes energy)
+   * Disease check: if hygiene < 20, 5% chance to contract disease; if diseased, apply 2× energy drain and −0.5 HP/sec; if hygiene > 80, cure disease
+   * Disease spread: diseased agents spread to adjacent agents at 3% per tick (blocked if target hygiene > 60)
+   * Poop cooldown tick: decrement post-eat poop timer
    * Starvation death check (fullness = 0 → −1 HP/sec)
    * XP-based level-up check (respect level cap)
 4. Recompute factions on interval (with union-find)
@@ -644,6 +727,11 @@ Faction flags now store resources for the faction.
 25. **Loot bags** (Phase 4): 👝 emoji, passable, 30s decay timer with fade effect. Spawn on agent death (agent's full inventory) and on flag destruction (stored resources). Any agent can pick up (300–500ms, takes all contents up to inventory cap). Multiple bags on same cell merge; merge resets decay timer.
 26. **Deposit/withdraw/pickup actions** (Phase 4): deposit (300–500ms, no energy cost), withdraw (300–500ms, no energy cost), pickup (300–500ms, no energy cost).
 27. **Decision priority updated** (Phase 4): deposit is opportunistic (near own flag with inventory >= 3). Withdraw when needing food/water and near own flag with stored resources. Pickup loot bags checked before roaming.
+28. **Hygiene decay expanded** (Phase 5): hygiene decays from movement (−0.05/cell), social action completion (−0.5 for talk/quarrel/share/heal), and poop action (−5), in addition to passive decay.
+29. **Poop system** (Phase 5): 10% chance per tick for 30s after eating (only when idle) to trigger poop action (500–1000ms). Spawns 💩 block (passable, −5 hygiene per step, 30s decay, no spawn on interactable blocks).
+30. **Clean action** (Phase 5): 800–1200ms, 0.25 energy/sec, removes adjacent poop block, +10 inspiration.
+31. **Disease system** (Phase 5): hygiene < 20 → 5% chance/tick to contract disease. Diseased agents show 🤢, suffer 2× energy drain and −0.5 HP/sec (can kill). Spread at 3%/tick to adjacent agents (blocked if target hygiene > 60). Cured by heal action from another agent or hygiene recovering above 80.
+32. **Heal cures disease** (Phase 5): the heal action now also cures disease on the target agent.
 
 ---
 
@@ -697,6 +785,15 @@ Faction flags now store resources for the faction.
 * **Loot bags (👝):** spawn on agent death (agent's full inventory) and on flag destruction (all stored resources). Passable, 30-second decay timer with fade effect. Any agent can pick up (300–500ms, takes all contents up to inventory cap). Multiple bags on the same cell merge; merge resets decay timer.
 * **New actions:** deposit (300–500ms, no energy cost), withdraw (300–500ms, no energy cost), pickup (300–500ms, no energy cost).
 * **Decision priority updated:** deposit is opportunistic (near own flag with inventory >= 3). Withdraw when needing food/water and near own flag. Pickup loot bags checked before roaming.
+
+### Phase 5 Changes (v3.2.0 — Hygiene and Disease)
+
+* **Hygiene decay expanded:** hygiene now decays from movement (−0.05/cell), social action completion (−0.5 on talk/quarrel/share/heal), poop action (−5), and stepping on 💩 blocks (−5/step), in addition to passive decay (−0.02/tick).
+* **Poop system:** after eating, agents enter a 30-second poop window. During this window, each tick has a 10% chance of triggering the poop action (only when idle). Poop action duration: 500–1000ms, no energy cost. Spawns a 💩 block on the agent's cell (passable, −5 hygiene per step, 30s decay timer, will not spawn on interactable blocks, no stacking).
+* **Clean action:** 800–1200ms, 0.25 energy/sec, targets an adjacent poop block, removes it, grants +10 inspiration.
+* **Disease system:** when hygiene drops below 20, agents have a 5% chance per tick to contract disease. Diseased agents display the 🤢 emoji, suffer 2× passive energy drain (0.125/tick), and lose 0.5 HP/sec. Disease can kill. Diseased agents spread disease to adjacent agents at 3% per tick (blocked if target hygiene > 60). Disease is cured by the heal action from another agent, or by hygiene recovering above 80.
+* **Heal action updated:** heal now also cures disease on the target agent.
+* **Decision priority updated:** poop check added at priority 7c (after proactive water seeking). Clean adjacent poop blocks added as opportunistic action at priority 7g (before social actions).
 
 ---
 

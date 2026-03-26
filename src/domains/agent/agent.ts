@@ -40,6 +40,7 @@ export class Agent {
   // Inventory
   inventory: IInventory;
   poopTimerMs: number;
+  diseased: boolean;
 
   constructor(opts: {
     id: string;
@@ -71,6 +72,7 @@ export class Agent {
     xp?: number;
     inventory?: IInventory;
     poopTimerMs?: number;
+    diseased?: boolean;
   }) {
     this.id = opts.id;
     this.name = opts.name;
@@ -107,6 +109,7 @@ export class Agent {
     this.xp = opts.xp ?? 0;
     this.inventory = opts.inventory ?? { food: 0, water: 0, wood: 0 };
     this.poopTimerMs = opts.poopTimerMs ?? 0;
+    this.diseased = opts.diseased ?? false;
   }
 
   takeDamage(amount: number): void {
@@ -130,6 +133,8 @@ export class Agent {
     if (this.energy > this.maxEnergy) this.energy = this.maxEnergy;
     if (this.fullness < 0) this.fullness = 0;
     if (this.fullness > TUNE.fullness.max) this.fullness = TUNE.fullness.max;
+    if (this.hygiene < 0) this.hygiene = 0;
+    if (this.hygiene > 100) this.hygiene = 100;
   }
 
   get isDead(): boolean {

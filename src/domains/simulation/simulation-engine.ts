@@ -4,6 +4,7 @@ import { Pathfinder } from '../../shared/pathfinding';
 import { FoodField } from '../world/food-field';
 import { WaterField } from '../world/water-field';
 import { LootBagManager } from '../world/loot-bag-manager';
+import { PoopBlockManager } from '../world/poop-block-manager';
 import type { World } from '../world';
 import type { Agent } from '../agent';
 import { ActionFactory, ActionProcessor, InteractionEngine } from '../action';
@@ -598,7 +599,9 @@ export class SimulationEngine {
           agent.action.type !== 'drink' &&
           agent.action.type !== 'deposit' &&
           agent.action.type !== 'withdraw' &&
-          agent.action.type !== 'pickup'
+          agent.action.type !== 'pickup' &&
+          agent.action.type !== 'poop' &&
+          agent.action.type !== 'clean'
         ) {
           agent.action = null;
         }
@@ -623,6 +626,11 @@ export class SimulationEngine {
               agent.pathIdx++;
               agent.energy -= TUNE.moveEnergy;
               agent.drainFullness(TUNE.fullness.moveDecay);
+              agent.hygiene = Math.max(0, agent.hygiene - TUNE.hygiene.moveDecay);
+              // Step-on-poop hygiene penalty
+              if (world.poopBlocks.has(key(agent.cellX, agent.cellY))) {
+                agent.hygiene = Math.max(0, agent.hygiene - TUNE.hygiene.stepOnPoopDecay);
+              }
             } else {
               agent.path = null;
             }
@@ -633,6 +641,13 @@ export class SimulationEngine {
           // Idle decision — delegate to InteractionEngine for priority hierarchy
           if (!agent.path && !agent.action) {
             InteractionEngine.consider(world, agent);
+
+            // Poop trigger: 10% chance per tick for 30s after eating, only when idle
+            if (!agent.action && !agent.path && agent.poopTimerMs > 0) {
+              if (Math.random() < TUNE.poop.chancePerTick) {
+                ActionFactory.tryStart(agent, 'poop');
+              }
+            }
 
             // If InteractionEngine returned without action/path, handle seeking
             if (!agent.path && !agent.action) {
@@ -673,6 +688,21 @@ export class SimulationEngine {
                   }
                 }
 
+                // Clean adjacent poop blocks when idle and inspiration is low
+                if (!agent.action && agent.inspiration < 60) {
+                  const adjCells2: [number, number][] = [
+                    [agent.cellX, agent.cellY],
+                    [agent.cellX + 1, agent.cellY], [agent.cellX - 1, agent.cellY],
+                    [agent.cellX, agent.cellY + 1], [agent.cellX, agent.cellY - 1],
+                  ];
+                  for (const [nx, ny] of adjCells2) {
+                    if (world.poopBlocks.has(key(nx, ny))) {
+                      ActionFactory.tryStart(agent, 'clean', { targetPos: { x: nx, y: ny } });
+                      break;
+                    }
+                  }
+                }
+
                 // Deposit at own flag if nearby and has surplus inventory
                 if (!agent.action && agent.factionId && agent.inventoryTotal() >= 3) {
                   const flag = world.flags.get(agent.factionId);
@@ -705,6 +735,24 @@ export class SimulationEngine {
 
       agent.clampStats();
 
+      // Disease effects
+      if (agent.diseased) {
+        // 2× energy drain (extra drain on top of passive)
+        agent.energy -= 0.0625;
+        // HP drain
+        agent.health -= (TUNE.disease.hpDrainPerSec * BASE_TICK_MS) / 1000;
+        // Cure if hygiene recovers above threshold
+        if (agent.hygiene > TUNE.disease.cureHygieneThreshold) {
+          agent.diseased = false;
+          log(world, 'hygiene', `${agent.name} recovered from disease`, agent.id, {});
+        }
+      } else if (agent.hygiene < TUNE.disease.contractionThreshold) {
+        if (Math.random() < TUNE.disease.contractionChance) {
+          agent.diseased = true;
+          log(world, 'hygiene', `${agent.name} contracted a disease`, agent.id, {});
+        }
+      }
+
       // Starvation: fullness = 0 causes HP drain (not energy = 0)
       if (agent.fullness <= 0) {
         agent.health -= (TUNE.starveHpPerSec * BASE_TICK_MS) / 1000;
@@ -717,7 +765,30 @@ export class SimulationEngine {
 
     if (world.tick % 4 === 0) FactionManager.reconcile(world);
     SimulationEngine._applyFlagHealing(world);
+    SimulationEngine._tickDiseaseSpread(world);
     SimulationEngine._cleanDead(world);
     LootBagManager.tickDecay(world, BASE_TICK_MS);
+    PoopBlockManager.tickDecay(world, BASE_TICK_MS);
+  }
+
+  private static _tickDiseaseSpread(world: World): void {
+    for (const agent of world.agents) {
+      if (!agent.diseased) continue;
+      const adj: [number, number][] = [
+        [agent.cellX + 1, agent.cellY], [agent.cellX - 1, agent.cellY],
+        [agent.cellX, agent.cellY + 1], [agent.cellX, agent.cellY - 1],
+      ];
+      for (const [nx, ny] of adj) {
+        const id = world.agentsByCell.get(key(nx, ny));
+        if (!id) continue;
+        const target = world.agentsById.get(id);
+        if (!target || target.diseased) continue;
+        if (target.hygiene > TUNE.disease.spreadBlockThreshold) continue;
+        if (Math.random() < TUNE.disease.spreadChance) {
+          target.diseased = true;
+          log(world, 'hygiene', `${agent.name} spread disease to ${target.name}`, agent.id, { to: target.id });
+        }
+      }
+    }
   }
 }

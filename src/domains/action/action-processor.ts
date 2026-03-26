@@ -8,6 +8,7 @@ import { AgentFactory } from '../agent';
 import { InteractionEngine } from './interaction-engine';
 import { SimulationEngine } from '../simulation/simulation-engine';
 import { LootBagManager } from '../world/loot-bag-manager';
+import { PoopBlockManager } from '../world/poop-block-manager';
 
 export class ActionProcessor {
   static process(world: World, agent: Agent, dtMs: number): void {
@@ -24,7 +25,8 @@ export class ActionProcessor {
     if (agent.energy < TUNE.energyLowThreshold &&
       act.type !== 'attack' && act.type !== 'sleep' &&
       act.type !== 'harvest' && act.type !== 'eat' && act.type !== 'drink' &&
-      act.type !== 'deposit' && act.type !== 'withdraw' && act.type !== 'pickup'
+      act.type !== 'deposit' && act.type !== 'withdraw' && act.type !== 'pickup' &&
+      act.type !== 'poop' && act.type !== 'clean'
     ) {
       agent.action = null;
       return;
@@ -61,6 +63,14 @@ export class ActionProcessor {
     if ((act.type === 'deposit' || act.type === 'withdraw') && agent.factionId) {
       const flag = world.flags.get(agent.factionId);
       if (!flag || manhattan(agent.cellX, agent.cellY, flag.x, flag.y) > 1) {
+        agent.action = null; return;
+      }
+    }
+
+    // Clean proximity: must be adjacent to poop block
+    if (act.type === 'clean' && act.payload?.targetPos) {
+      const tp = act.payload.targetPos;
+      if (manhattan(agent.cellX, agent.cellY, tp.x, tp.y) > 1) {
         agent.action = null; return;
       }
     }
@@ -148,9 +158,19 @@ export class ActionProcessor {
   ): void {
     const act = agent.action!;
 
+    // Social hygiene decay on completion
+    if ((act.type === 'talk' || act.type === 'quarrel' || act.type === 'share' || act.type === 'heal') && targ) {
+      agent.hygiene = Math.max(0, agent.hygiene - TUNE.hygiene.socialDecay);
+      targ.hygiene = Math.max(0, targ.hygiene - TUNE.hygiene.socialDecay);
+    }
+
     // XP on action completion
     if (act.type === 'heal' && targ) {
       agent.addXp(TUNE.xp.perHeal);
+      if (targ.diseased) {
+        targ.diseased = false;
+        log(world, 'hygiene', `${agent.name} cured ${targ.name}'s disease`, agent.id, { to: targ.id });
+      }
       ActionProcessor._checkLevelUp(world, agent);
     } else if (act.type === 'share' && targ) {
       agent.addXp(TUNE.xp.perShare);
@@ -173,6 +193,10 @@ export class ActionProcessor {
       ActionProcessor._completeWithdraw(world, agent);
     } else if (act.type === 'pickup') {
       ActionProcessor._completePickup(world, agent);
+    } else if (act.type === 'poop') {
+      ActionProcessor._completePoop(world, agent);
+    } else if (act.type === 'clean') {
+      ActionProcessor._completeClean(world, agent);
     }
 
     if (targ && !agent.factionId && !targ.factionId) {
@@ -364,6 +388,24 @@ export class ActionProcessor {
       world.lootBags.delete(k);
     }
     log(world, 'loot', `${agent.name} picked up loot`, agent.id, { x: tp.x, y: tp.y });
+  }
+
+  private static _completePoop(world: World, agent: Agent): void {
+    PoopBlockManager.spawnPoop(world, agent.cellX, agent.cellY);
+    agent.hygiene = Math.max(0, agent.hygiene - TUNE.hygiene.poopDecay);
+    log(world, 'hygiene', `${agent.name} pooped`, agent.id, { x: agent.cellX, y: agent.cellY });
+  }
+
+  private static _completeClean(world: World, agent: Agent): void {
+    const act = agent.action!;
+    const tp = act.payload?.targetPos;
+    if (!tp) return;
+    const k = key(tp.x, tp.y);
+    if (world.poopBlocks.has(k)) {
+      world.poopBlocks.delete(k);
+      agent.inspiration = Math.min(100, agent.inspiration + TUNE.clean.inspirationGain);
+      log(world, 'hygiene', `${agent.name} cleaned poop`, agent.id, { x: tp.x, y: tp.y });
+    }
   }
 
   private static _pickShareResource(agent: Agent, targ: Agent): keyof IInventory | null {

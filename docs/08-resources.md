@@ -1,6 +1,6 @@
 # Resources and Economy
 
-Resources drive agent behavior. Energy and fullness are the two primary survival resources. Energy is restored only via sleep; fullness is restored by eating food from inventory. Agents carry resources in a personal inventory and must harvest food blocks before consuming them.
+Resources drive agent behavior. Energy, fullness, and hygiene are the three survival resources. Energy is restored only via sleep; fullness is restored by eating food from inventory; hygiene is restored by drinking water. Agents carry resources in a personal inventory and must harvest food blocks before consuming them. Low hygiene can cause disease (Phase 5), which accelerates health and energy loss.
 
 ## Energy System
 
@@ -105,7 +105,7 @@ agent.health = min(agent.maxHealth, agent.health + 0.5 * (tickMs / 1000))
 
 ## Hygiene System (0–100)
 
-Hygiene is a survival need restored by drinking water. It was activated in Phase 3 alongside the introduction of water blocks.
+Hygiene is a survival need restored by drinking water. It was activated in Phase 3 alongside the introduction of water blocks. In Phase 5, hygiene gains additional decay sources (movement, social actions, poop) and drives the disease system.
 
 ### Hygiene Properties
 
@@ -115,6 +115,10 @@ Hygiene is a survival need restored by drinking water. It was activated in Phase
 | Maximum | 100 |
 | Starting | 100 |
 | Passive decay | -0.02 per tick |
+| Movement decay | -0.05 per cell |
+| Social action decay | -0.5 on completion of talk, quarrel, share, or heal |
+| Poop action decay | -5 on poop action completion |
+| Stepping on poop | -5 per step through a 💩 block |
 | Recovery | Drinking water from inventory: +30 hygiene |
 
 ### Hygiene Thresholds
@@ -125,6 +129,16 @@ Hygiene is a survival need restored by drinking water. It was activated in Phase
 | Proactive water seeking | < 40 | Seek water before other activities (decision priority 7b) |
 | Normal | 40+ | Normal behavior |
 
+### Hygiene Decay Sources
+
+| Source | Amount | Trigger |
+|--------|--------|---------|
+| Passive decay | -0.02/tick | Every simulation tick |
+| Movement | -0.05/cell | Each cell moved |
+| Social actions | -0.5 | On completion of talk, quarrel, share, or heal |
+| Poop action | -5 | On poop action completion |
+| Stepping on 💩 | -5/step | Each step through a poop block |
+
 ### Water-Seeking Decision Priority
 
 When an agent needs water (hygiene < 40 proactive, < 20 critical):
@@ -133,14 +147,42 @@ When an agent needs water (hygiene < 40 proactive, < 20 critical):
 2. **Harvest adjacent water block** if one is within distance 1
 3. **Pathfind to nearest water block** and harvest it
 
+### Disease System (Phase 5)
+
+Disease is a condition caused by low hygiene that accelerates health and energy loss.
+
+#### Contraction
+
+When an agent's hygiene drops below 20, there is a **5% chance per tick** to contract disease.
+
+#### Spread
+
+Diseased agents spread disease to adjacent agents at **3% per tick**. Spread is **blocked** if the target agent's hygiene is above 60.
+
+#### Effects
+
+| Effect | Value |
+|--------|-------|
+| Emoji | 🤢 |
+| Energy drain | 2x normal passive drain (0.125/tick instead of 0.0625/tick) |
+| Health drain | -0.5 HP/sec |
+| Lethal | Yes (health can reach 0 from disease) |
+
+#### Cure
+
+Disease can be cured in two ways:
+
+1. **Heal action** from another agent (on heal completion, disease is removed)
+2. **Hygiene recovery** above 80 (automatic cure)
+
 ## Placeholder Needs
 
-The following needs are tracked on agents but have no gameplay effect:
+The following needs are tracked on agents but have limited gameplay effect:
 
-| Need | Starting Value | Range |
-|------|---------------|-------|
-| Social | 50 | 0–100 |
-| Inspiration | 50 | 0–100 |
+| Need | Starting Value | Range | Notes |
+|------|---------------|-------|-------|
+| Social | 50 | 0–100 | No gameplay effect |
+| Inspiration | 50 | 0–100 | +10 from clean action (Phase 5) |
 
 ## Inventory System
 
@@ -465,6 +507,51 @@ Any agent can pick up a loot bag via the pickup action:
 - **Effect:** Takes all contents from the loot bag up to the agent's inventory cap (20 total)
 - **Decision priority:** Checked before roaming (priority 7e)
 
+## Poop Blocks (Phase 5)
+
+Poop blocks (💩) are passable terrain hazards spawned by the poop action. They penalize hygiene and contribute to disease spread.
+
+### Poop Block Properties
+
+| Property | Value |
+|----------|-------|
+| Emoji | 💩 |
+| Passable | Yes |
+| Hygiene penalty | -5 per step through the block |
+| Decay timer | 30 seconds (removed from grid on expiry) |
+| Stacking | No — only one poop block per cell |
+
+### Spawn Rules
+
+Poop blocks are spawned by the poop action (see `docs/04-actions.md`). They will **not** spawn on cells occupied by interactable blocks:
+- Food blocks (HQ or LQ)
+- Water blocks
+- Tree blocks
+- Farms
+- Faction flags
+- Walls
+- Seedlings
+
+### Poop Trigger
+
+After an agent completes the eat action, a 30-second poop cooldown window begins. During this window:
+- Each tick has a **10% chance** of triggering the poop action
+- Only triggers when the agent is **idle** (no current action)
+- The poop action lasts 500–1000ms and costs no energy
+- On completion, a 💩 block is placed at the agent's cell and the agent loses 5 hygiene
+
+### Decay
+
+Poop blocks have a 30-second decay timer. When the timer reaches 0, the block is removed from the grid. Poop blocks do not have a visual fade effect.
+
+### Clean Action
+
+Any agent can remove an adjacent poop block via the clean action:
+- **Duration:** 800–1200ms
+- **Energy cost:** 0.25/sec
+- **Effect:** Removes the poop block and grants +10 inspiration to the cleaning agent
+- **Decision priority:** Opportunistic (priority 7g, before social actions)
+
 ## Faction Flag Storage (Phase 4)
 
 Faction flags serve as communal resource storage. See `docs/07-factions.md` for full details.
@@ -593,8 +680,17 @@ Energy Drains:
   - Harvest (wood): 0.25/sec
   - Building: 12 (farm)
 
+Clean (poop block → removed):
+  → Removes adjacent poop block
+  → +10 inspiration
+  → -0.25 energy/sec (800-1200ms)
+
 Hygiene Drains:
   - Passive: ~0.02/tick
+  - Movement: 0.05/step
+  - Social action completion (talk/quarrel/share/heal): 0.5
+  - Poop action: 5
+  - Stepping on 💩 block: 5/step
 
 Fullness Drains:
   - Passive: ~0.03/tick

@@ -53,6 +53,7 @@ export class PersistenceManager {
       xp: a.xp,
       inventory: a.inventory,
       poopTimerMs: a.poopTimerMs,
+      diseased: a.diseased,
     }));
     return {
       meta: { version: VERSION, savedAt: Date.now() },
@@ -76,6 +77,7 @@ export class PersistenceManager {
       treeBlocks: [...world.treeBlocks.values()],
       seedlings: [...world.seedlings.values()],
       lootBags: [...world.lootBags.values()],
+      poopBlocks: [...world.poopBlocks.values()],
       agents,
       log: { limit: world.log.limit, arr: world.log.arr },
       selectedId: world.selectedId,
@@ -212,6 +214,15 @@ export class PersistenceManager {
         decayMs: lb.decayMs ?? 30000,
       });
     }
+    // Restore poop blocks
+    for (const pb of d.poopBlocks || []) {
+      world.poopBlocks.set(key(pb.x, pb.y), {
+        id: pb.id,
+        x: pb.x,
+        y: pb.y,
+        decayMs: pb.decayMs ?? 30000,
+      });
+    }
     // Reset ephemeral cloud state
     world.clouds = [];
     world._nextCloudSpawnMs = 0;
@@ -254,6 +265,7 @@ export class PersistenceManager {
         xp: a.xp ?? 0,
         inventory: a.inventory ?? { food: 0, water: 0, wood: 0 },
         poopTimerMs: a.poopTimerMs ?? 0,
+        diseased: a.diseased ?? false,
       });
       world.agents.push(agent);
       world.agentsById.set(agent.id, agent);
