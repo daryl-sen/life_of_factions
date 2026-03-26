@@ -188,7 +188,14 @@ export class Renderer {
     }
   }
 
+  private _hpToColor(ratio: number): string {
+    // Green (120°) at full HP → Red (0°) at zero HP
+    const hue = Math.round(ratio * 120);
+    return `hsl(${hue}, 85%, 50%)`;
+  }
+
   private _drawAgents(ctx: CanvasRenderingContext2D, world: World, attackLines: [Agent, Agent][]): void {
+    const now = performance.now();
     for (const agent of world.agents) {
       const t = agent.lerpT != null ? agent.lerpT : 1;
       const px = agent.prevCellX != null ? agent.prevCellX : agent.cellX;
@@ -197,10 +204,11 @@ export class Renderer {
       const ly = py + (agent.cellY - py) * t;
       const x = lx * CELL;
       const y = ly * CELL;
+      const cx = x + CELL / 2;
+      const cy = y + CELL / 2;
 
-      const col = agent.factionId
-        ? world.factions.get(agent.factionId)?.color || '#fff'
-        : '#6b7280';
+      const hpRatio = agent.maxHealth > 0 ? Math.max(0, Math.min(1, agent.health / agent.maxHealth)) : 0;
+      const ringColor = this._hpToColor(hpRatio);
       const actionType = agent.action?.type;
       let emoji: string;
       if (agent.babyMsRemaining > 0 && (actionType === 'eat' || actionType === 'drink')) {
@@ -209,7 +217,56 @@ export class Renderer {
         emoji = AGENT_EMOJIS[actionType as string] || getIdleEmoji(agent);
       }
 
-      this._drawAgentEmoji(ctx, x, y, CELL / 2 - 3, col, emoji);
+      // Compute action animation transform
+      let offX = 0, offY = 0, angle = 0, sx = 1, sy = 1;
+      const rem = agent.action?.remainingMs ?? 0;
+
+      if (actionType === 'attack') {
+        offX = Math.sin(now * 0.038) * 2.5;
+      } else if (actionType === 'harvest') {
+        offY = -Math.abs(Math.sin(now * 0.007)) * 3;
+      } else if (actionType === 'poop') {
+        const totalEst = 1500;
+        if (rem > 350) {
+          const prog = Math.min(1, Math.max(0, (totalEst - rem) / (totalEst - 350)));
+          sy = 1 - 0.38 * prog;
+        } else {
+          sy = 0.62 + 0.38 * (1 - rem / 350);
+        }
+        offY = (1 - sy) * (CELL / 2); // anchor to bottom
+      } else if (actionType === 'share') {
+        offX = Math.sin(now * 0.005) * 2;
+      }
+
+      // Rotation while moving between cells
+      const isMoving = t < 1 && (agent.prevCellX !== agent.cellX || agent.prevCellY !== agent.cellY);
+      if (isMoving) {
+        const ddx = agent.cellX - (agent.prevCellX ?? agent.cellX);
+        const ddy = agent.cellY - (agent.prevCellY ?? agent.cellY);
+        const tilt = 0.25; // ~14° max lean
+        angle = Math.atan2(ddy, ddx) + Math.PI / 2 + Math.sin(now * 0.015) * tilt;
+      }
+
+      ctx.save();
+      ctx.translate(cx + offX, cy + offY);
+      if (angle !== 0) ctx.rotate(angle);
+      if (sx !== 1 || sy !== 1) ctx.scale(sx, sy);
+      ctx.translate(-cx, -cy);
+      this._drawAgentEmoji(ctx, x, y, CELL / 2 - 3, ringColor, emoji);
+      ctx.restore();
+
+      // Faction flag and other overlays drawn without transform
+      if (agent.factionId) {
+        const faction = world.factions.get(agent.factionId);
+        if (faction) {
+          const { canvas: fc, w: fw, h: fh } = this._emojiCache.getTinted(WORLD_EMOJIS.flag, faction.color);
+          const flagSize = CELL / 3;
+          const fScale = Math.min(flagSize / fw, flagSize / fh);
+          const fdw = fw * fScale;
+          const fdh = fh * fScale;
+          ctx.drawImage(fc, x + CELL - fdw, y, fdw, fdh);
+        }
+      }
 
       // Collect attack lines
       if (agent.action?.type === 'attack' && agent.action.payload?.targetId) {
@@ -358,7 +415,16 @@ export class Renderer {
     ctx.globalAlpha = 0.65;
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
-    ctx.moveTo(lx * CELL + CELL / 2, ly * CELL + CELL / 2);
+    const cx = lx * CELL + CELL / 2;
+    const cy = ly * CELL + CELL / 2;
+    const ringRadius = CELL / 2 - 2;
+    const firstPos = remaining[0];
+    const fdx = firstPos.x * CELL + CELL / 2 - cx;
+    const fdy = firstPos.y * CELL + CELL / 2 - cy;
+    const fdist = Math.sqrt(fdx * fdx + fdy * fdy);
+    const startX = fdist > 0 ? cx + (fdx / fdist) * ringRadius : cx;
+    const startY = fdist > 0 ? cy + (fdy / fdist) * ringRadius : cy;
+    ctx.moveTo(startX, startY);
     for (const pos of remaining) {
       ctx.lineTo(pos.x * CELL + CELL / 2, pos.y * CELL + CELL / 2);
     }
