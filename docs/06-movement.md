@@ -38,31 +38,38 @@ function astar(start, goal, isBlocked) {
 
 ### Blocked Cells
 
-The following are impassable:
+**For pathfinding (terrain only):** Agents can plan paths through other agents. The pathfinder uses `isBlockedTerrain()` which only checks static obstacles:
 
 | Type | Description |
 |------|-------------|
 | Walls | Destructible barriers |
 | Farms | Crop boosters (also block) |
 | Flags | Faction spawn points |
-| Other agents | Dynamic obstacles (except self) |
+| Water | Water terrain blocks |
+| Trees | Tree blocks |
 | Out of bounds | Grid edges (0 and 61) |
+
+**For movement (agents can pass through each other):** Agents walk freely through cells occupied by other agents on intermediate path steps. Two agents may briefly share a cell during transit. However, an agent cannot **end** its path on an occupied cell:
+- **Intermediate step with agent:** The moving agent passes through (briefly shares the cell).
+- **Final destination with agent:** The agent falls back to an adjacent open cell. If no adjacent cell is free, the path is abandoned.
 
 ### Path Execution
 
 ```javascript
 if (path && pathIdx < path.length) {
   step = path[pathIdx]
-  if (!isBlocked(step.x, step.y, agentId)) {
-    // Move to step
-    cellX = step.x
-    cellY = step.y
-    pathIdx++
-    energy -= moveEnergy  // 0.12
-    // Harvest if on crop
-  } else {
-    // Path blocked, abandon
+  if (isBlockedTerrain(step.x, step.y)) {
+    path = null  // terrain blocked, abandon
+  } else if (hasOtherAgent && isLastStep) {
+    // Fall back to adjacent open cell
+    fallback = findAdjacentOpen(step.x, step.y)
+    if (fallback) moveTo(fallback)
     path = null
+  } else if (hasOtherAgent) {
+    // Wait — keep path, try again next tick
+  } else {
+    moveTo(step)
+    pathIdx++
   }
 }
 ```

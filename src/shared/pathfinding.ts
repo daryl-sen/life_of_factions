@@ -93,7 +93,7 @@ export class Pathfinder {
     const path = Pathfinder.astar(
       { x: a.cellX, y: a.cellY },
       { x: gx, y: gy },
-      (x, y) => world.grid.isBlocked(x, y, a.id)
+      (x, y) => world.grid.isBlockedTerrain(x, y)
     );
     a.path = path;
     a.pathIdx = 0;
