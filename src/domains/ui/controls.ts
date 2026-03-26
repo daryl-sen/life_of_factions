@@ -14,12 +14,37 @@ function seedEnvironment(world: World): void {
     const y = rndi(5, GRID - 6);
     world.farms.set(key(x, y), { id: uuid(), x, y });
   }
-  // Scatter random obstacles
-  const obstacleCount = rndi(15, 30);
+  // Scatter random obstacles — mix of 1x1 and 2x2
+  const obstacleCount = rndi(30, 50);
   for (let i = 0; i < obstacleCount; i++) {
-    const { x, y } = world.grid.randomFreeCell();
     const emoji = OBSTACLE_EMOJIS[Math.floor(Math.random() * OBSTACLE_EMOJIS.length)];
-    world.obstacles.set(key(x, y), { id: uuid(), x, y, emoji, hp: 12, maxHp: 12 });
+    if (Math.random() < 0.4) {
+      // Try 2x2 placement — one shared obstacle object across all 4 cells
+      let placed = false;
+      for (let attempt = 0; attempt < 50; attempt++) {
+        const x = rndi(1, GRID - 3);
+        const y = rndi(1, GRID - 3);
+        if (!world.grid.isCellOccupied(x, y) &&
+            !world.grid.isCellOccupied(x + 1, y) &&
+            !world.grid.isCellOccupied(x, y + 1) &&
+            !world.grid.isCellOccupied(x + 1, y + 1)) {
+          const obs = { id: uuid(), x, y, emoji, hp: 24, maxHp: 24, size: '2x2' as const };
+          world.obstacles.set(key(x, y),         obs);
+          world.obstacles.set(key(x + 1, y),     obs);
+          world.obstacles.set(key(x, y + 1),     obs);
+          world.obstacles.set(key(x + 1, y + 1), obs);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        const { x, y } = world.grid.randomFreeCell();
+        world.obstacles.set(key(x, y), { id: uuid(), x, y, emoji, hp: 12, maxHp: 12 });
+      }
+    } else {
+      const { x, y } = world.grid.randomFreeCell();
+      world.obstacles.set(key(x, y), { id: uuid(), x, y, emoji, hp: 12, maxHp: 12 });
+    }
   }
   SimulationEngine.seedInitialTrees(world, rndi(8, 15));
   SimulationEngine.seedInitialWater(world, rndi(3, 6));

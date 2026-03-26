@@ -100,6 +100,7 @@ export interface IObstacle {
   emoji: string;
   hp: number;
   maxHp: number;
+  size?: '2x2';
 }
 
 export interface IFlagStorage {
