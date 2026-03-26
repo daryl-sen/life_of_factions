@@ -50,7 +50,7 @@ export const TUNE = {
   pathBudgetPerTick: 30,
   fullness: {
     max: 100,
-    start: 100,
+    start: 50,
     passiveDecay: 0.03,
     moveDecay: 0.08,
     actionDecayPerSec: 0.02,
@@ -60,7 +60,7 @@ export const TUNE = {
     criticalThreshold: 20,
   },
   needs: {
-    hygieneStart: 100,
+    hygieneStart: 50,
     socialStart: 50,
     inspirationStart: 50,
   },

@@ -107,7 +107,8 @@ export class InteractionEngine {
       if (
         rel >= TUNE.reproduction.relationshipThreshold &&
         agent.energy >= TUNE.reproduction.relationshipEnergy &&
-        b.energy >= TUNE.reproduction.relationshipEnergy
+        b.energy >= TUNE.reproduction.relationshipEnergy &&
+        !agent.diseased && !b.diseased
       ) {
         if (ActionFactory.tryStart(agent, 'reproduce', { targetId: b.id })) {
           const dur = agent.action!.remainingMs;
