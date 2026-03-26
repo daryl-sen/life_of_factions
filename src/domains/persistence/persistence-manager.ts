@@ -72,12 +72,30 @@ export class PersistenceManager {
       walls,
       farms,
       foodBlocks,
+      waterBlocks: PersistenceManager._serializeWaterBlocks(world),
+      treeBlocks: [...world.treeBlocks.values()],
+      seedlings: [...world.seedlings.values()],
       agents,
       log: { limit: world.log.limit, arr: world.log.arr },
       selectedId: world.selectedId,
       activeLogCats: [...world.activeLogCats],
       activeLogAgentId: world.activeLogAgentId || null,
     };
+  }
+
+  private static _serializeWaterBlocks(world: World): unknown[] {
+    const seen = new Set<string>();
+    const result: unknown[] = [];
+    for (const wb of world.waterBlocks.values()) {
+      if (seen.has(wb.id)) continue;
+      seen.add(wb.id);
+      result.push({
+        id: wb.id, x: wb.x, y: wb.y,
+        units: wb.units, maxUnits: wb.maxUnits,
+        size: wb.size, cells: wb.cells,
+      });
+    }
+    return result;
   }
 
   static export(world: World, doRenderLog: () => void): void {
@@ -150,6 +168,39 @@ export class PersistenceManager {
         maxUnits: c.maxUnits ?? 1,
       });
     }
+
+    // Restore water blocks
+    for (const wb of d.waterBlocks || []) {
+      const block = {
+        id: wb.id, x: wb.x, y: wb.y,
+        units: wb.units ?? 5, maxUnits: wb.maxUnits ?? 5,
+        size: wb.size ?? 'small',
+        cells: wb.cells ?? [{ x: wb.x, y: wb.y }],
+      };
+      for (const c of block.cells) {
+        world.waterBlocks.set(key(c.x, c.y), block);
+      }
+    }
+    // Restore tree blocks
+    for (const tb of d.treeBlocks || []) {
+      world.treeBlocks.set(key(tb.x, tb.y), {
+        id: tb.id, x: tb.x, y: tb.y,
+        emoji: tb.emoji, units: tb.units ?? 3,
+        maxUnits: tb.maxUnits ?? 3,
+      });
+    }
+    // Restore seedlings
+    for (const s of d.seedlings || []) {
+      world.seedlings.set(key(s.x, s.y), {
+        id: s.id, x: s.x, y: s.y,
+        plantedAtTick: s.plantedAtTick ?? 0,
+        growthDurationMs: s.growthDurationMs ?? 60000,
+        growthElapsedMs: s.growthElapsedMs ?? 0,
+      });
+    }
+    // Reset ephemeral cloud state
+    world.clouds = [];
+    world._nextCloudSpawnMs = 0;
 
     for (const a of d.agents || []) {
       let action = a.action ? { ...a.action } : null;

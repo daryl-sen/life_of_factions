@@ -1,7 +1,8 @@
-import { GRID, BASE_TICK_MS, TUNE, FOOD_EMOJIS } from '../../shared/constants';
+import { GRID, BASE_TICK_MS, TUNE, FOOD_EMOJIS, TREE_EMOJIS, WORLD_EMOJIS } from '../../shared/constants';
 import { key, rndi, log, uuid } from '../../shared/utils';
 import { Pathfinder } from '../../shared/pathfinding';
 import { FoodField } from '../world/food-field';
+import { WaterField } from '../world/water-field';
 import type { World } from '../world';
 import type { Agent } from '../agent';
 import { ActionFactory, ActionProcessor, InteractionEngine } from '../action';
@@ -16,15 +17,14 @@ export class SimulationEngine {
     return arr[Math.floor(Math.random() * arr.length)];
   }
 
+  private static _randomTreeEmoji(): string {
+    return TREE_EMOJIS[Math.floor(Math.random() * TREE_EMOJIS.length)];
+  }
+
   static addCrop(world: World, x: number, y: number): boolean {
     if (world.foodBlocks.size >= TUNE.maxCrops) return false;
     const k = key(x, y);
-    if (
-      world.foodBlocks.has(k) ||
-      world.walls.has(k) ||
-      world.farms.has(k) ||
-      world.flagCells.has(k)
-    ) return false;
+    if (world.grid.isCellOccupied(x, y)) return false;
     const units = rndi(TUNE.foodBlock.lqUnits[0], TUNE.foodBlock.lqUnits[1]);
     world.foodBlocks.set(k, {
       id: uuid(), x, y,
@@ -39,7 +39,7 @@ export class SimulationEngine {
     for (let i = 0; i < count; i++) {
       const { x, y } = world.grid.randomFreeCell();
       const k = key(x, y);
-      if (world.foodBlocks.has(k)) continue;
+      if (world.grid.isCellOccupied(x, y)) continue;
       const units = rndi(TUNE.foodBlock.lqUnits[0], TUNE.foodBlock.lqUnits[1]);
       world.foodBlocks.set(k, {
         id: uuid(), x, y,
@@ -51,7 +51,6 @@ export class SimulationEngine {
 
   private static _maybeSpawnCrops(world: World): void {
     if (world.foodBlocks.size >= TUNE.maxCrops) return;
-    // Only spawn HQ food near farms
     for (const fm of world.farms.values()) {
       if (world.foodBlocks.size >= TUNE.maxCrops) break;
       if (Math.random() >= 0.02 * world.spawnMult) continue;
@@ -61,16 +60,9 @@ export class SimulationEngine {
         const x = fm.x + dx;
         const y = fm.y + dy;
         if (x < 0 || y < 0 || x >= GRID || y >= GRID) continue;
-        const k = key(x, y);
-        if (
-          world.foodBlocks.has(k) ||
-          world.walls.has(k) ||
-          world.farms.has(k) ||
-          world.agentsByCell.has(k) ||
-          world.flagCells.has(k)
-        ) continue;
+        if (world.grid.isCellOccupied(x, y)) continue;
         const units = rndi(TUNE.foodBlock.hqUnits[0], TUNE.foodBlock.hqUnits[1]);
-        world.foodBlocks.set(k, {
+        world.foodBlocks.set(key(x, y), {
           id: uuid(), x, y,
           emoji: SimulationEngine._randomFoodEmoji('hq'),
           quality: 'hq', units, maxUnits: units,
@@ -78,6 +70,199 @@ export class SimulationEngine {
         break;
       }
     }
+  }
+
+  // ── Water spawning ──
+
+  static spawnWaterBlock(world: World, x: number, y: number, size: 'small' | 'large'): boolean {
+    if (size === 'small') {
+      if (world.grid.isCellOccupied(x, y)) return false;
+      const block = {
+        id: uuid(), x, y,
+        units: TUNE.water.smallUnits,
+        maxUnits: TUNE.water.smallUnits,
+        size: 'small' as const,
+        cells: [{ x, y }],
+      };
+      world.waterBlocks.set(key(x, y), block);
+      return true;
+    }
+    // Large: 2x2 region
+    const cells = [
+      { x, y }, { x: x + 1, y },
+      { x, y: y + 1 }, { x: x + 1, y: y + 1 },
+    ];
+    for (const c of cells) {
+      if (c.x < 0 || c.y < 0 || c.x >= GRID || c.y >= GRID) return false;
+      if (world.grid.isCellOccupied(c.x, c.y)) return false;
+    }
+    const block = {
+      id: uuid(), x, y,
+      units: TUNE.water.largeUnits,
+      maxUnits: TUNE.water.largeUnits,
+      size: 'large' as const,
+      cells,
+    };
+    for (const c of cells) {
+      world.waterBlocks.set(key(c.x, c.y), block);
+    }
+    return true;
+  }
+
+  static seedInitialWater(world: World, count: number): void {
+    for (let i = 0; i < count; i++) {
+      const isLarge = Math.random() < 0.5;
+      if (isLarge) {
+        for (let attempt = 0; attempt < 500; attempt++) {
+          const x = rndi(0, GRID - 2);
+          const y = rndi(0, GRID - 2);
+          if (SimulationEngine.spawnWaterBlock(world, x, y, 'large')) break;
+        }
+      } else {
+        for (let attempt = 0; attempt < 200; attempt++) {
+          const x = rndi(0, GRID - 1);
+          const y = rndi(0, GRID - 1);
+          if (SimulationEngine.spawnWaterBlock(world, x, y, 'small')) break;
+        }
+      }
+    }
+  }
+
+  // ── Tree spawning ──
+
+  static addTree(world: World): boolean {
+    for (let attempt = 0; attempt < 500; attempt++) {
+      const x = rndi(0, GRID - 1);
+      const y = rndi(0, GRID - 1);
+      if (world.grid.isCellOccupied(x, y)) continue;
+      const units = rndi(TUNE.tree.unitRange[0], TUNE.tree.unitRange[1]);
+      world.treeBlocks.set(key(x, y), {
+        id: uuid(), x, y,
+        emoji: SimulationEngine._randomTreeEmoji(),
+        units, maxUnits: units,
+      });
+      log(world, 'spawn', `tree @${x},${y}`, null, { x, y });
+      return true;
+    }
+    return false;
+  }
+
+  static seedInitialTrees(world: World, count: number): void {
+    for (let i = 0; i < count; i++) {
+      SimulationEngine.addTree(world);
+    }
+  }
+
+  // ── Seedling / tree passive spawns ──
+
+  static trySpawnSeedling(world: World, originX: number, originY: number): boolean {
+    const r = TUNE.tree.seedlingRadius;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const x = originX + rndi(-r, r);
+      const y = originY + rndi(-r, r);
+      if (x < 0 || y < 0 || x >= GRID || y >= GRID) continue;
+      if (world.grid.isCellOccupied(x, y)) continue;
+      const dur = rndi(TUNE.tree.seedlingGrowthRange[0], TUNE.tree.seedlingGrowthRange[1]);
+      world.seedlings.set(key(x, y), {
+        id: uuid(), x, y,
+        plantedAtTick: world.tick,
+        growthDurationMs: dur,
+        growthElapsedMs: 0,
+      });
+      return true;
+    }
+    return false;
+  }
+
+  static trySpawnFoodNearTree(world: World, treeX: number, treeY: number): boolean {
+    const r = TUNE.tree.foodRadius;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const x = treeX + rndi(-r, r);
+      const y = treeY + rndi(-r, r);
+      if (x < 0 || y < 0 || x >= GRID || y >= GRID) continue;
+      if (world.grid.isCellOccupied(x, y)) continue;
+      return SimulationEngine.addCrop(world, x, y);
+    }
+    return false;
+  }
+
+  private static _tickSeedlings(world: World): void {
+    const toConvert: string[] = [];
+    for (const [k, s] of world.seedlings) {
+      s.growthElapsedMs += BASE_TICK_MS;
+      if (s.growthElapsedMs >= s.growthDurationMs) {
+        toConvert.push(k);
+      }
+    }
+    for (const k of toConvert) {
+      const s = world.seedlings.get(k)!;
+      world.seedlings.delete(k);
+      const units = rndi(TUNE.tree.unitRange[0], TUNE.tree.unitRange[1]);
+      world.treeBlocks.set(k, {
+        id: uuid(), x: s.x, y: s.y,
+        emoji: SimulationEngine._randomTreeEmoji(),
+        units, maxUnits: units,
+      });
+      log(world, 'spawn', `seedling grew into tree @${s.x},${s.y}`, null, { x: s.x, y: s.y });
+    }
+  }
+
+  private static _tickTreePassiveSpawns(world: World): void {
+    // Deduplicate (trees are 1x1 so each key is unique)
+    for (const tree of world.treeBlocks.values()) {
+      if (tree.units <= 0) continue;
+      // 2% chance seedling
+      if (Math.random() < TUNE.tree.seedlingPassiveChance) {
+        SimulationEngine.trySpawnSeedling(world, tree.x, tree.y);
+      }
+      // 1% chance food (independent roll)
+      else if (Math.random() < TUNE.tree.foodPassiveChance) {
+        SimulationEngine.trySpawnFoodNearTree(world, tree.x, tree.y);
+      }
+    }
+  }
+
+  // ── Cloud / rain ──
+
+  private static _tickClouds(world: World): void {
+    // Spawn new cloud
+    world._nextCloudSpawnMs -= BASE_TICK_MS;
+    if (world._nextCloudSpawnMs <= 0) {
+      const x = rndi(0, GRID - 1);
+      const y = rndi(0, GRID - 1);
+      const lifetime = rndi(TUNE.cloud.lifetimeRange[0], TUNE.cloud.lifetimeRange[1]);
+      world.clouds.push({
+        id: uuid(), x, y,
+        spawnedAtMs: performance.now(),
+        lifetimeMs: lifetime,
+        rained: false,
+      });
+      world._nextCloudSpawnMs = rndi(TUNE.cloud.spawnIntervalRange[0], TUNE.cloud.spawnIntervalRange[1]);
+    }
+
+    // Update existing clouds
+    const remaining: typeof world.clouds = [];
+    for (const cloud of world.clouds) {
+      cloud.lifetimeMs -= BASE_TICK_MS;
+
+      // Rain at mid-life
+      if (!cloud.rained && cloud.lifetimeMs < (rndi(TUNE.cloud.lifetimeRange[0], TUNE.cloud.lifetimeRange[1]) * 0.5)) {
+        cloud.rained = true;
+        const isLarge = Math.random() >= TUNE.cloud.smallChance;
+        const size = isLarge ? 'large' as const : 'small' as const;
+        // Try to spawn near cloud position
+        for (let attempt = 0; attempt < 20; attempt++) {
+          const rx = cloud.x + rndi(-3, 3);
+          const ry = cloud.y + rndi(-3, 3);
+          if (SimulationEngine.spawnWaterBlock(world, rx, ry, size)) break;
+        }
+      }
+
+      if (cloud.lifetimeMs > 0) {
+        remaining.push(cloud);
+      }
+    }
+    world.clouds = remaining;
   }
 
   // ── Farm building ──
@@ -179,6 +364,115 @@ export class SimulationEngine {
     }
   }
 
+  // ── Water seeking ──
+
+  private static _stepTowardWater(world: World, agent: Agent): boolean {
+    const here = world.waterField.distanceAt(agent.cellX, agent.cellY);
+    if (here === WaterField.INF) return false;
+    let best = { d: here, x: agent.cellX, y: agent.cellY };
+    const adj: [number, number][] = [
+      [agent.cellX + 1, agent.cellY],
+      [agent.cellX - 1, agent.cellY],
+      [agent.cellX, agent.cellY + 1],
+      [agent.cellX, agent.cellY - 1],
+    ];
+    for (const [nx, ny] of adj) {
+      if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) continue;
+      if (world.grid.isBlocked(nx, ny, agent.id)) continue;
+      const d = world.waterField.distanceAt(nx, ny);
+      if (d < best.d) best = { d, x: nx, y: ny };
+    }
+    if (best.x === agent.cellX && best.y === agent.cellY) return false;
+    agent.path = [{ x: best.x, y: best.y }];
+    agent.pathIdx = 0;
+    agent.goal = null;
+    return true;
+  }
+
+  static seekWaterWhenThirsty(world: World, agent: Agent): void {
+    // 1. Drink from inventory if available
+    if (agent.inventory.water > 0) {
+      ActionFactory.tryStart(agent, 'drink');
+      return;
+    }
+
+    // 2. Harvest adjacent water block if not inventory full
+    if (!agent.inventoryFull()) {
+      const adj: [number, number][] = [
+        [agent.cellX + 1, agent.cellY],
+        [agent.cellX - 1, agent.cellY],
+        [agent.cellX, agent.cellY + 1],
+        [agent.cellX, agent.cellY - 1],
+      ];
+      for (const [nx, ny] of adj) {
+        const k = key(nx, ny);
+        const block = world.waterBlocks.get(k);
+        if (block && block.units > 0) {
+          if (!agent.action) {
+            agent.action = ActionFactory.createHarvest('water', { x: nx, y: ny });
+            return;
+          }
+        }
+      }
+    }
+
+    // 3. Pathfind to nearest water block
+    if (world.tick - world.waterField.lastTick >= 5) {
+      world.waterField.recompute(world.grid, world.tick);
+    }
+    if (SimulationEngine._stepTowardWater(world, agent)) return;
+
+    // Fallback: pathfind to nearest water
+    const seen = new Set<string>();
+    const waterPositions: Array<{ x: number; y: number }> = [];
+    for (const wb of world.waterBlocks.values()) {
+      if (seen.has(wb.id)) continue;
+      seen.add(wb.id);
+      // Target adjacent cells, not the water itself (it's impassable)
+      for (const c of wb.cells) {
+        const adjCells: [number, number][] = [
+          [c.x + 1, c.y], [c.x - 1, c.y],
+          [c.x, c.y + 1], [c.x, c.y - 1],
+        ];
+        for (const [ax, ay] of adjCells) {
+          if (ax < 0 || ay < 0 || ax >= GRID || ay >= GRID) continue;
+          if (!world.grid.isBlocked(ax, ay, agent.id)) {
+            waterPositions.push({ x: ax, y: ay });
+          }
+        }
+      }
+    }
+    if (waterPositions.length) {
+      const near = Pathfinder.findNearest(agent, waterPositions);
+      if (near) {
+        Pathfinder.planPathTo(world, agent, near.target.x, near.target.y);
+      }
+    }
+  }
+
+  // ── Opportunistic wood harvest ──
+
+  static tryHarvestAdjacentWood(world: World, agent: Agent): boolean {
+    if (agent.inventoryFull()) return false;
+    const adj: [number, number][] = [
+      [agent.cellX + 1, agent.cellY],
+      [agent.cellX - 1, agent.cellY],
+      [agent.cellX, agent.cellY + 1],
+      [agent.cellX, agent.cellY - 1],
+    ];
+    for (const [nx, ny] of adj) {
+      const k = key(nx, ny);
+      const tree = world.treeBlocks.get(k);
+      if (tree && tree.units > 0) {
+        if (!agent.action) {
+          agent.action = ActionFactory.createHarvest('wood', { x: nx, y: ny });
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   // ── Upkeep ──
 
   private static _applyFlagHealing(world: World): void {
@@ -269,6 +563,9 @@ export class SimulationEngine {
     }
 
     SimulationEngine._maybeSpawnCrops(world);
+    SimulationEngine._tickSeedlings(world);
+    SimulationEngine._tickTreePassiveSpawns(world);
+    SimulationEngine._tickClouds(world);
 
     for (const b of world.agents) b._underAttack = false;
     for (const b of world.agents) {
@@ -332,12 +629,20 @@ export class SimulationEngine {
           if (!agent.path && !agent.action) {
             InteractionEngine.consider(world, agent);
 
-            // If InteractionEngine returned without action/path, agent needs food
+            // If InteractionEngine returned without action/path, handle seeking
             if (!agent.path && !agent.action) {
               if (agent.fullness < TUNE.fullness.seekThreshold) {
                 SimulationEngine.seekFoodWhenHungry(world, agent);
+              } else if (agent.hygiene < TUNE.hygiene.seekThreshold) {
+                SimulationEngine.seekWaterWhenThirsty(world, agent);
               } else {
-                RoamingStrategy.biasedRoam(world, agent);
+                // Opportunistic wood harvest when passing near trees
+                if (!agent.inventoryFull() && Math.random() < 0.3) {
+                  SimulationEngine.tryHarvestAdjacentWood(world, agent);
+                }
+                if (!agent.action) {
+                  RoamingStrategy.biasedRoam(world, agent);
+                }
               }
             }
           }

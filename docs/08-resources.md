@@ -103,13 +103,42 @@ agent.health = min(agent.maxHealth, agent.health + 0.5 * (tickMs / 1000))
 
 **Rate:** 0.5 HP per second when well-fed.
 
+## Hygiene System (0–100)
+
+Hygiene is a survival need restored by drinking water. It was activated in Phase 3 alongside the introduction of water blocks.
+
+### Hygiene Properties
+
+| Property | Value |
+|----------|-------|
+| Minimum | 0 |
+| Maximum | 100 |
+| Starting | 100 |
+| Passive decay | -0.02 per tick |
+| Recovery | Drinking water from inventory: +30 hygiene |
+
+### Hygiene Thresholds
+
+| Threshold | Value | Behavior |
+|-----------|-------|----------|
+| Critical water seeking | < 20 | High-priority water seeking (decision priority 5) |
+| Proactive water seeking | < 40 | Seek water before other activities (decision priority 7b) |
+| Normal | 40+ | Normal behavior |
+
+### Water-Seeking Decision Priority
+
+When an agent needs water (hygiene < 40 proactive, < 20 critical):
+
+1. **Drink from inventory** if agent has water in inventory
+2. **Harvest adjacent water block** if one is within distance 1
+3. **Pathfind to nearest water block** and harvest it
+
 ## Placeholder Needs
 
-The following needs are tracked on agents but have no gameplay effect in Phase 1:
+The following needs are tracked on agents but have no gameplay effect:
 
 | Need | Starting Value | Range |
 |------|---------------|-------|
-| Hygiene | 100 | 0–100 |
 | Social | 50 | 0–100 |
 | Inspiration | 50 | 0–100 |
 
@@ -220,8 +249,6 @@ function tryDrink(agent) {
 }
 ```
 
-**Note:** The drink action requires water in inventory. Water blocks are added in Phase 3.
-
 ### Food-Seeking Decision Priority
 
 When an agent needs food (fullness < 40 proactive, < 20 urgent):
@@ -229,6 +256,161 @@ When an agent needs food (fullness < 40 proactive, < 20 urgent):
 1. **Eat from inventory** if agent has food in inventory
 2. **Harvest adjacent food block** if one is within distance 1
 3. **Pathfind to nearest food block** and harvest it
+
+## Water Blocks (Phase 3)
+
+Water exists as blocks on the grid that agents harvest for drinking water to restore hygiene. There are two sizes of water blocks.
+
+### Water Block Properties
+
+| Property | Small | Large |
+|----------|-------|-------|
+| Size | 1 cell | 2×2 cells (single entity) |
+| Units | 5 | 20 |
+| Passable | No | No |
+| Harvest time per unit | 1000ms | 1000ms |
+| Shrinking | N/A | Shrinks to small at 25% threshold (≤5 units) |
+| Depletion | Block removed when 0 units remain | Becomes small water block at ≤5 units |
+
+### Water Spawning
+
+Water is replenished by the cloud/rain system:
+
+| Property | Value |
+|----------|-------|
+| Cloud spawn rate | 1 cloud every 60–120 seconds |
+| Cloud duration | 5–10 seconds |
+| Cloud emoji | 🌧️ |
+| Water type odds | 90% small (1-cell, 5 units), 10% large (2×2, 20 units) |
+
+Clouds spawn periodically, persist for a short duration, and rain water blocks onto the map. This provides a steady replenishment of water resources.
+
+### World-Gen Water
+
+At world creation, 3–6 water sources are placed on the map (mix of small and large blocks), providing agents with initial water access.
+
+### Water Harvest Action
+
+```javascript
+function tryHarvestWater(world, agent, waterBlock) {
+  if (manhattanDistance(agent, waterBlock) !== 1) return false
+  if (agent.inventoryTotal() >= 20) return false  // Inventory full
+  if (waterBlock.units <= 0) return false
+
+  // Start harvest action
+  // Duration: 1000ms per unit
+  // Energy cost: 0.25/sec
+  // On completion:
+  waterBlock.units -= 1
+  agent.inventory.water += 1
+  agent.xp += 2  // harvest XP
+
+  // Large water block shrinks to small at 25% threshold
+  if (waterBlock.type === 'large' && waterBlock.units <= 5) {
+    // Convert to small water block (1-cell)
+  }
+
+  if (waterBlock.units <= 0) {
+    world.waterBlocks.delete(key(waterBlock.x, waterBlock.y))
+  }
+
+  return true
+}
+```
+
+### Drink Action (from inventory)
+
+```javascript
+function tryDrink(agent) {
+  if (agent.inventory.water <= 0) return false
+
+  // Start drink action (300-500ms, no energy cost)
+  // On completion:
+  agent.inventory.water -= 1
+  agent.hygiene = min(100, agent.hygiene + 30)
+
+  return true
+}
+```
+
+## Tree Blocks (Phase 3)
+
+Trees are a source of wood and contribute to the food economy through passive and harvest-triggered spawning.
+
+### Tree Block Properties
+
+| Property | Value |
+|----------|-------|
+| Size | 1 cell |
+| Units | 3–6 (wood) |
+| Passable | No |
+| Emojis | 🌲🌳🌴🎄 (random) |
+| Harvest time per unit | 1500ms |
+| Depletion | Block removed when 0 units remain |
+
+### World-Gen Trees
+
+At world creation, 8–15 trees are placed on the map, providing initial wood resources and contributing to early food economy via passive spawns.
+
+### Seedling Mechanic
+
+When a tree is harvested or passively each tick, seedlings may spawn:
+
+| Trigger | Chance | Details |
+|---------|--------|---------|
+| Tree harvest | 10% per harvest | Spawns seedling on adjacent free cell |
+| Passive (per tick per tree) | 2% | Spawns seedling on adjacent free cell |
+
+Seedling properties:
+
+| Property | Value |
+|----------|-------|
+| Emoji | 🌱 |
+| Passable | Yes |
+| Protected | Other block spawns cannot overwrite seedlings |
+| Growth time | 45–90 seconds (random) |
+| Result | Grows into a full tree (random emoji from 🌲🌳🌴🎄, 3–6 units) |
+
+### Tree Food Spawning
+
+Trees contribute to the food economy by spawning LQ food blocks:
+
+| Trigger | Chance | Details |
+|---------|--------|---------|
+| Tree harvest | 5% (instead of seedling) | Spawns 1 LQ food block within 3-cell radius |
+| Passive (per tick per tree) | 1% | Spawns 1 LQ food block within 3-cell radius |
+
+On harvest, the seedling and food spawn chances are mutually exclusive: 10% seedling, 5% food, 85% neither.
+
+### Wood Harvest Action
+
+```javascript
+function tryHarvestWood(world, agent, treeBlock) {
+  if (manhattanDistance(agent, treeBlock) !== 1) return false
+  if (agent.inventoryTotal() >= 20) return false  // Inventory full
+  if (treeBlock.units <= 0) return false
+
+  // Start harvest action
+  // Duration: 1500ms per unit
+  // Energy cost: 0.25/sec
+  // On completion:
+  treeBlock.units -= 1
+  agent.inventory.wood += 1
+  agent.xp += 2  // harvest XP
+
+  // Side effects (mutually exclusive):
+  // 10% chance: spawn seedling on adjacent free cell
+  // 5% chance: spawn LQ food within 3-cell radius
+
+  if (treeBlock.units <= 0) {
+    world.treeBlocks.delete(key(treeBlock.x, treeBlock.y))
+  }
+
+  return true
+}
+```
+
+**Wood harvesting behavior:** Agents harvest wood opportunistically when passing near trees, rather than actively seeking them out. Wood harvesting is a low-priority action attempted when agents are adjacent to a tree and have inventory space.
 
 ## Farms
 
@@ -297,6 +479,17 @@ Drink (from inventory):
   → +30 hygiene
   → No energy cost (300-500ms)
 
+Harvest Water (water block → inventory):
+  → +1 water to inventory
+  → +2 XP
+  → -0.25 energy/sec (1000ms per unit)
+
+Harvest Wood (tree block → inventory):
+  → +1 wood to inventory
+  → +2 XP
+  → -0.25 energy/sec (1500ms per unit)
+  → 10% seedling spawn, 5% LQ food spawn
+
 Sleep Action (8–12s):
   → +8 energy per 500ms tick
   → Total: 128–192 energy restored
@@ -305,8 +498,13 @@ Energy Drains:
   - Passive: ~0.25/sec
   - Movement: 0.12/step
   - Actions: 0.2–1.5/sec (halved from v1.3)
-  - Harvest: 0.25/sec
+  - Harvest (food): 0.25/sec
+  - Harvest (water): 0.25/sec
+  - Harvest (wood): 0.25/sec
   - Building: 12 (farm)
+
+Hygiene Drains:
+  - Passive: ~0.02/tick
 
 Fullness Drains:
   - Passive: ~0.03/tick

@@ -98,6 +98,32 @@ export const TUNE = {
     hqUnits: [2, 4] as [number, number],
     lqUnits: [1, 2] as [number, number],
   },
+  water: {
+    smallUnits: 5,
+    largeUnits: 20,
+    spawnRange: [3, 6] as [number, number],
+    shrinkThreshold: 0.25,
+  },
+  tree: {
+    spawnRange: [8, 15] as [number, number],
+    unitRange: [3, 6] as [number, number],
+    seedlingChanceOnHarvest: 0.10,
+    seedlingPassiveChance: 0.02,
+    foodChanceOnHarvest: 0.05,
+    foodPassiveChance: 0.01,
+    seedlingRadius: 5,
+    seedlingGrowthRange: [45000, 90000] as [number, number],
+    foodRadius: 3,
+  },
+  cloud: {
+    spawnIntervalRange: [60000, 120000] as [number, number],
+    lifetimeRange: [5000, 10000] as [number, number],
+    smallChance: 0.9,
+  },
+  hygiene: {
+    criticalThreshold: 20,
+    seekThreshold: 40,
+  },
 } as const;
 
 export const ACTION_DURATIONS: Record<ActionType, [number, number]> = {
@@ -169,7 +195,12 @@ export const WORLD_EMOJIS = {
   farm: '🏡',
   wall: '🪨',
   flag: '🚩',
+  water: '💦',
+  cloud: '🌧️',
+  seedling: '🌱',
 } as const;
+
+export const TREE_EMOJIS: readonly string[] = ['🌲', '🌳', '🌴', '🎄'];
 
 export const LOG_CATS: readonly LogCategory[] = [
   'talk',

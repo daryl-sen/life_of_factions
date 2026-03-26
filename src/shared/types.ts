@@ -100,6 +100,43 @@ export interface IFlag {
   maxHp: number;
 }
 
+export interface IWaterBlock {
+  id: string;
+  x: number;
+  y: number;
+  units: number;
+  maxUnits: number;
+  size: 'small' | 'large';
+  cells: Array<{ x: number; y: number }>;
+}
+
+export interface ITreeBlock {
+  id: string;
+  x: number;
+  y: number;
+  emoji: string;
+  units: number;
+  maxUnits: number;
+}
+
+export interface ISeedling {
+  id: string;
+  x: number;
+  y: number;
+  plantedAtTick: number;
+  growthDurationMs: number;
+  growthElapsedMs: number;
+}
+
+export interface ICloud {
+  id: string;
+  x: number;
+  y: number;
+  spawnedAtMs: number;
+  lifetimeMs: number;
+  rained: boolean;
+}
+
 export interface ICameraState {
   x: number;
   y: number;

@@ -62,7 +62,7 @@ Agent {
 
   // Needs system
   fullness: float           // 0..100; passive decay, restored by eating
-  hygiene: float            // 0..100 (placeholder, not active)
+  hygiene: float            // 0..100; passive decay, restored by drinking water (Phase 3)
   social: float             // 0..100 (placeholder, not active)
   inspiration: float        // 0..100 (placeholder, not active)
 
@@ -74,7 +74,7 @@ Agent {
   }                         // Total units across all types capped at 20
 
   action: null | {
-    type: 'talk'|'quarrel'|'attack'|'under_attack'|'heal'|'help'|'attack_wall'|'attack_flag'|'reproduce'|'sleep'|'harvest'|'eat'|'drink'
+    type: 'talk'|'quarrel'|'attack'|'under_attack'|'heal'|'help'|'attack_wall'|'attack_flag'|'reproduce'|'sleep'|'harvest'|'harvest_water'|'harvest_wood'|'eat'|'drink'
     remainingMs: float
     tickCounterMs: float
     payload?: { targetId?: ID, ... }
@@ -90,6 +90,10 @@ Agent {
 * **Food block (LQ)**: low-quality food from nature/world-gen; emojis 🌿🥬🥦🍀; 1–2 units; passable; depletes when all units harvested
 * **Farm**: spawns HQ food in 1-cell radius; blocks movement; agents can **build** new farms (energy cost)
 * **FlagSpawn**: faction spawn point, destructible, blocks movement
+* **Water block (small)**: 1-cell, impassable, 5 units; emojis based on size; harvest 1 unit per 1000ms
+* **Water block (large)**: 2×2 cells, impassable, 20 units (single entity); shrinks to small water block at 25% threshold (≤5 units). Harvest 1 unit per 1000ms
+* **Tree block**: 1-cell, impassable, 3–6 units; random emoji from 🌲🌳🌴🎄; harvest 1 unit (wood) per 1500ms
+* **Seedling**: 🌱, 1-cell, passable, protected from other block spawns; grows into a tree in 45–90 seconds
 
 ---
 
@@ -99,7 +103,7 @@ Agent {
 
 * Grid movement: 4-connected (N/E/S/W)
 * Pathfinding: A\* with Manhattan heuristic
-* Impassable: walls, farms, flags, agents (except self)
+* Impassable: walls, farms, flags, agents (except self), water blocks, trees
 * If blocked mid-path: drop path and replan later
 * **Move-first, plan-second order** per tick:
 
@@ -133,9 +137,19 @@ Fullness is a new survival resource. Eating crops restores fullness (not energy)
 * **Health regen:** fullness > 90 → +0.5 HP/sec
 * **Proactive food seeking:** fullness < 40
 
+#### Hygiene (0–100)
+
+Hygiene is a survival need restored by drinking water from inventory.
+
+* **Starting value:** 100
+* **Passive decay:** −0.02/tick
+* **Recovery:** drinking water from inventory → +30 hygiene
+* **Proactive water seeking:** hygiene < 40 (decision priority 7b)
+* **Critical water seeking:** hygiene < 20 (decision priority 5)
+* **Water seeking behavior:** drink from inventory first; if no water in inventory, harvest adjacent water block; if none adjacent, pathfind to nearest water block
+
 #### Placeholder Needs (fields added, not active yet)
 
-* **Hygiene:** starts 100
 * **Social:** starts 50
 * **Inspiration:** starts 50
 
@@ -165,11 +179,82 @@ Food exists as blocks on the grid with a unit count. Two quality tiers affect ha
 | Passable | Yes | Yes |
 | Depletion | Block removed when 0 units remain | Block removed when 0 units remain |
 
-**Random food spawning is removed.** Food comes only from farms and world-gen.
+**Random food spawning is removed.** Food comes only from farms, world-gen, and tree passive/harvest spawns.
 
 **World-gen food:** 5–10 LQ food blocks scattered near trees at world creation, providing initial food.
 
 **Instant-consume on step is removed.** Agents must harvest food into inventory, then eat from inventory.
+
+#### Water Blocks (Phase 3)
+
+Water exists as blocks on the grid that agents harvest for drinking water.
+
+| Property | Small | Large |
+|----------|-------|-------|
+| Size | 1 cell | 2×2 cells (single entity) |
+| Units | 5 | 20 |
+| Passable | No | No |
+| Harvest time per unit | 1000ms | 1000ms |
+| Shrinking | N/A | Shrinks to small at 25% threshold (≤5 units) |
+| Depletion | Block removed when 0 units remain | Becomes small water block at ≤5 units |
+
+**World-gen water:** 3–6 water sources placed at world creation (mix of small and large).
+
+**Cloud/rain system:** Clouds spawn periodically to replenish water on the map.
+
+| Property | Value |
+|----------|-------|
+| Cloud spawn rate | 1 cloud every 60–120 seconds |
+| Cloud duration | 5–10 seconds |
+| Cloud emoji | 🌧️ |
+| Rain spawn | Spawns water blocks below the cloud |
+| Water type odds | 90% small (1-cell, 5 units), 10% large (2×2, 20 units) |
+
+#### Tree Blocks (Phase 3)
+
+Trees are a source of wood and contribute to the food economy through passive spawning.
+
+| Property | Value |
+|----------|-------|
+| Size | 1 cell |
+| Units | 3–6 (wood) |
+| Passable | No |
+| Emojis | 🌲🌳🌴🎄 (random) |
+| Harvest time per unit | 1500ms |
+| Depletion | Block removed when 0 units remain |
+
+**World-gen trees:** 8–15 trees placed at world creation.
+
+**Seedling mechanic:** When a tree is harvested, there is a 10% chance per harvest to spawn a seedling (🌱) on an adjacent cell. Additionally, each tree has a 2% passive chance per tick to spawn a seedling. Seedlings are passable and protected from other block spawns. A seedling grows into a full tree in 45–90 seconds.
+
+**Tree food spawning:** When a tree is harvested, there is a 5% chance (instead of seedling) to spawn 1 LQ food block within a 3-cell radius. Additionally, each tree has a 1% passive chance per tick to spawn LQ food in a 3-cell radius.
+
+#### Water Harvest Action (Phase 3)
+
+| Property | Value |
+|----------|-------|
+| Target | Adjacent water block (distance = 1) |
+| Duration | 1000ms per unit |
+| Energy cost | 0.25 energy/sec |
+| Effect | Transfers 1 unit from water block to agent inventory (water) |
+| XP | +2 per harvest |
+| Emoji | 🫨 |
+| Blocked when | Inventory is full |
+
+#### Wood Harvest Action (Phase 3)
+
+| Property | Value |
+|----------|-------|
+| Target | Adjacent tree block (distance = 1) |
+| Duration | 1500ms per unit |
+| Energy cost | 0.25 energy/sec |
+| Effect | Transfers 1 unit from tree block to agent inventory (wood) |
+| XP | +2 per harvest |
+| Emoji | 🫨 |
+| Blocked when | Inventory is full |
+| Side effects | 10% chance to spawn seedling on adjacent cell; 5% chance to spawn LQ food within 3-cell radius (mutually exclusive with seedling) |
+
+**Wood harvesting behavior:** Agents harvest wood opportunistically when passing near trees, rather than actively seeking them out. Wood harvesting is a low-priority action attempted when agents are adjacent to a tree and have inventory space.
 
 #### Farms
 
@@ -181,10 +266,10 @@ Food exists as blocks on the grid with a unit count. Two quality tiers affect ha
 
 | Property | Value |
 |----------|-------|
-| Target | Adjacent food block (distance = 1) |
-| Duration | HQ food: 600ms; LQ food: 1200ms |
+| Target | Adjacent resource block (distance = 1) |
+| Duration | HQ food: 600ms; LQ food: 1200ms; Water: 1000ms; Wood: 1500ms |
 | Energy cost | 0.25 energy/sec |
-| Effect | Transfers 1 unit from food block to agent inventory |
+| Effect | Transfers 1 unit from resource block to agent inventory (food/water/wood) |
 | XP | +2 per harvest |
 | Emoji | 🫨 |
 | Blocked when | Inventory is full |
@@ -268,14 +353,14 @@ Food exists as blocks on the grid with a unit count. Two quality tiers affect ha
   * **attack:** **0.45–0.9s** (faster)
   * reproduce: **2.0–3.2s**
   * **sleep:** **8–12s**
-  * **harvest:** HQ food 600ms, LQ food 1200ms
+  * **harvest:** HQ food 600ms, LQ food 1200ms, water 1000ms, wood 1500ms
   * **eat/drink:** **300–500ms**
 * **Distance rules:**
 
   * Non-attack actions: distance **=1**
   * Attack: distance **≤2**
   * Sleep, eat, drink: no target (solo/self actions)
-  * Harvest: adjacent to resource block (distance **=1**)
+  * Harvest: adjacent to resource block (distance **=1**; applies to food, water, and tree blocks)
 * **Tick cadence:** effects apply roughly every **0.5s** during actions
 * **Per-second energy costs** (approx., halved from v1.3): talk 0.2, quarrel 0.4, **attack 1.1**, heal 1.5, help 0.8, attack\_wall 0.75, attack\_flag 1.0, **reproduce 1.5**, **harvest 0.25**
 * **Zero-cost actions:** eat, drink (consume from inventory)
@@ -336,11 +421,13 @@ Food exists as blocks on the grid with a unit count. Two quality tiers affect ha
 
 * Move cost: **0.12** energy / step, **0.08** fullness / step
 * Eat (from inventory): **+20 fullness**, +5 XP (no longer gives energy)
-* Drink (from inventory): **+30 hygiene** (requires water, Phase 3)
+* Drink (from inventory): **+30 hygiene** (requires water from water blocks)
 * **Mandatory sleep threshold:** energy < 20
 * **Voluntary sleep threshold:** energy < 40
 * **Proactive food seeking:** fullness < 40
 * **Urgent food seeking:** fullness < 20
+* **Proactive water seeking:** hygiene < 40
+* **Critical water seeking:** hygiene < 20
 * Starvation: fullness = 0 → −1 HP/sec
 
 **Actions (energy/sec) — halved from v1.3**
@@ -353,7 +440,7 @@ Food exists as blocks on the grid with a unit count. Two quality tiers affect ha
 * **attack:** **0.45–0.9s**
 * reproduce: **2.0–3.2s**
 * **sleep:** **8–12s** (restores +8 energy per 500ms tick)
-* **harvest:** HQ food 600ms, LQ food 1200ms
+* **harvest:** HQ food 600ms, LQ food 1200ms, water 1000ms, wood 1500ms
 * **eat/drink:** **300–500ms**
 
 **Combat & leveling (XP-based)**
@@ -371,7 +458,13 @@ Food exists as blocks on the grid with a unit count. Two quality tiers affect ha
 * **Farm boost radius:** 3
 * **Build farm energy cost:** **12**
 * Farm build attempt probability (when well-fed): small, periodic
-* **Food blocks:** HQ from farms (2–4 units), LQ from world-gen (1–2 units)
+* **Food blocks:** HQ from farms (2–4 units), LQ from world-gen and tree spawns (1–2 units)
+* **Water blocks:** small (1-cell, 5 units), large (2×2, 20 units); large shrinks to small at ≤5 units
+* **Tree blocks:** 1-cell, 3–6 wood units; 🌲🌳🌴🎄
+* **Seedling growth time:** 45–90 seconds
+* **Cloud spawn rate:** 1 every 60–120 seconds, persists 5–10 seconds
+* **World-gen water sources:** 3–6
+* **World-gen trees:** 8–15
 * **Inventory cap:** **20** total units (food + water + wood)
 
 **Factions**
@@ -384,11 +477,15 @@ Food exists as blocks on the grid with a unit count. Two quality tiers affect ha
 ## 6) Simulation Order (per logic tick)
 
 1. Attempt crop spawns (farm-biased, stop at global crop cap)
+1b. Process cloud/rain system (spawn clouds on timer, rain spawns water blocks; 90% small, 10% large)
+1c. Process seedling growth (seedlings that have reached maturity grow into trees)
+1d. Process tree passive effects (2% per tick seedling spawn chance; 1% per tick LQ food spawn in 3-cell radius)
 2. Compute “under attack” set for this tick (for lock exceptions)
 3. For each agent:
 
    * Age & passive health decay
    * Passive fullness decay (−0.03/tick)
+   * Passive hygiene decay (−0.02/tick)
    * Passive energy drain (−0.0625/tick)
    * Decrement movement **lock** time
    * **Decision priority:**
@@ -396,12 +493,14 @@ Food exists as blocks on the grid with a unit count. Two quality tiers affect ha
      2. Under attack → flee/retaliate
      3. Health < 30% maxHP → seek faction flag
      4. Fullness < 20 → urgent food seeking: eat from inventory first; if no food in inventory, harvest adjacent food block; if none adjacent, pathfind to nearest food block
-     5. Energy < 40 → voluntary sleep
-     6. Normal state:
+     5. Hygiene < 20 → critical water seeking: drink from inventory first; if no water in inventory, harvest adjacent water block; if none adjacent, pathfind to nearest water block
+     6. Energy < 40 → voluntary sleep
+     7. Normal state:
         a. Fullness < 40 → proactive food seeking (same eat/harvest/pathfind priority as above)
-        b. Harvest nearby resources (if inventory not full and adjacent to resource block)
-        c. Reproduction, attack, help/heal/talk
-        d. Roam
+        b. Hygiene < 40 → proactive water seeking (same drink/harvest/pathfind priority as water seeking above)
+        c. Harvest nearby resources (if inventory not full and adjacent to resource block; wood harvesting is opportunistic)
+        d. Reproduction, attack, help/heal/talk
+        e. Roam
    * If acting: process action (distance rules; energy drain; effects)
    * If not acting:
 
@@ -456,6 +555,13 @@ Food exists as blocks on the grid with a unit count. Two quality tiers affect ha
 13. **Food blocks** (Phase 2): food exists as grid blocks with unit counts; HQ food (from farms) harvests in 600ms, LQ food (from world-gen) harvests in 1200ms. Blocks deplete when all units are harvested.
 14. **Harvest/eat/drink actions** (Phase 2): harvest transfers 1 unit to inventory (🫨); eat consumes 1 food for +20 fullness and +5 XP (🤔); drink consumes 1 water for +30 hygiene (🤔).
 15. **No random food spawning** (Phase 2): food comes only from farms (HQ) and world-gen (LQ near trees). Stepping on food no longer auto-consumes.
+16. **Water blocks** (Phase 3): small (1-cell, 5 units) and large (2×2, 20 units) water sources. Large blocks shrink to small at 25% threshold. Harvested at 1000ms per unit.
+17. **Tree blocks** (Phase 3): 1-cell blocks with 3–6 wood units (🌲🌳🌴🎄). Harvested at 1500ms per unit. Spawn seedlings (10% on harvest, 2% passive) and LQ food (5% on harvest, 1% passive).
+18. **Seedlings** (Phase 3): 🌱 passable blocks that grow into trees in 45–90 seconds. Protected from other block spawns.
+19. **Cloud/rain system** (Phase 3): clouds (🌧️) spawn every 60–120 seconds, persist 5–10 seconds, and rain water blocks (90% small, 10% large).
+20. **Hygiene system activated** (Phase 3): hygiene decays at −0.02/tick, restored by drinking water (+30). Critical water seeking at hygiene < 20, proactive at < 40.
+21. **Wood harvesting** (Phase 3): opportunistic harvesting when agents pass near trees. 1500ms per unit, adds wood to inventory.
+22. **World-gen updated** (Phase 3): 3–6 water sources and 8–15 trees placed at world creation.
 
 ---
 
@@ -489,6 +595,18 @@ Food exists as blocks on the grid with a unit count. Two quality tiers affect ha
 * **Instant-consume on step removed.** Agents must harvest into inventory then eat.
 * **Decision engine updated:** eat from inventory first, then harvest adjacent food, then pathfind to food block.
 
+### Phase 3 Changes (v3.2.0 — Water and Trees)
+
+* **Water blocks** added: small (1-cell, 5 units, impassable) and large (2×2, 20 units, single entity). Large blocks shrink to small when units drop to 25% threshold (≤5 units). Harvest rate: 1 unit per 1000ms.
+* **Tree blocks** added: 1-cell, impassable, 3–6 wood units, random emoji from 🌲🌳🌴🎄. Harvest rate: 1 unit per 1500ms.
+* **Seedling mechanic:** 10% chance on tree harvest (or 2% passive per tick) to spawn a seedling (🌱) on adjacent cell. Seedlings are passable and protected from other block spawns. Grows into a full tree in 45–90 seconds.
+* **Tree food spawning:** 5% chance on tree harvest (instead of seedling) to spawn 1 LQ food in 3-cell radius. 1% passive chance per tick for each tree.
+* **Cloud/rain system:** 1 cloud (🌧️) spawns every 60–120 seconds, persists 5–10 seconds, spawns water blocks (90% small, 10% large).
+* **Hygiene system activated:** passive decay −0.02/tick, restored by drinking water (+30 hygiene). Critical water seeking at hygiene < 20 (priority 5), proactive at hygiene < 40 (priority 7b).
+* **Water seeking behavior:** drink from inventory first; if no water, harvest adjacent water block; if none adjacent, pathfind to nearest water block.
+* **Wood harvesting:** opportunistic when agents pass near trees. Low-priority action.
+* **World-gen updated:** 3–6 water sources and 8–15 trees placed at world creation.
+* **Decision priorities updated:** added hygiene < 20 as priority 5 (critical) and hygiene < 40 as priority 7b (proactive).
 
 ---
 

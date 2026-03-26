@@ -1,14 +1,16 @@
 import { TUNE, LOG_CATS } from '../../shared/constants';
 import { RingLog } from '../../shared/utils';
-import type { LogCategory, PaintMode } from '../../shared/types';
+import type { LogCategory, PaintMode, ICloud } from '../../shared/types';
 import type { Agent } from '../agent/agent';
 import type { Faction } from '../faction/faction';
 import { Grid } from './grid';
 import { FoodField } from './food-field';
+import { WaterField } from './water-field';
 
 export class World {
   readonly grid: Grid = new Grid();
   readonly foodField: FoodField = new FoodField();
+  readonly waterField: WaterField = new WaterField();
 
   agents: Agent[] = [];
   readonly agentsById: Map<string, Agent> = new Map();
@@ -42,6 +44,10 @@ export class World {
   _rebuildAgentOptions: (() => void) | null = null;
   _lastFactionsSig = '';
 
+  // Ephemeral cloud state (not persisted)
+  clouds: ICloud[] = [];
+  _nextCloudSpawnMs = 0;
+
   // Convenience accessors that delegate to grid
   get walls() { return this.grid.walls; }
   get foodBlocks() { return this.grid.foodBlocks; }
@@ -51,4 +57,7 @@ export class World {
   get flags() { return this.grid.flags; }
   get flagCells() { return this.grid.flagCells; }
   get agentsByCell() { return this.grid.agentsByCell; }
+  get waterBlocks() { return this.grid.waterBlocks; }
+  get treeBlocks() { return this.grid.treeBlocks; }
+  get seedlings() { return this.grid.seedlings; }
 }

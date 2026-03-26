@@ -55,6 +55,7 @@ export interface DomRefs {
     btnEraseWalls: HTMLButtonElement | null;
     btnSave: HTMLButtonElement | null;
     btnLoad: HTMLButtonElement | null;
+    btnSpawnTree: HTMLButtonElement | null;
   };
   fileLoad: HTMLInputElement | null;
   ranges: {
@@ -86,6 +87,8 @@ export interface DomRefs {
     stTickMax: HTMLElement | null;
     stBirths: HTMLElement | null;
     stDeaths: HTMLElement | null;
+    stWater: HTMLElement | null;
+    stTrees: HTMLElement | null;
   };
   barEls: {
     barAgents: HTMLElement | null;
@@ -115,6 +118,7 @@ export class UIManager {
         btnEraseWalls: qs('#btnEraseWalls') as HTMLButtonElement | null,
         btnSave: qs('#btnSave') as HTMLButtonElement | null,
         btnLoad: qs('#btnLoad') as HTMLButtonElement | null,
+        btnSpawnTree: qs('#btnSpawnTree') as HTMLButtonElement | null,
       },
       fileLoad: qs('#fileLoad') as HTMLInputElement | null,
       ranges: {
@@ -146,6 +150,8 @@ export class UIManager {
         stTickMax: qs('#stTickMax'),
         stBirths: qs('#stBirths'),
         stDeaths: qs('#stDeaths'),
+        stWater: qs('#stWater'),
+        stTrees: qs('#stTrees'),
       },
       barEls: {
         barAgents: qs('#barAgents'),
@@ -275,6 +281,11 @@ export class UIManager {
     if (s.stFlags) s.stFlags.textContent = String(world.flags.size);
     if (s.stBirths) s.stBirths.textContent = String(world.totalBirths);
     if (s.stDeaths) s.stDeaths.textContent = String(world.totalDeaths);
+    // Count unique water blocks (large blocks share references across cells)
+    const seenWater = new Set<string>();
+    for (const wb of world.waterBlocks.values()) seenWater.add(wb.id);
+    if (s.stWater) s.stWater.textContent = String(seenWater.size);
+    if (s.stTrees) s.stTrees.textContent = String(world.treeBlocks.size);
     if (s.stTick) s.stTick.textContent = UIManager.formatTickCount(world.tick);
     if (s.stFps) s.stFps.textContent = fps.toFixed(0);
     if (s.stTickAvg) s.stTickAvg.textContent = tAvg.toFixed(1);

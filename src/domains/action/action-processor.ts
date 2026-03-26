@@ -5,6 +5,7 @@ import type { Agent } from '../agent';
 import { FactionManager } from '../faction';
 import { AgentFactory } from '../agent';
 import { InteractionEngine } from './interaction-engine';
+import { SimulationEngine } from '../simulation/simulation-engine';
 
 export class ActionProcessor {
   static process(world: World, agent: Agent, dtMs: number): void {
@@ -197,17 +198,75 @@ export class ActionProcessor {
     const act = agent.action!;
     const tp = act.payload?.targetPos;
     if (!tp) return;
+    if (agent.inventoryFull()) return;
+
+    const rt = act.payload?.resourceType || 'food_lq';
+
+    if (rt === 'food_hq' || rt === 'food_lq') {
+      ActionProcessor._harvestFood(world, agent, tp);
+    } else if (rt === 'water') {
+      ActionProcessor._harvestWater(world, agent, tp);
+    } else if (rt === 'wood') {
+      ActionProcessor._harvestWood(world, agent, tp);
+    }
+  }
+
+  private static _harvestFood(world: World, agent: Agent, tp: { x: number; y: number }): void {
     const k = key(tp.x, tp.y);
     const block = world.foodBlocks.get(k);
     if (!block || block.units <= 0) return;
-    if (agent.inventoryFull()) return;
     block.units--;
     agent.addToInventory('food', 1);
     agent.addXp(TUNE.xp.perHarvest);
     log(world, 'harvest', `${agent.name} harvested food`, agent.id, { x: tp.x, y: tp.y });
+    if (block.units <= 0) world.foodBlocks.delete(k);
+    ActionProcessor._checkLevelUp(world, agent);
+  }
+
+  private static _harvestWater(world: World, agent: Agent, tp: { x: number; y: number }): void {
+    const k = key(tp.x, tp.y);
+    const block = world.waterBlocks.get(k);
+    if (!block || block.units <= 0) return;
+    block.units--;
+    agent.addToInventory('water', 1);
+    agent.addXp(TUNE.xp.perHarvest);
+    log(world, 'harvest', `${agent.name} harvested water`, agent.id, { x: tp.x, y: tp.y });
+
     if (block.units <= 0) {
-      world.foodBlocks.delete(k);
+      // Remove all cell keys
+      for (const c of block.cells) world.waterBlocks.delete(key(c.x, c.y));
+    } else if (block.size === 'large' && block.units < block.maxUnits * TUNE.water.shrinkThreshold) {
+      // Shrink large → small
+      const keepCell = block.cells[Math.floor(Math.random() * block.cells.length)];
+      for (const c of block.cells) world.waterBlocks.delete(key(c.x, c.y));
+      block.size = 'small';
+      block.x = keepCell.x;
+      block.y = keepCell.y;
+      block.cells = [keepCell];
+      world.waterBlocks.set(key(keepCell.x, keepCell.y), block);
+      log(world, 'info', `Water block shrunk @${keepCell.x},${keepCell.y}`, null, {});
     }
+    ActionProcessor._checkLevelUp(world, agent);
+  }
+
+  private static _harvestWood(world: World, agent: Agent, tp: { x: number; y: number }): void {
+    const k = key(tp.x, tp.y);
+    const tree = world.treeBlocks.get(k);
+    if (!tree || tree.units <= 0) return;
+    tree.units--;
+    agent.addToInventory('wood', 1);
+    agent.addXp(TUNE.xp.perHarvest);
+    log(world, 'harvest', `${agent.name} harvested wood`, agent.id, { x: tp.x, y: tp.y });
+
+    // Roll for seedling (10%) or food (5%) — mutually exclusive
+    const roll = Math.random();
+    if (roll < TUNE.tree.seedlingChanceOnHarvest) {
+      SimulationEngine.trySpawnSeedling(world, tree.x, tree.y);
+    } else if (roll < TUNE.tree.seedlingChanceOnHarvest + TUNE.tree.foodChanceOnHarvest) {
+      SimulationEngine.trySpawnFoodNearTree(world, tree.x, tree.y);
+    }
+
+    if (tree.units <= 0) world.treeBlocks.delete(k);
     ActionProcessor._checkLevelUp(world, agent);
   }
 

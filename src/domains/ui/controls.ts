@@ -14,6 +14,8 @@ function seedEnvironment(world: World): void {
     const y = rndi(5, 56);
     world.farms.set(key(x, y), { id: uuid(), x, y });
   }
+  SimulationEngine.seedInitialTrees(world, rndi(8, 15));
+  SimulationEngine.seedInitialWater(world, rndi(3, 6));
   SimulationEngine.seedInitialFood(world, rndi(5, 10));
 }
 
@@ -113,6 +115,10 @@ export class Controls {
     buttons.btnSpawnCrop?.addEventListener('click', () => {
       const { x, y } = world.grid.randomFreeCell();
       SimulationEngine.addCrop(world, x, y);
+    });
+
+    buttons.btnSpawnTree?.addEventListener('click', () => {
+      SimulationEngine.addTree(world);
     });
 
     buttons.btnSave?.addEventListener('click', () => PersistenceManager.export(world, doRenderLog));

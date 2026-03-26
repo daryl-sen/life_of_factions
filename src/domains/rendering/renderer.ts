@@ -18,6 +18,9 @@ export class Renderer {
     );
 
     if (world.drawGrid) this._drawGrid(ctx, camera);
+    this._drawWaterBlocks(ctx, world);
+    this._drawTreeBlocks(ctx, world);
+    this._drawSeedlings(ctx, world);
     this._drawFoodBlocks(ctx, world);
     this._drawFarms(ctx, world);
     this._drawWalls(ctx, world);
@@ -26,6 +29,8 @@ export class Renderer {
     const pendingAttackLines: [Agent, Agent][] = [];
     this._drawAgents(ctx, world, pendingAttackLines);
     this._drawAttackLines(ctx, camera, pendingAttackLines);
+
+    this._drawClouds(ctx, world, camera);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
@@ -57,6 +62,35 @@ export class Renderer {
     const x = cellX * CELL;
     const y = cellY * CELL;
     ctx.drawImage(ec, x + (CELL - dw) / 2, y + (CELL - dh) / 2, dw, dh);
+  }
+
+  private _drawWaterBlocks(ctx: CanvasRenderingContext2D, world: World): void {
+    const drawn = new Set<string>();
+    for (const wb of world.waterBlocks.values()) {
+      if (drawn.has(wb.id)) continue;
+      drawn.add(wb.id);
+      const pct = wb.units / wb.maxUnits;
+      ctx.globalAlpha = 0.4 + 0.6 * pct;
+      for (const c of wb.cells) {
+        this._drawCellEmoji(ctx, c.x, c.y, WORLD_EMOJIS.water);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  private _drawTreeBlocks(ctx: CanvasRenderingContext2D, world: World): void {
+    for (const tree of world.treeBlocks.values()) {
+      const pct = tree.units / tree.maxUnits;
+      ctx.globalAlpha = 0.4 + 0.6 * pct;
+      this._drawCellEmoji(ctx, tree.x, tree.y, tree.emoji);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  private _drawSeedlings(ctx: CanvasRenderingContext2D, world: World): void {
+    for (const s of world.seedlings.values()) {
+      this._drawCellEmoji(ctx, s.x, s.y, WORLD_EMOJIS.seedling);
+    }
   }
 
   private _drawFoodBlocks(ctx: CanvasRenderingContext2D, world: World): void {
@@ -188,5 +222,14 @@ export class Renderer {
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
+  }
+
+  private _drawClouds(ctx: CanvasRenderingContext2D, world: World, _camera: Camera): void {
+    for (const cloud of world.clouds) {
+      const fadeRatio = Math.max(0, cloud.lifetimeMs / 5000);
+      ctx.globalAlpha = Math.min(0.7, fadeRatio);
+      this._drawCellEmoji(ctx, cloud.x, cloud.y, WORLD_EMOJIS.cloud, CELL * 2);
+      ctx.globalAlpha = 1;
+    }
   }
 }

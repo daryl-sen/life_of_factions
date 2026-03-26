@@ -13,11 +13,13 @@ Actions are discrete behaviors agents perform. Each action has a duration, energ
 | `help` | 0.9-1.8s | 0.8 | 1 | Yes | |
 | `reproduce` | 2.0-3.2s | 1.5 | 1 | Yes | |
 | `sleep` | 8-12s | 0 (restores) | self | Yes | 😴 |
-| `harvest` | 600-1200ms | 0.25 | 1 (adjacent block) | Yes | 🫨 |
+| `harvest` | 600-1200ms | 0.25 | 1 (adjacent food block) | Yes | 🫨 |
+| `harvest_water` | 1000ms | 0.25 | 1 (adjacent water block) | Yes | 🫨 |
+| `harvest_wood` | 1500ms | 0.25 | 1 (adjacent tree block) | Yes | 🫨 |
 | `eat` | 300-500ms | 0 | self (from inventory) | Yes | 🤔 |
 | `drink` | 300-500ms | 0 | self (from inventory) | Yes | 🤔 |
 
-> **Note:** All action energy costs were halved in Phase 1 to account for the new sleep-based energy economy. Harvest, eat, and drink actions were added in Phase 2.
+> **Note:** All action energy costs were halved in Phase 1 to account for the new sleep-based energy economy. Harvest, eat, and drink actions were added in Phase 2. Water harvest, wood harvest, and hygiene-driven water seeking were added in Phase 3.
 
 ## Social Actions
 
@@ -153,11 +155,11 @@ agent.energy = min(agent.maxEnergy, agent.energy + 8)
 
 **XP:** Sleep does not grant XP.
 
-## Resource Actions (Phase 2)
+## Resource Actions (Phase 2 & 3)
 
-### Harvest
+### Harvest (Food)
 
-**Purpose:** Gather resources from adjacent food blocks into agent inventory.
+**Purpose:** Gather food from adjacent food blocks into agent inventory.
 
 **Requirements:**
 - Adjacent to a food block (Manhattan distance = 1)
@@ -186,6 +188,77 @@ if (foodBlock.units <= 0) {
 - Blocked when inventory is full
 - Food block depletes (removed from grid) when all units are harvested
 - Multiple agents can harvest the same block simultaneously; they race for remaining units
+
+### Harvest Water (Phase 3)
+
+**Purpose:** Gather water from adjacent water blocks into agent inventory for drinking.
+
+**Requirements:**
+- Adjacent to a water block (Manhattan distance = 1)
+- Inventory not full (total units < 20)
+- Water block has units remaining
+
+**Duration:** 1000ms per unit
+
+**Effect (on completion):**
+```javascript
+waterBlock.units -= 1
+agent.inventory.water += 1
+agent.xp += 2  // harvest XP
+
+// Large water block shrinks to small at 25% threshold
+if (waterBlock.type === 'large' && waterBlock.units <= 5) {
+  // Convert to small water block (1-cell)
+}
+
+if (waterBlock.units <= 0) {
+  world.waterBlocks.delete(key(waterBlock.x, waterBlock.y))
+}
+```
+
+**Properties:**
+- Energy cost: 0.25 energy/sec
+- Agent is locked in place during harvest
+- Emoji: 🫨
+- Blocked when inventory is full
+- Water block depletes (removed from grid) when all units are harvested
+- Large water blocks shrink to small (1-cell) when units drop to 25% threshold (≤5 units)
+
+### Harvest Wood (Phase 3)
+
+**Purpose:** Gather wood from adjacent tree blocks into agent inventory.
+
+**Requirements:**
+- Adjacent to a tree block (Manhattan distance = 1)
+- Inventory not full (total units < 20)
+- Tree block has units remaining
+
+**Duration:** 1500ms per unit
+
+**Effect (on completion):**
+```javascript
+treeBlock.units -= 1
+agent.inventory.wood += 1
+agent.xp += 2  // harvest XP
+
+// Side effects (mutually exclusive):
+// 10% chance: spawn seedling (🌱) on adjacent free cell
+// 5% chance: spawn LQ food within 3-cell radius
+
+if (treeBlock.units <= 0) {
+  world.treeBlocks.delete(key(treeBlock.x, treeBlock.y))
+}
+```
+
+**Properties:**
+- Energy cost: 0.25 energy/sec
+- Agent is locked in place during harvest
+- Emoji: 🫨
+- Blocked when inventory is full
+- Tree block depletes (removed from grid) when all units are harvested
+- 10% chance per harvest to spawn a seedling on an adjacent free cell
+- 5% chance per harvest (instead of seedling) to spawn LQ food within 3-cell radius
+- Wood harvesting is **opportunistic**: agents harvest when passing near trees, not as a high-priority seek action
 
 ### Eat
 
@@ -229,7 +302,7 @@ agent.hygiene = min(100, agent.hygiene + 30)
 - No energy cost
 - Solo action (no target required)
 - Emoji: 🤔
-- **Note:** Water blocks are added in Phase 3. Until then, water cannot be obtained.
+- Water is obtained by harvesting water blocks (added in Phase 3)
 
 ---
 
@@ -297,6 +370,8 @@ Locks are applied to both agents for social actions. Locks are decremented each 
 | sleep | 0 (restores 128–192) | -- | -- |
 | harvest (HQ) | 0.15 | 0.15 | 0.15 |
 | harvest (LQ) | 0.30 | 0.30 | 0.30 |
+| harvest (water) | 0.25 | 0.25 | 0.25 |
+| harvest (wood) | 0.375 | 0.375 | 0.375 |
 | eat | 0 | 0 | 0 |
 | drink | 0 | 0 | 0 |
 
@@ -314,6 +389,24 @@ Locks are applied to both agents for social actions. Locks are decremented each 
 | Share/help complete | +5 |
 | Build farm | +15 |
 | Harvest (per unit) | +2 |
+
+## Decision Priority (Action Selection)
+
+Agents select actions based on the following priority order. Higher-priority needs override lower ones.
+
+| Priority | Condition | Action |
+|----------|-----------|--------|
+| 1 | Energy < 20 | Mandatory sleep |
+| 2 | Under attack | Flee or retaliate |
+| 3 | Health < 30% maxHP | Seek faction flag |
+| 4 | Fullness < 20 | Urgent food seeking (eat from inventory > harvest adjacent food > pathfind to food) |
+| 5 | Hygiene < 20 | Critical water seeking (drink from inventory > harvest adjacent water > pathfind to water) |
+| 6 | Energy < 40 | Voluntary sleep |
+| 7a | Fullness < 40 | Proactive food seeking (same priority as #4) |
+| 7b | Hygiene < 40 | Proactive water seeking (same priority as #5) |
+| 7c | Adjacent resource block & inventory not full | Harvest nearby resources (wood harvesting is opportunistic) |
+| 7d | Normal social/combat | Reproduction, attack, help/heal/talk |
+| 7e | Nothing else to do | Roam |
 
 ### Faction Formation
 

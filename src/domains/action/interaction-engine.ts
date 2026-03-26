@@ -13,17 +13,19 @@ function lockAgent(world: World, id: string, ms: number): void {
 
 export class InteractionEngine {
   /**
-   * New decision priority hierarchy (Phase 1):
+   * Decision priority hierarchy:
    * 1. Energy < 20          → mandatory sleep
    * 2. Under attack         → flee/retaliate
    * 3. Health < 30% maxHP   → seek faction flag
    * 4. Fullness < 20        → urgent food seeking
-   * 5. Energy < 40          → voluntary sleep
-   * 6. Normal state:
+   * 5. Hygiene < 20         → urgent water seeking
+   * 6. Energy < 40          → voluntary sleep
+   * 7. Normal state:
    *    a. Fullness < 40     → proactive food seeking
-   *    b. Reproduction
-   *    c. Attack
-   *    d. Help/Heal/Talk
+   *    b. Hygiene < 40      → proactive water seeking
+   *    c. Reproduction
+   *    d. Attack
+   *    e. Help/Heal/Talk
    */
   static consider(world: World, agent: Agent): void {
     // 1. Mandatory sleep
@@ -43,16 +45,24 @@ export class InteractionEngine {
 
     // 4. Critical fullness — urgent food seeking
     if (agent.fullness < TUNE.fullness.criticalThreshold) {
-      // Eat from inventory if available
       if (agent.inventory.food > 0) {
         ActionFactory.tryStart(agent, 'eat');
         return;
       }
-      // Signal: return without action/path so tick loop handles food seeking
       return;
     }
 
-    // 5. Voluntary sleep
+    // 5. Critical hygiene — urgent water seeking
+    if (agent.hygiene < TUNE.hygiene.criticalThreshold) {
+      if (agent.inventory.water > 0) {
+        ActionFactory.tryStart(agent, 'drink');
+        return;
+      }
+      // Signal: return without action/path so tick loop handles water seeking
+      return;
+    }
+
+    // 6. Voluntary sleep
     if (agent.energy < TUNE.energyLowThreshold) {
       if (InteractionEngine._trySleep(agent)) return;
       // If sleep failed, try attack as fallback (old behavior)
@@ -60,20 +70,28 @@ export class InteractionEngine {
       return;
     }
 
-    // 6. Normal state (energy >= 40)
+    // 7. Normal state (energy >= 40)
 
-    // 6a. Proactive food seeking
+    // 7a. Proactive food seeking
     if (agent.fullness < TUNE.fullness.seekThreshold) {
-      // Eat from inventory if available
       if (agent.inventory.food > 0) {
         ActionFactory.tryStart(agent, 'eat');
         return;
       }
-      // Signal: return without action/path so tick loop handles food seeking
       return;
     }
 
-    // 6b. Reproduction check
+    // 7b. Proactive hygiene seeking
+    if (agent.hygiene < TUNE.hygiene.seekThreshold) {
+      if (agent.inventory.water > 0) {
+        ActionFactory.tryStart(agent, 'drink');
+        return;
+      }
+      // Signal: return without action/path so tick loop handles water seeking
+      return;
+    }
+
+    // 7c. Reproduction check
     const adj: [number, number][] = [
       [agent.cellX + 1, agent.cellY],
       [agent.cellX - 1, agent.cellY],
@@ -103,10 +121,10 @@ export class InteractionEngine {
       }
     }
 
-    // 6c. Attack
+    // 7d. Attack
     if (InteractionEngine.chooseAttack(world, agent)) return;
 
-    // 6d. Help/Heal/Talk
+    // 7e. Help/Heal/Talk
     if (InteractionEngine._chooseHelpHealTalk(world, agent)) return;
   }
 

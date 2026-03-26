@@ -42,6 +42,9 @@ export class InputHandler {
           !world.farms.has(k) &&
           !world.flagCells.has(k) &&
           !world.foodBlocks.has(k) &&
+          !world.waterBlocks.has(k) &&
+          !world.treeBlocks.has(k) &&
+          !world.seedlings.has(k) &&
           !world.agentsByCell.has(k)
         ) {
           world.walls.set(k, { id: uuid(), x, y, hp: 12, maxHp: 12 });
