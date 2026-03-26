@@ -1,6 +1,6 @@
-import { TUNE } from '../../shared/constants';
+import { GRID, TUNE } from '../../shared/constants';
 import type { IInventory } from '../../shared/types';
-import { manhattan, log, key } from '../../shared/utils';
+import { manhattan, log, key, uuid, rndi } from '../../shared/utils';
 import type { World } from '../world';
 import type { Agent } from '../agent';
 import { FactionManager } from '../faction';
@@ -26,7 +26,8 @@ export class ActionProcessor {
       act.type !== 'attack' && act.type !== 'sleep' &&
       act.type !== 'harvest' && act.type !== 'eat' && act.type !== 'drink' &&
       act.type !== 'deposit' && act.type !== 'withdraw' && act.type !== 'pickup' &&
-      act.type !== 'poop' && act.type !== 'clean'
+      act.type !== 'poop' && act.type !== 'clean' &&
+      act.type !== 'play' && act.type !== 'build_farm'
     ) {
       agent.action = null;
       return;
@@ -63,6 +64,14 @@ export class ActionProcessor {
     if ((act.type === 'deposit' || act.type === 'withdraw') && agent.factionId) {
       const flag = world.flags.get(agent.factionId);
       if (!flag || manhattan(agent.cellX, agent.cellY, flag.x, flag.y) > 1) {
+        agent.action = null; return;
+      }
+    }
+
+    // Play proximity: must be adjacent to target
+    if (act.type === 'play' && act.payload?.targetPos) {
+      const tp = act.payload.targetPos;
+      if (manhattan(agent.cellX, agent.cellY, tp.x, tp.y) > 1) {
         agent.action = null; return;
       }
     }
@@ -197,6 +206,10 @@ export class ActionProcessor {
       ActionProcessor._completePoop(world, agent);
     } else if (act.type === 'clean') {
       ActionProcessor._completeClean(world, agent);
+    } else if (act.type === 'play') {
+      ActionProcessor._completePlay(world, agent);
+    } else if (act.type === 'build_farm') {
+      ActionProcessor._completeBuildFarm(world, agent);
     }
 
     if (targ && !agent.factionId && !targ.factionId) {
@@ -388,6 +401,50 @@ export class ActionProcessor {
       world.lootBags.delete(k);
     }
     log(world, 'loot', `${agent.name} picked up loot`, agent.id, { x: tp.x, y: tp.y });
+  }
+
+  private static _completePlay(world: World, agent: Agent): void {
+    agent.inspiration = Math.min(100, agent.inspiration + TUNE.inspiration.playGain);
+    // Check if any poop block within manhattan ≤ 1 of agent
+    const adj: [number, number][] = [
+      [agent.cellX, agent.cellY],
+      [agent.cellX + 1, agent.cellY], [agent.cellX - 1, agent.cellY],
+      [agent.cellX, agent.cellY + 1], [agent.cellX, agent.cellY - 1],
+    ];
+    let nearPoop = false;
+    for (const [nx, ny] of adj) {
+      if (world.poopBlocks.has(key(nx, ny))) { nearPoop = true; break; }
+    }
+    if (nearPoop) {
+      agent.hygiene = Math.max(0, agent.hygiene - TUNE.play.hygienePoopPenalty);
+    }
+    log(world, 'info', `${agent.name} played${nearPoop ? ' (near poop!)' : ''}`, agent.id, {});
+  }
+
+  private static _completeBuildFarm(world: World, agent: Agent): void {
+    if (agent.inventory.wood < TUNE.farm.woodCost || agent.energy < TUNE.farm.energyCost) return;
+    // Find adjacent free cell for the farm
+    const adj: [number, number][] = [
+      [agent.cellX + 1, agent.cellY], [agent.cellX - 1, agent.cellY],
+      [agent.cellX, agent.cellY + 1], [agent.cellX, agent.cellY - 1],
+    ];
+    const free = adj.filter(
+      ([x, y]) => x >= 0 && y >= 0 && x < GRID && y < GRID &&
+        !world.grid.isBlocked(x, y) && !world.farms.has(key(x, y))
+    );
+    if (!free.length) return;
+    const [x, y] = free[rndi(0, free.length - 1)];
+    agent.removeFromInventory('wood', TUNE.farm.woodCost);
+    agent.drainEnergy(TUNE.farm.energyCost);
+    world.farms.set(key(x, y), {
+      id: uuid(), x, y,
+      spawnsRemaining: TUNE.farm.maxSpawns,
+      spawnTimerMs: rndi(TUNE.farm.spawnIntervalRange[0], TUNE.farm.spawnIntervalRange[1]),
+    });
+    agent.addXp(TUNE.xp.perBuildFarm);
+    agent.inspiration = Math.min(100, agent.inspiration + TUNE.inspiration.buildGain);
+    log(world, 'build', `${agent.name} built farm`, agent.id, { x, y });
+    ActionProcessor._checkLevelUp(world, agent);
   }
 
   private static _completePoop(world: World, agent: Agent): void {

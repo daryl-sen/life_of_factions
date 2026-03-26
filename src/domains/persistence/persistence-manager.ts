@@ -1,6 +1,6 @@
 import { CELL, GRID, TUNE } from '../../shared/constants';
 import { VERSION } from '../../shared/version';
-import { key } from '../../shared/utils';
+import { key, rndi } from '../../shared/utils';
 import type { World } from '../world';
 import type { DomRefs } from '../ui/ui-manager';
 import { Agent } from '../agent';
@@ -161,8 +161,13 @@ export class PersistenceManager {
     }
     for (const w of d.walls || [])
       world.walls.set(key(w.x, w.y), { ...w });
-    for (const fm of d.farms || [])
-      world.farms.set(key(fm.x, fm.y), { ...fm });
+    for (const fm of d.farms || []) {
+      world.farms.set(key(fm.x, fm.y), {
+        ...fm,
+        spawnsRemaining: fm.spawnsRemaining ?? TUNE.farm.maxSpawns,
+        spawnTimerMs: fm.spawnTimerMs ?? rndi(TUNE.farm.spawnIntervalRange[0], TUNE.farm.spawnIntervalRange[1]),
+      });
+    }
     for (const c of (d.foodBlocks || d.crops || [])) {
       world.foodBlocks.set(key(c.x, c.y), {
         id: c.id,

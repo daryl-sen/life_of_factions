@@ -25,6 +25,8 @@ export const TUNE = {
     pickup: 0,
     poop: 0,
     clean: 0.25,
+    play: 0.15,
+    build_farm: 0.25,
   } as Record<ActionType, number>,
   cropGain: 28,
   starveHpPerSec: 1.0,
@@ -160,6 +162,27 @@ export const TUNE = {
     recipientSocial: 5,
     relationshipGain: 0.14,
   },
+  inspiration: {
+    passiveDecay: 0.015,
+    seekThreshold: 40,
+    playGain: 15,
+    buildGain: 25,
+    lowThreshold: 20,
+    highThreshold: 70,
+    lowMultiplier: 1.5,
+    highMultiplier: 0.75,
+  },
+  farm: {
+    woodCost: 3,
+    energyCost: 6,
+    maxSpawns: 10,
+    maxFoodInRadius: 4,
+    spawnRadius: 1,
+    spawnIntervalRange: [15000, 25000] as [number, number],
+  },
+  play: {
+    hygienePoopPenalty: 3,
+  },
 } as const;
 
 export const ACTION_DURATIONS: Record<ActionType, [number, number]> = {
@@ -179,6 +202,8 @@ export const ACTION_DURATIONS: Record<ActionType, [number, number]> = {
   pickup: [300, 500],
   poop: [500, 1000],
   clean: [800, 1200],
+  play: [1500, 2500],
+  build_farm: [2000, 2000],
 };
 
 
@@ -222,6 +247,8 @@ export const AGENT_EMOJIS: Record<string, string> = {
   pickup: '🤔',
   poop: '😣',
   clean: '🧹',
+  play: '🤪',
+  build_farm: '🌾',
 };
 
 export const IDLE_EMOJIS = {

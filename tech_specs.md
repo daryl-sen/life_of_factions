@@ -64,7 +64,7 @@ Agent {
   fullness: float           // 0..100; passive decay, restored by eating
   hygiene: float            // 0..100; decay from movement/actions/poop, restored by drinking water
   social: float             // 0..100 (placeholder, not active)
-  inspiration: float        // 0..100 (+10 from clean action)
+  inspiration: float        // 0..100; passive decay −0.015/tick; recovered by play (+15), clean (+10), build farm (+25)
 
   // Disease system (Phase 5)
   diseased: boolean         // true if agent is currently sick
@@ -78,7 +78,7 @@ Agent {
   }                         // Total units across all types capped at 20
 
   action: null | {
-    type: 'talk'|'quarrel'|'attack'|'under_attack'|'heal'|'share'|'attack_wall'|'attack_flag'|'reproduce'|'sleep'|'harvest'|'harvest_water'|'harvest_wood'|'eat'|'drink'|'deposit'|'withdraw'|'pickup'|'poop'|'clean'
+    type: 'talk'|'quarrel'|'attack'|'under_attack'|'heal'|'share'|'attack_wall'|'attack_flag'|'reproduce'|'sleep'|'harvest'|'harvest_water'|'harvest_wood'|'eat'|'drink'|'deposit'|'withdraw'|'pickup'|'poop'|'clean'|'play'|'build_farm'
     remainingMs: float
     tickCounterMs: float
     payload?: { targetId?: ID, ... }
@@ -92,7 +92,7 @@ Agent {
 * **Wall**: destructible, blocks movement
 * **Food block (HQ)**: high-quality food from farms; emojis 🥔🍎🍑🌽🍅; 2–4 units; passable; depletes when all units harvested
 * **Food block (LQ)**: low-quality food from nature/world-gen; emojis 🌿🥬🥦🍀; 1–2 units; passable; depletes when all units harvested
-* **Farm**: spawns HQ food in 1-cell radius; blocks movement; agents can **build** new farms (energy cost)
+* **Farm**: spawns HQ food in radius 1; blocks movement; agents **build** farms via explicit build_farm action (3 wood + 6 energy); tracks spawnsRemaining (max 10) and spawnTimerMs (15–25s interval); destroyed when spawns exhausted
 * **FlagSpawn**: faction spawn point, destructible, blocks movement
 * **Water block (small)**: 1-cell, impassable, 5 units; emojis based on size; harvest 1 unit per 1000ms
 * **Water block (large)**: 2×2 cells, impassable, 20 units (single entity); shrinks to small water block at 25% threshold (≤5 units). Harvest 1 unit per 1000ms
@@ -170,12 +170,29 @@ Disease is a condition caused by low hygiene that drains health and energy at an
   * Disease can kill (health reaches 0)
 * **Cure:** heal action from another agent, or hygiene recovers above 80
 
-#### Placeholder Needs (fields added, not active yet)
+#### Inspiration System (Phase 6)
 
-* **Social:** starts 50
-* **Inspiration:** starts 50
+Inspiration is a need that affects action efficiency. It decays passively and is recovered through play, cleaning, and building farms.
 
-These are tracked on agents but have no gameplay effect in Phase 1.
+* **Starting value:** 50
+* **Range:** 0–100
+* **Passive decay:** −0.015/tick
+* **Recovery sources:**
+  * Play action: +15
+  * Clean action: +10
+  * Build farm action: +25
+* **Seek threshold:** inspiration < 40 → agent seeks play or clean poop (decision priority 7c)
+
+**Inspiration duration scaling:** At action creation time, the base duration of an action is scaled by the agent's current inspiration level:
+* Inspiration < 20: duration multiplied by **1.5** (sluggish, uninspired)
+* Inspiration > 70: duration multiplied by **0.75** (efficient, inspired)
+* Inspiration 20–70: no scaling (normal)
+
+This scaling is applied once when the action is created, not continuously during the action.
+
+#### Placeholder Needs
+
+* **Social:** starts 50 (tracked on agents but no gameplay effect)
 
 ### 3.3 Resources & Inventory
 
@@ -278,11 +295,19 @@ Trees are a source of wood and contribute to the food economy through passive sp
 
 **Wood harvesting behavior:** Agents harvest wood opportunistically when passing near trees, rather than actively seeking them out. Wood harvesting is a low-priority action attempted when agents are adjacent to a tree and have inventory space.
 
-#### Farms
+#### Farms (Reworked in Phase 6)
 
 * **Farm emoji:** 🌻
-* **Boost radius:** 3 cells (increases nearby crop spawn probability)
 * **Blocks movement:** Yes
+* **Build cost:** 3 wood + 6 energy (explicit build_farm action)
+* **Build duration:** 2000ms fixed
+* **Build energy cost:** 0.25 energy/sec
+* **Build rewards:** +15 XP, +25 inspiration
+* **Spawn system:** each farm tracks `spawnsRemaining` (starts at 10) and `spawnTimerMs` (15–25 second interval between spawns)
+* **Spawn radius:** 1 cell (adjacent cells only)
+* **Max nearby food:** a farm will not spawn food if there are already 4 or more food blocks within radius 1
+* **Farm destruction:** when `spawnsRemaining` reaches 0, the farm is removed from the grid
+* **Replaces** the old random-chance farm building mechanic (no more random % per tick)
 
 #### Harvest Action
 
@@ -380,6 +405,31 @@ The former "help" action is renamed to "share." Instead of transferring energy, 
 | Energy cost | 0.25/sec |
 | Effect | Removes adjacent poop block, +10 inspiration |
 
+#### Play Action (Phase 6)
+
+| Property | Value |
+|----------|-------|
+| Duration | 1500–2500ms |
+| Energy cost | 0.15/sec |
+| Target | Adjacent interactable block (food, water, tree, farm, poop, seedling, or flag) |
+| Effect | +15 inspiration |
+| Hygiene penalty | −3 hygiene if adjacent to a poop block during play |
+| Emoji | 🤪 |
+| Trigger | Inspiration < 40 (decision priority 7c) |
+
+#### Build Farm Action (Phase 6)
+
+| Property | Value |
+|----------|-------|
+| Duration | 2000ms (fixed) |
+| Energy cost | 0.25/sec |
+| Resource cost | 3 wood from inventory |
+| Energy requirement | 6 energy minimum |
+| Effect | Spawns farm (🌻) on adjacent free cell, +15 XP, +25 inspiration |
+| Replaces | Old random-chance farm building mechanic |
+
+**Build farm replaces the previous farm building system.** Agents no longer build farms via random chance when well-fed. Instead, agents must have 3 wood in inventory and 6 energy to initiate the explicit build_farm action.
+
 #### Poop Blocks (Phase 5)
 
 💩 blocks are passable terrain hazards spawned by the poop action.
@@ -440,11 +490,14 @@ Faction flags now store resources for the faction.
 ### 3.6 Building & Destruction
 
 * **Build Wall:** chance each tick; blocks movement; destructible
-* **Build Farm (new):**
+* **Build Farm (reworked Phase 6):**
 
-  * Attempt when agent is well-fed
-  * Consumes **energy** (see 5. Balancing)
-  * Placed on an adjacent free cell; blocks movement; boosts crop spawns
+  * Explicit `build_farm` action (2000ms, 0.25 energy/sec)
+  * Requires **3 wood** in inventory + **6 energy**
+  * Placed on an adjacent free cell; blocks movement
+  * Grants +15 XP, +25 inspiration
+  * Farm spawns HQ food in radius 1 (max 10 spawns, 15–25s interval, max 4 nearby food)
+  * Farm destroyed when all spawns exhausted
 * Walls and flags destructible
 
 ### 3.7 Reproduction
@@ -457,7 +510,7 @@ Faction flags now store resources for the faction.
 ### 3.8 Leveling (XP-Based)
 
 * Triggered by accumulating XP (replaces energy-surplus leveling)
-* **XP sources:** kill +50, eat (from inventory) +5, heal complete +10, share complete +5, build farm +15, harvest (per unit) +2
+* **XP sources:** kill +50, eat (from inventory) +5, heal complete +10, share complete +5, build farm +15 (Phase 6: explicit action), harvest (per unit) +2
 * **Level curve:** level × 50 XP required per level
 * **Level-up effects:** maxHealth += 8, attack += 1.5, maxEnergy += 5
 * **Level cap:** **20**
@@ -484,6 +537,9 @@ Faction flags now store resources for the faction.
   * **deposit/withdraw/pickup:** **300–500ms**
   * **poop:** **500–1000ms**
   * **clean:** **800–1200ms**
+  * **play:** **1500–2500ms**
+  * **build_farm:** **2000ms** (fixed)
+* **Inspiration duration scaling (Phase 6):** at action creation time, inspiration < 20 → duration ×1.5; inspiration > 70 → duration ×0.75
 * **Distance rules:**
 
   * Non-attack actions: distance **=1**
@@ -497,6 +553,8 @@ Faction flags now store resources for the faction.
 * **Per-second energy costs** (approx., halved from v1.3): talk 0.2, quarrel 0.4, **attack 1.1**, heal 1.5, **share 0.4**, attack\_wall 0.75, attack\_flag 1.0, **reproduce 1.5**, **harvest 0.25**
 * **Zero-cost actions:** eat, drink, deposit, withdraw, pickup, poop
 * **Clean:** 0.25 energy/sec
+* **Play:** 0.15 energy/sec
+* **Build farm:** 0.25 energy/sec (also costs 3 wood from inventory)
 * **Sleep:** restores +8 energy per 500ms tick (total 128–192 energy over full duration); mandatory at energy < 20, voluntary at energy < 40; interruptible by attack; emoji 😴
 * **Damage:** base 8; attack deals periodic damage scaled by level
 
@@ -579,6 +637,15 @@ Faction flags now store resources for the faction.
 * **deposit/withdraw/pickup:** **300–500ms** (no energy cost)
 * **poop:** **500–1000ms** (no energy cost)
 * **clean:** **800–1200ms** (0.25 energy/sec)
+* **play:** **1500–2500ms** (0.15 energy/sec)
+* **build_farm:** **2000ms** fixed (0.25 energy/sec, also costs 3 wood)
+
+**Inspiration (Phase 6)**
+
+* Passive decay: −0.015/tick
+* Recovery: play +15, clean +10, build farm +25
+* Seek threshold: < 40 → seek play or clean poop
+* Duration scaling: < 20 → ×1.5; > 70 → ×0.75 (applied at action creation)
 
 **Hygiene decay sources (Phase 5)**
 
@@ -607,9 +674,11 @@ Faction flags now store resources for the faction.
 
 * Wall HP: 10–15
 * Flag HP: 12–18
-* **Farm boost radius:** 3
-* **Build farm energy cost:** **12**
-* Farm build attempt probability (when well-fed): small, periodic
+* **Build farm cost:** **3 wood + 6 energy** (explicit action, 2000ms, 0.25 energy/sec)
+* **Build farm rewards:** +15 XP, +25 inspiration
+* **Farm spawn limit:** 10 spawns per farm (farm destroyed when exhausted)
+* **Farm spawn interval:** 15–25 seconds between food spawns
+* **Farm spawn radius:** 1 cell (max 4 food blocks within radius 1)
 * **Food blocks:** HQ from farms (2–4 units), LQ from world-gen and tree spawns (1–2 units)
 * **Water blocks:** small (1-cell, 5 units), large (2×2, 20 units); large shrinks to small at ≤5 units
 * **Tree blocks:** 1-cell, 3–6 wood units; 🌲🌳🌴🎄
@@ -651,7 +720,8 @@ Faction flags now store resources for the faction.
      7. Normal state:
         a. Fullness < 40 → proactive food seeking (same eat/harvest/pathfind priority as above); withdraw from own flag if nearby and flag has food
         b. Hygiene < 40 → proactive water seeking (same drink/harvest/pathfind priority as water seeking above); withdraw from own flag if nearby and flag has water
-        c. Poop check: if in poop cooldown window (30s after eating), 10% chance per tick to poop (only when idle)
+        c. Inspiration < 40 → seek play (adjacent to interactable block) or clean poop block
+        c2. Poop check: if in poop cooldown window (30s after eating), 10% chance per tick to poop (only when idle)
         d. Deposit resources to own faction flag (opportunistic: near own flag with inventory ≥ 3)
         e. Harvest nearby resources (if inventory not full and adjacent to resource block; wood harvesting is opportunistic)
         f. Pickup loot bags (before roaming)
@@ -732,6 +802,11 @@ Faction flags now store resources for the faction.
 30. **Clean action** (Phase 5): 800–1200ms, 0.25 energy/sec, removes adjacent poop block, +10 inspiration.
 31. **Disease system** (Phase 5): hygiene < 20 → 5% chance/tick to contract disease. Diseased agents show 🤢, suffer 2× energy drain and −0.5 HP/sec (can kill). Spread at 3%/tick to adjacent agents (blocked if target hygiene > 60). Cured by heal action from another agent or hygiene recovering above 80.
 32. **Heal cures disease** (Phase 5): the heal action now also cures disease on the target agent.
+33. **Inspiration system** (Phase 6): inspiration decays passively at −0.015/tick. Recovered by play (+15), clean (+10), and build farm (+25). When inspiration < 40, agents seek play or clean poop. Duration scaling: < 20 → ×1.5 (slower), > 70 → ×0.75 (faster), applied at action creation.
+34. **Play action** (Phase 6): 1500–2500ms, 0.15 energy/sec, requires adjacency to an interactable block (food, water, tree, farm, poop, seedling, or flag). Grants +15 inspiration. −3 hygiene if near poop. Emoji: 🤪.
+35. **Build farm reworked** (Phase 6): explicit build_farm action (2000ms, 0.25 energy/sec) requiring 3 wood + 6 energy. Grants +15 XP, +25 inspiration. Replaces old random-chance farm building.
+36. **Farm spawn system** (Phase 6): farms track spawnsRemaining (max 10) and spawnTimerMs (15–25s interval). Max 4 food blocks within radius 1. Farm destroyed when spawns exhausted.
+37. **Decision priority updated** (Phase 6): inspiration < 40 added at priority 7c (seek play or clean poop). Poop check moved to 7c2.
 
 ---
 
@@ -794,6 +869,15 @@ Faction flags now store resources for the faction.
 * **Disease system:** when hygiene drops below 20, agents have a 5% chance per tick to contract disease. Diseased agents display the 🤢 emoji, suffer 2× passive energy drain (0.125/tick), and lose 0.5 HP/sec. Disease can kill. Diseased agents spread disease to adjacent agents at 3% per tick (blocked if target hygiene > 60). Disease is cured by the heal action from another agent, or by hygiene recovering above 80.
 * **Heal action updated:** heal now also cures disease on the target agent.
 * **Decision priority updated:** poop check added at priority 7c (after proactive water seeking). Clean adjacent poop blocks added as opportunistic action at priority 7g (before social actions).
+
+### Phase 6 Changes (v3.2.0 — Inspiration, Play, and Farms)
+
+* **Inspiration system activated:** inspiration is no longer a placeholder. Passive decay at −0.015/tick. Recovered by play (+15), clean (+10), and build farm (+25). When inspiration < 40, agents seek play or clean poop (decision priority 7c).
+* **Inspiration duration scaling:** at action creation time, inspiration level modifies action duration. Inspiration < 20 → duration ×1.5 (sluggish). Inspiration > 70 → duration ×0.75 (efficient). Applied once at action creation, not continuously.
+* **Play action added:** 1500–2500ms, 0.15 energy/sec. Requires adjacency to any interactable block (food, water, tree, farm, poop, seedling, or flag). Grants +15 inspiration. If adjacent to a poop block during play, agent loses 3 hygiene. Emoji: 🤪.
+* **Build farm reworked:** the old random-chance farm building mechanic is replaced by an explicit `build_farm` action. Requires 3 wood in inventory + 6 energy. Duration: 2000ms fixed, 0.25 energy/sec. Spawns a farm (🌻) on an adjacent free cell. Grants +15 XP and +25 inspiration.
+* **Farm spawn system reworked:** each farm now tracks `spawnsRemaining` (starts at 10) and `spawnTimerMs` (15–25 second interval between spawns). Farms spawn HQ food on adjacent cells (radius 1), with a maximum of 4 food blocks within radius 1. When `spawnsRemaining` reaches 0, the farm is destroyed and removed from the grid.
+* **Decision priority updated:** inspiration < 40 inserted at priority 7c (seek play or clean poop). Old poop check moved to priority 7c2.
 
 ---
 

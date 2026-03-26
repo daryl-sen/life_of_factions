@@ -21,7 +21,9 @@ export type ActionType =
   | 'withdraw'
   | 'pickup'
   | 'poop'
-  | 'clean';
+  | 'clean'
+  | 'play'
+  | 'build_farm';
 
 export type LogCategory =
   | 'talk'
@@ -89,6 +91,8 @@ export interface IFarm {
   id: string;
   x: number;
   y: number;
+  spawnsRemaining: number;
+  spawnTimerMs: number;
 }
 
 export interface IWall {

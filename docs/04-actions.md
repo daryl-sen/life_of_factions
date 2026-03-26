@@ -23,8 +23,10 @@ Actions are discrete behaviors agents perform. Each action has a duration, energ
 | `pickup` | 300-500ms | 0 | on cell or adjacent loot bag | Yes | |
 | `poop` | 500-1000ms | 0 | self | Yes | 💩 |
 | `clean` | 800-1200ms | 0.25 | 1 (adjacent poop block) | Yes | |
+| `play` | 1500-2500ms | 0.15 | 1 (adjacent interactable block) | Yes | 🤪 |
+| `build_farm` | 2000ms | 0.25 | self (spawns on adjacent free cell) | Yes | |
 
-> **Note:** All action energy costs were halved in Phase 1 to account for the new sleep-based energy economy. Harvest, eat, and drink actions were added in Phase 2. Water harvest, wood harvest, and hygiene-driven water seeking were added in Phase 3. Share (renamed from help), deposit, withdraw, and pickup actions were added in Phase 4. Poop and clean actions were added in Phase 5.
+> **Note:** All action energy costs were halved in Phase 1 to account for the new sleep-based energy economy. Harvest, eat, and drink actions were added in Phase 2. Water harvest, wood harvest, and hygiene-driven water seeking were added in Phase 3. Share (renamed from help), deposit, withdraw, and pickup actions were added in Phase 4. Poop and clean actions were added in Phase 5. Play and build_farm actions were added in Phase 6.
 
 ## Social Actions
 
@@ -413,6 +415,74 @@ When multiple loot bags exist on the same cell, they merge into a single bag:
 
 Any agent can pick up a loot bag via the pickup action (300–500ms, no energy cost). The agent takes all contents up to their inventory cap.
 
+## Inspiration Actions (Phase 6)
+
+### Play
+
+**Purpose:** Recover inspiration by interacting with nearby objects.
+
+**Requirements:**
+- Adjacent to any interactable block (food, water, tree, farm, poop, seedling, or flag — Manhattan distance = 1)
+
+**Duration:** 1500–2500ms
+
+**Energy cost:** 0.15/sec
+
+**Effect (on completion):**
+```javascript
+agent.inspiration = min(100, agent.inspiration + 15)
+
+// Hygiene penalty if near poop
+if (adjacentToPoopBlock(agent)) {
+  agent.hygiene = max(0, agent.hygiene - 3)
+}
+```
+
+**Properties:**
+- Agent is locked in place during play
+- Emoji: 🤪
+- Triggered when inspiration < 40 (decision priority 7c)
+- Interactable blocks include: food blocks, water blocks, tree blocks, farms, poop blocks, seedlings, and faction flags
+
+### Build Farm (Phase 6 — replaces old farm building)
+
+**Purpose:** Construct a farm on an adjacent cell using wood resources.
+
+**Requirements:**
+- 3 wood in inventory
+- 6 energy available
+- Adjacent free cell available for farm placement
+
+**Duration:** 2000ms (fixed)
+
+**Energy cost:** 0.25/sec
+
+**Effect (on completion):**
+```javascript
+agent.inventory.wood -= 3
+// Energy is drained via the standard 0.25/sec mechanism during the action
+
+// Spawn farm on adjacent free cell
+const spot = findFreeAdjacentCell(agent)
+world.farms.set(key(spot.x, spot.y), {
+  id: generateId(),
+  x: spot.x,
+  y: spot.y,
+  spawnsRemaining: 10,
+  spawnTimerMs: random(15000, 25000)
+})
+
+agent.xp += 15
+agent.inspiration = min(100, agent.inspiration + 25)
+levelCheck(world, agent)
+```
+
+**Properties:**
+- Agent is locked in place during build
+- Replaces the old random-chance farm building mechanic (no more % roll per tick)
+- The farm blocks movement once placed
+- Farm tracks spawn count and timer (see `docs/08-resources.md` for farm spawn system details)
+
 ## Hygiene Actions (Phase 5)
 
 ### Poop
@@ -475,9 +545,19 @@ agent.inspiration += 10
 function tryStartAction(agent, type, payload) {
   if (agent.action) return false  // Already acting
   const [min, max] = ACTION_DURATIONS[type]
+  let duration = random(min, max)
+
+  // Inspiration duration scaling (Phase 6)
+  // Applied once at action creation time
+  if (agent.inspiration < 20) {
+    duration *= 1.5   // Sluggish when uninspired
+  } else if (agent.inspiration > 70) {
+    duration *= 0.75  // Efficient when inspired
+  }
+
   agent.action = {
     type,
-    remainingMs: random(min, max),
+    remainingMs: duration,
     tickCounterMs: 0,
     payload
   }
@@ -540,8 +620,10 @@ Locks are applied to both agents for social actions. Locks are decremented each 
 | pickup | 0 | 0 | 0 |
 | poop | 0 | 0 | 0 |
 | clean | 0.20 | 0.30 | 0.25 |
+| play | 0.225 | 0.375 | 0.30 |
+| build_farm | 0.50 | 0.50 | 0.50 |
 
-> **Note:** Costs halved from previous version to balance with sleep-only energy recovery. Eat, drink, deposit, withdraw, pickup, and poop have zero energy cost.
+> **Note:** Costs halved from previous version to balance with sleep-only energy recovery. Eat, drink, deposit, withdraw, pickup, and poop have zero energy cost. Play and build_farm added in Phase 6.
 
 ## Action Completion Effects
 
@@ -556,6 +638,7 @@ Locks are applied to both agents for social actions. Locks are decremented each 
 | Build farm | +15 |
 | Harvest (per unit) | +2 |
 | Clean complete | +0 (grants +10 inspiration instead) |
+| Play complete | +0 (grants +15 inspiration instead) |
 
 ## Decision Priority (Action Selection)
 
@@ -571,7 +654,8 @@ Agents select actions based on the following priority order. Higher-priority nee
 | 6 | Energy < 40 | Voluntary sleep |
 | 7a | Fullness < 40 | Proactive food seeking (same priority as #4) |
 | 7b | Hygiene < 40 | Proactive water seeking (same priority as #5) |
-| 7c | In poop cooldown & idle & 10% roll | Poop action (involuntary, 30s window after eating) |
+| 7c | Inspiration < 40 | Seek play (adjacent to interactable block) or clean poop block |
+| 7c2 | In poop cooldown & idle & 10% roll | Poop action (involuntary, 30s window after eating) |
 | 7d | Near own flag with inventory >= 3 | Deposit resources to faction flag (opportunistic) |
 | 7e | Adjacent resource block & inventory not full | Harvest nearby resources (wood harvesting is opportunistic) |
 | 7f | Loot bag nearby | Pickup loot bag |

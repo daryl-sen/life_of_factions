@@ -435,6 +435,15 @@ export class UIManager {
         </div>
         <div>
           <div class="agent-stat-header">
+            <span>INSPIRATION</span>
+            <span>${a.inspiration.toFixed(1)}/100</span>
+          </div>
+          <div class="agent-stat-bar">
+            <div class="agent-stat-fill" style="background:#c084fc;width:${a.inspiration}%"></div>
+          </div>
+        </div>
+        <div>
+          <div class="agent-stat-header">
             <span>INVENTORY</span>
             <span>${a.inventoryTotal()}/${TUNE.inventory.capacity}</span>
           </div>

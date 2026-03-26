@@ -53,12 +53,35 @@ export class SimulationEngine {
 
   private static _maybeSpawnCrops(world: World): void {
     if (world.foodBlocks.size >= TUNE.maxCrops) return;
-    for (const fm of world.farms.values()) {
+    const toDelete: string[] = [];
+    for (const [fk, fm] of world.farms) {
       if (world.foodBlocks.size >= TUNE.maxCrops) break;
-      if (Math.random() >= 0.02 * world.spawnMult) continue;
+      fm.spawnTimerMs -= BASE_TICK_MS;
+      if (fm.spawnTimerMs > 0) continue;
+
+      // Count food blocks within spawn radius
+      const r = TUNE.farm.spawnRadius;
+      let nearbyFood = 0;
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dy = -r; dy <= r; dy++) {
+          if (Math.abs(dx) + Math.abs(dy) > r) continue;
+          const fx = fm.x + dx;
+          const fy = fm.y + dy;
+          if (world.foodBlocks.has(key(fx, fy))) nearbyFood++;
+        }
+      }
+
+      // Reset timer regardless
+      fm.spawnTimerMs = rndi(TUNE.farm.spawnIntervalRange[0], TUNE.farm.spawnIntervalRange[1]);
+
+      if (nearbyFood >= TUNE.farm.maxFoodInRadius) continue;
+
+      // Try to spawn HQ food on adjacent free cell
+      let spawned = false;
       for (let attempt = 0; attempt < 4; attempt++) {
-        const dx = rndi(-TUNE.farmBoostRadius, TUNE.farmBoostRadius);
-        const dy = rndi(-TUNE.farmBoostRadius, TUNE.farmBoostRadius);
+        const dx = rndi(-r, r);
+        const dy = rndi(-r, r);
+        if (dx === 0 && dy === 0) continue;
         const x = fm.x + dx;
         const y = fm.y + dy;
         if (x < 0 || y < 0 || x >= GRID || y >= GRID) continue;
@@ -69,8 +92,21 @@ export class SimulationEngine {
           emoji: SimulationEngine._randomFoodEmoji('hq'),
           quality: 'hq', units, maxUnits: units,
         });
+        spawned = true;
         break;
       }
+
+      if (spawned) {
+        fm.spawnsRemaining--;
+        if (fm.spawnsRemaining <= 0) {
+          toDelete.push(fk);
+        }
+      }
+    }
+    for (const fk of toDelete) {
+      const fm = world.farms.get(fk);
+      world.farms.delete(fk);
+      if (fm) log(world, 'destroy', `Farm @${fm.x},${fm.y} exhausted`, null, { x: fm.x, y: fm.y });
     }
   }
 
@@ -267,32 +303,6 @@ export class SimulationEngine {
     world.clouds = remaining;
   }
 
-  // ── Farm building ──
-
-  private static _tryBuildFarm(world: World, agent: Agent): void {
-    if (agent.energy < TUNE.farmEnergyCost) return;
-    if (Math.random() >= TUNE.buildFarmChance) return;
-    const adj: [number, number][] = [
-      [agent.cellX + 1, agent.cellY],
-      [agent.cellX - 1, agent.cellY],
-      [agent.cellX, agent.cellY + 1],
-      [agent.cellX, agent.cellY - 1],
-    ];
-    const free = adj.filter(
-      ([x2, y2]) => !world.grid.isBlocked(x2, y2) && !world.farms.has(key(x2, y2))
-    );
-    if (!free.length) return;
-    const [x, y] = free[rndi(0, free.length - 1)];
-    world.farms.set(key(x, y), { id: uuid(), x, y });
-    agent.drainEnergy(TUNE.farmEnergyCost);
-    agent.addXp(TUNE.xp.perBuildFarm);
-    log(world, 'build', `${agent.name} built farm`, agent.id, { x, y });
-    while (agent.canLevelUp()) {
-      agent.levelUp();
-      log(world, 'level', `${agent.name} leveled to ${agent.level}`, agent.id, {});
-    }
-  }
-
   // ── Food seeking ──
 
   private static _stepTowardFood(world: World, agent: Agent): boolean {
@@ -339,7 +349,7 @@ export class SimulationEngine {
         if (block && block.units > 0 && !world.flagCells.has(k)) {
           const resourceType = block.quality === 'hq' ? 'food_hq' : 'food_lq';
           if (!agent.action) {
-            agent.action = ActionFactory.createHarvest(resourceType, { x: nx, y: ny });
+            agent.action = ActionFactory.createHarvest(resourceType, { x: nx, y: ny }, agent.inspiration);
             return;
           }
         }
@@ -411,7 +421,7 @@ export class SimulationEngine {
         const block = world.waterBlocks.get(k);
         if (block && block.units > 0) {
           if (!agent.action) {
-            agent.action = ActionFactory.createHarvest('water', { x: nx, y: ny });
+            agent.action = ActionFactory.createHarvest('water', { x: nx, y: ny }, agent.inspiration);
             return;
           }
         }
@@ -467,7 +477,7 @@ export class SimulationEngine {
       const tree = world.treeBlocks.get(k);
       if (tree && tree.units > 0) {
         if (!agent.action) {
-          agent.action = ActionFactory.createHarvest('wood', { x: nx, y: ny });
+          agent.action = ActionFactory.createHarvest('wood', { x: nx, y: ny }, agent.inspiration);
           return true;
         }
       }
@@ -585,6 +595,8 @@ export class SimulationEngine {
       agent.energy -= 0.0625;
       // Passive fullness decay
       agent.drainFullness(TUNE.fullness.passiveDecay);
+      // Passive inspiration decay
+      agent.inspiration = Math.max(0, agent.inspiration - TUNE.inspiration.passiveDecay);
       // Poop timer decay
       if (agent.poopTimerMs > 0) agent.poopTimerMs -= BASE_TICK_MS;
       agent.lockMsRemaining = Math.max(0, (agent.lockMsRemaining || 0) - BASE_TICK_MS);
@@ -601,7 +613,9 @@ export class SimulationEngine {
           agent.action.type !== 'withdraw' &&
           agent.action.type !== 'pickup' &&
           agent.action.type !== 'poop' &&
-          agent.action.type !== 'clean'
+          agent.action.type !== 'clean' &&
+          agent.action.type !== 'play' &&
+          agent.action.type !== 'build_farm'
         ) {
           agent.action = null;
         }
@@ -703,6 +717,22 @@ export class SimulationEngine {
                   }
                 }
 
+                // Play near interactable block when inspiration is low
+                if (!agent.action && agent.inspiration < TUNE.inspiration.seekThreshold) {
+                  const adjPlay: [number, number][] = [
+                    [agent.cellX + 1, agent.cellY], [agent.cellX - 1, agent.cellY],
+                    [agent.cellX, agent.cellY + 1], [agent.cellX, agent.cellY - 1],
+                  ];
+                  for (const [nx, ny] of adjPlay) {
+                    const ak = key(nx, ny);
+                    if (world.foodBlocks.has(ak) || world.waterBlocks.has(ak) || world.treeBlocks.has(ak) ||
+                        world.farms.has(ak) || world.poopBlocks.has(ak) || world.seedlings.has(ak) || world.flagCells.has(ak)) {
+                      ActionFactory.tryStart(agent, 'play', { targetPos: { x: nx, y: ny } });
+                      break;
+                    }
+                  }
+                }
+
                 // Deposit at own flag if nearby and has surplus inventory
                 if (!agent.action && agent.factionId && agent.inventoryTotal() >= 3) {
                   const flag = world.flags.get(agent.factionId);
@@ -712,6 +742,12 @@ export class SimulationEngine {
                       : water >= wood ? 'water' : 'wood';
                     ActionFactory.tryStart(agent, 'deposit', { resourceType: rt });
                   }
+                }
+
+                // Build farm if agent has enough resources
+                if (!agent.action && agent.inventory.wood >= TUNE.farm.woodCost &&
+                    agent.energy >= TUNE.farm.energyCost && Math.random() < 0.03) {
+                  ActionFactory.tryStart(agent, 'build_farm');
                 }
 
                 if (!agent.action) {
@@ -727,9 +763,6 @@ export class SimulationEngine {
             }
           }
 
-          // Farm building chance
-          if (agent.energy >= 120 && Math.random() < 0.01)
-            SimulationEngine._tryBuildFarm(world, agent);
         }
       }
 

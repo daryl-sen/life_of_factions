@@ -135,6 +135,8 @@ export class Agent {
     if (this.fullness > TUNE.fullness.max) this.fullness = TUNE.fullness.max;
     if (this.hygiene < 0) this.hygiene = 0;
     if (this.hygiene > 100) this.hygiene = 100;
+    if (this.inspiration < 0) this.inspiration = 0;
+    if (this.inspiration > 100) this.inspiration = 100;
   }
 
   get isDead(): boolean {

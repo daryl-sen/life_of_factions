@@ -175,6 +175,47 @@ Disease can be cured in two ways:
 1. **Heal action** from another agent (on heal completion, disease is removed)
 2. **Hygiene recovery** above 80 (automatic cure)
 
+## Inspiration System (Phase 6)
+
+Inspiration is an active need that affects agent action efficiency. It decays passively and is recovered through specific actions.
+
+### Inspiration Properties
+
+| Property | Value |
+|----------|-------|
+| Minimum | 0 |
+| Maximum | 100 |
+| Starting | 50 |
+| Passive decay | -0.015 per tick |
+| Seek threshold | < 40 (decision priority 7c: seek play or clean poop) |
+
+### Recovery Sources
+
+| Source | Amount | Details |
+|--------|--------|---------|
+| Play action | +15 | Adjacent to any interactable block (1500–2500ms, 0.15 energy/sec) |
+| Clean action | +10 | Adjacent to poop block (800–1200ms, 0.25 energy/sec) |
+| Build farm action | +25 | Explicit build action (2000ms, 0.25 energy/sec, requires 3 wood + 6 energy) |
+
+### Duration Scaling
+
+Inspiration affects action duration at creation time:
+
+| Inspiration Level | Duration Multiplier | Effect |
+|-------------------|-------------------|--------|
+| < 20 | ×1.5 | Sluggish — actions take 50% longer |
+| 20–70 | ×1.0 | Normal — no scaling |
+| > 70 | ×0.75 | Efficient — actions complete 25% faster |
+
+This scaling is applied **once** when the action is created, not continuously during the action. It affects all action types.
+
+### Inspiration-Seeking Decision Priority
+
+When inspiration < 40 (decision priority 7c):
+
+1. **Play** if adjacent to any interactable block (food, water, tree, farm, poop, seedling, or flag)
+2. **Clean poop** if adjacent to a poop block (also grants +10 inspiration)
+
 ## Placeholder Needs
 
 The following needs are tracked on agents but have limited gameplay effect:
@@ -182,7 +223,6 @@ The following needs are tracked on agents but have limited gameplay effect:
 | Need | Starting Value | Range | Notes |
 |------|---------------|-------|-------|
 | Social | 50 | 0–100 | No gameplay effect |
-| Inspiration | 50 | 0–100 | +10 from clean action (Phase 5) |
 
 ## Inventory System
 
@@ -565,51 +605,116 @@ Faction flags serve as communal resource storage. See `docs/07-factions.md` for 
 | Deposit/Withdraw energy cost | None |
 | On flag destruction | All stored resources drop as a loot bag |
 
-## Farms
+## Farms (Reworked in Phase 6)
 
 ### Farm Properties
 
 | Property | Value |
 |----------|-------|
-| Build cost | 12 energy |
-| Build chance | 3.125% per tick (when eligible) |
-| Boost radius | 3 cells |
+| Build cost | 3 wood + 6 energy (explicit build_farm action) |
+| Build duration | 2000ms (fixed) |
+| Build energy cost | 0.25 energy/sec |
+| Build rewards | +15 XP, +25 inspiration |
 | Emoji | 🌻 |
 | Blocks movement | Yes |
+| Spawn radius | 1 cell (adjacent cells only) |
+| Spawns remaining | 10 (max, per farm) |
+| Spawn interval | 15–25 seconds between food spawns |
+| Max nearby food | 4 food blocks within radius 1 |
+| Destruction | Farm removed when spawnsRemaining reaches 0 |
 
-### Building Farms
+### Building Farms (Phase 6 — Explicit Action)
 
-Agents build farms when:
+The old random-chance farm building mechanic has been replaced by an explicit `build_farm` action. Agents must have sufficient resources and energy to build.
 
-1. Energy >= 120 (well-fed)
-2. Random check passes (1% per tick)
+**Requirements:**
+1. 3 wood in inventory
+2. 6 energy available
 3. Adjacent free cell available
 
 ```javascript
 function tryBuildFarm(world, agent) {
-  if (agent.energy < 12) return
-  if (random() >= 0.03125) return
+  if (agent.inventory.wood < 3) return
+  if (agent.energy < 6) return
 
-  adjacent = getFreeAdjacentCells(agent)
+  const adjacent = getFreeAdjacentCells(agent)
   if (adjacent.length === 0) return
 
-  spot = random(adjacent)
-  world.farms.set(key(spot.x, spot.y), {id, x, y})
-  agent.energy -= 12
+  // Start build_farm action (2000ms, 0.25 energy/sec)
+  // On completion:
+  agent.inventory.wood -= 3
+  const spot = random(adjacent)
+  world.farms.set(key(spot.x, spot.y), {
+    id: generateId(),
+    x: spot.x,
+    y: spot.y,
+    spawnsRemaining: 10,
+    spawnTimerMs: random(15000, 25000)
+  })
+  agent.xp += 15
+  agent.inspiration = min(100, agent.inspiration + 25)
+  levelCheck(world, agent)
 }
 ```
 
-### Farm Benefits
+### Farm Spawn System
 
-**Crop spawn boost:**
-- Cells within radius 3 have increased spawn probability
-- Boost decreases with distance from farm
-- Multiple farms stack multiplicatively
+Each farm autonomously produces HQ food blocks on a timer:
 
-**Strategic value:**
-- Creates local food abundance
-- Reduces foraging time
-- Benefits all agents (not just builder)
+| Property | Value |
+|----------|-------|
+| `spawnsRemaining` | Starts at 10, decremented each time a food block is spawned |
+| `spawnTimerMs` | 15,000–25,000ms (randomized per spawn cycle) |
+| Spawn location | Random free cell within radius 1 (adjacent cells) |
+| Max nearby food | Farm will **not** spawn food if there are already 4 or more food blocks within radius 1 |
+| Food type | HQ food (2–4 units) |
+| Farm destruction | When `spawnsRemaining` reaches 0, the farm is removed from the grid |
+
+```javascript
+function processFarmSpawns(world, dtMs) {
+  for (const farm of world.farms.values()) {
+    farm.spawnTimerMs -= dtMs
+    if (farm.spawnTimerMs <= 0) {
+      // Check nearby food count
+      const nearbyFood = countFoodBlocksInRadius(world, farm.x, farm.y, 1)
+      if (nearbyFood < 4) {
+        // Spawn HQ food on adjacent free cell
+        spawnHQFood(world, farm.x, farm.y, radius=1)
+        farm.spawnsRemaining -= 1
+      }
+      // Reset timer regardless
+      farm.spawnTimerMs = random(15000, 25000)
+
+      if (farm.spawnsRemaining <= 0) {
+        world.farms.delete(key(farm.x, farm.y))
+      }
+    }
+  }
+}
+```
+
+### Resource Flow: Wood to Food Production
+
+The farm system creates a meaningful resource conversion cycle:
+
+```
+Wood (harvested from trees)
+  → 3 wood consumed by build_farm action
+  → Farm placed (🌻)
+  → Farm spawns up to 10 HQ food blocks over its lifetime (15–25s intervals)
+  → HQ food harvested by agents into inventory
+  → Agents eat food to restore fullness
+```
+
+This cycle gives wood a strategic purpose beyond inventory filler and creates a renewable food production pipeline that eventually exhausts, encouraging agents to build new farms.
+
+### Strategic Value
+
+- **Resource investment:** Building farms requires forethought (accumulating 3 wood)
+- **Finite production:** Each farm has a limited lifespan (10 spawns), creating ongoing demand for new farms
+- **Local food abundance:** Farms create food clusters that attract agents
+- **Benefits all agents:** Any agent can harvest from any farm's food output
+- **Inspiration reward:** The +25 inspiration bonus from building encourages farm construction
 
 ## Economy Balance
 
@@ -678,12 +783,28 @@ Energy Drains:
   - Harvest (food): 0.25/sec
   - Harvest (water): 0.25/sec
   - Harvest (wood): 0.25/sec
-  - Building: 12 (farm)
+  - Build farm: 0.25/sec over 2000ms (+ 3 wood from inventory)
 
 Clean (poop block → removed):
   → Removes adjacent poop block
   → +10 inspiration
   → -0.25 energy/sec (800-1200ms)
+
+Play (adjacent to interactable block):
+  → +15 inspiration
+  → -3 hygiene if near poop
+  → -0.15 energy/sec (1500-2500ms)
+
+Build Farm (3 wood → farm):
+  → -3 wood from inventory
+  → Spawns farm (🌻) on adjacent free cell
+  → +15 XP, +25 inspiration
+  → -0.25 energy/sec (2000ms fixed)
+  → Farm produces up to 10 HQ food blocks (15-25s interval)
+
+Inspiration Drains:
+  - Passive: -0.015/tick
+  - Duration scaling: < 20 → ×1.5 (slower actions); > 70 → ×0.75 (faster actions)
 
 Hygiene Drains:
   - Passive: ~0.02/tick
