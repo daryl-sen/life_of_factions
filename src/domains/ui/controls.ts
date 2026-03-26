@@ -1,5 +1,5 @@
 import { key, rndi, uuid } from '../../shared/utils';
-import { LOG_CATS } from '../../shared/constants';
+import { GRID, LOG_CATS, OBSTACLE_EMOJIS, TUNE } from '../../shared/constants';
 import { RingLog } from '../../shared/utils';
 import type { World } from '../world';
 import { AgentFactory } from '../agent';
@@ -14,6 +14,16 @@ function seedEnvironment(world: World): void {
     const y = rndi(5, 56);
     world.farms.set(key(x, y), { id: uuid(), x, y });
   }
+  // Scatter random obstacles
+  const obstacleCount = rndi(15, 30);
+  for (let i = 0; i < obstacleCount; i++) {
+    const { x, y } = world.grid.randomFreeCell();
+    const emoji = OBSTACLE_EMOJIS[Math.floor(Math.random() * OBSTACLE_EMOJIS.length)];
+    world.obstacles.set(key(x, y), { id: uuid(), x, y, emoji, hp: 12, maxHp: 12 });
+  }
+  SimulationEngine.seedInitialTrees(world, rndi(8, 15));
+  SimulationEngine.seedInitialWater(world, rndi(3, 6));
+  SimulationEngine.seedInitialFood(world, rndi(5, 10));
 }
 
 export class Controls {
@@ -112,6 +122,17 @@ export class Controls {
     buttons.btnSpawnCrop?.addEventListener('click', () => {
       const { x, y } = world.grid.randomFreeCell();
       SimulationEngine.addCrop(world, x, y);
+    });
+
+    buttons.btnSpawnTree?.addEventListener('click', () => {
+      SimulationEngine.addTree(world);
+    });
+
+    buttons.btnSpawnCloud?.addEventListener('click', () => {
+      const x = rndi(0, GRID - 1);
+      const y = rndi(0, GRID - 1);
+      const lifetime = rndi(TUNE.cloud.lifetimeRange[0], TUNE.cloud.lifetimeRange[1]);
+      world.clouds.push({ id: uuid(), x, y, spawnedAtMs: performance.now(), lifetimeMs: lifetime, rained: false });
     });
 
     buttons.btnSave?.addEventListener('click', () => PersistenceManager.export(world, doRenderLog));

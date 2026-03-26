@@ -9,10 +9,15 @@ Each tick, agents follow this decision hierarchy:
 ```
 1. Process current action (if any)
 2. If not acting:
-   a. Move along path (if has path)
-   b. Plan new behavior (if no path)
-      - If hungry (energy < 40): seek food
-      - Otherwise: consider interactions, then roam
+   a. Energy < 20: mandatory sleep
+   b. Under attack: flee or retaliate
+   c. Health < 30% maxHP: seek faction flag for healing
+   d. Fullness < 20: urgent food seeking
+   e. Energy < 40: voluntary sleep
+   f. Normal state:
+      - Fullness < 40: proactive food seeking
+      - Reproduction, attack, help/heal/talk
+      - Roam
 ```
 
 ## State Machine
@@ -28,8 +33,8 @@ If `agent.action` is not null:
 5. On completion: apply final effects, clear action
 
 **Action cancellation:**
-- If energy drops below 40 (except for attack)
 - If target moves out of range
+- Sleep is interruptible by attack
 
 ### State 2: Moving
 
@@ -46,38 +51,55 @@ If agent has a valid path (`path` and `pathIdx < path.length`):
 
 ### State 3: Deciding
 
-When not acting and not moving, agents decide their next behavior:
+When not acting and not moving, agents follow the priority-based decision hierarchy:
 
 ```
-if (energy < 40) {
-  // Hungry - food is priority
-  if (random < 0.4) {
-    considerInteract()  // May attack for resources
-  } else {
-    seekFoodWhenHungry()
-  }
+if (energy < 20) {
+  startSleep()                    // Mandatory sleep
+} else if (underAttack) {
+  fleeOrRetaliate()               // Survival response
+} else if (health < maxHealth * 0.3) {
+  seekFactionFlag()               // Seek healing aura
+} else if (fullness < 20) {
+  seekFoodUrgently()              // Urgent food seeking
+} else if (energy < 40) {
+  startSleep()                    // Voluntary sleep
 } else {
-  // Well-fed - social and exploration
-  considerInteract()
-  if (!action && !path) {
-    biasedRoam()
+  // Normal state
+  if (fullness < 40) {
+    seekFoodProactively()         // Proactive food seeking
+  } else {
+    considerInteract()            // Reproduce, attack, help/heal/talk
+    if (!action && !path) {
+      biasedRoam()
+    }
   }
 }
 ```
 
 ## Priority System
 
-### Hungry State (energy < 40)
+### Priority 1: Mandatory Sleep (energy < 20)
+Agent immediately begins sleep action. Cannot be overridden except by attack interruption.
 
+### Priority 2: Under Attack
+Flee or retaliate based on personality traits.
+
+### Priority 3: Low Health (health < 30% maxHP)
+Seek nearest faction flag for healing aura.
+
+### Priority 4: Urgent Hunger (fullness < 20)
 1. **Harvest** - If standing on crop
 2. **Move to food** - Use food field or pathfinding
-3. **Attack** - 40% chance to consider interaction (may attack)
 
-### Well-Fed State (energy >= 40)
+### Priority 5: Voluntary Sleep (energy < 40)
+Agent chooses to sleep to restore energy before it becomes critical.
 
-1. **Interact** - Consider social/combat actions
-2. **Roam** - Biased wandering based on travel preference
-3. **Build** - 1% chance to build farm if energy >= 120
+### Priority 6: Normal State
+1. **Proactive food seeking** - If fullness < 40, seek crops
+2. **Interact** - Consider reproduction, combat, social actions
+3. **Roam** - Biased wandering based on travel preference
+4. **Build** - 1% chance to build farm if energy >= 120
 
 ## Path Planning Budget
 
@@ -111,10 +133,13 @@ See [Social Behavior](05-social-behavior.md) for details.
 Agents are locked in place during certain actions:
 
 **Locking actions:**
-- `talk`, `quarrel`, `heal`, `help`, `reproduce`
+- `talk`, `quarrel`, `heal`, `help`, `reproduce`, `sleep`
 
 **Non-locking actions:**
 - `attack` (agents can flee while being attacked)
+
+**Sleep interruption:**
+- Sleep is interruptible by incoming attack
 
 **Lock exceptions:**
 - If locked agent is being attacked, they can move
@@ -141,36 +166,55 @@ For efficient food seeking, a distance field is maintained:
              YES            NO              │
               │              │               │
               ▼              ▼               │
-    ┌──────────────┐  ┌──────────────┐      │
-    │ Process      │  │ Has path?    │      │
-    │ action       │  └────────┬─────┘      │
-    └──────────────┘           │             │
-                               │      ┌──────┴──────┐
-                          ┌────┴─────┐NO           YES│
-                          │ Move one │               │
-                          │ step     │               │
-                          └────┬─────┘               │
-                               │                     │
-                               ▼                     │
-                        ┌──────────────┐            │
-                        │ Need path?   │◄───────────┘
-                        └────────┬─────┘
-                                 │
-                   ┌─────────────┼─────────────┐
-                   │             │             │
-             energy<40     energy>=40    energy>=120
-                   │             │             │
-                   ▼             ▼             ▼
-            ┌──────────┐  ┌──────────┐  ┌──────────┐
-            │ Seek     │  │ Consider │  │ 1% build │
-            │ food     │  │ interact │  │ farm     │
-            └──────────┘  └────┬─────┘  └──────────┘
-                               │
-                               ▼
-                        ┌──────────┐
-                        │ Biased   │
-                        │ roam     │
-                        └──────────┘
+    ┌──────────────┐  ┌──────────────────┐  │
+    │ Process      │  │ energy < 20?     │  │
+    │ action       │  └────────┬─────────┘  │
+    └──────────────┘      YES  │  NO        │
+                           │   │            │
+                           ▼   ▼            │
+                    ┌────────┐ ┌───────────────┐
+                    │ SLEEP  │ │ Under attack? │
+                    │(mand.) │ └───────┬───────┘
+                    └────────┘    YES  │  NO
+                                  │   │
+                                  ▼   ▼
+                           ┌────────┐ ┌────────────────┐
+                           │ Flee / │ │ HP < 30% max?  │
+                           │ Fight  │ └───────┬────────┘
+                           └────────┘    YES  │  NO
+                                         │   │
+                                         ▼   ▼
+                                  ┌────────┐ ┌────────────────┐
+                                  │ Seek   │ │ fullness < 20? │
+                                  │ flag   │ └───────┬────────┘
+                                  └────────┘    YES  │  NO
+                                                │   │
+                                                ▼   ▼
+                                         ┌────────┐ ┌────────────────┐
+                                         │ Urgent │ │ energy < 40?   │
+                                         │ food   │ └───────┬────────┘
+                                         └────────┘    YES  │  NO
+                                                       │   │
+                                                       ▼   ▼
+                                                ┌────────┐ ┌──────────────┐
+                                                │ SLEEP  │ │ Normal state │
+                                                │(vol.)  │ └──────┬───────┘
+                                                └────────┘        │
+                                                     ┌────────────┼────────────┐
+                                                     │            │            │
+                                               fullness<40   fullness>=40   energy>=120
+                                                     │            │            │
+                                                     ▼            ▼            ▼
+                                              ┌──────────┐ ┌──────────┐ ┌──────────┐
+                                              │ Seek     │ │ Consider │ │ 1% build │
+                                              │ food     │ │ interact │ │ farm     │
+                                              └──────────┘ └────┬─────┘ └──────────┘
+                                                                │
+                                                                ▼
+                                                         ┌──────────┐
+                                                         │ Biased   │
+                                                         │ roam     │
+                                                         └──────────┘
 ```
 
 ## Timing

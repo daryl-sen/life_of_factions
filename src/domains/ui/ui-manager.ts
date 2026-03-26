@@ -1,4 +1,4 @@
-import { LOG_CATS, AGENT_EMOJIS } from '../../shared/constants';
+import { LOG_CATS, AGENT_EMOJIS, TUNE } from '../../shared/constants';
 import { getIdleEmoji } from '../../shared/utils';
 import type { LogCategory } from '../../shared/types';
 import type { World } from '../world';
@@ -15,7 +15,9 @@ const CAT_ICONS: Record<string, string> = {
   quarrel: '\u{1F4A2}',
   attack: '\u2694\uFE0F',
   heal: '\u{1F49A}',
-  help: '\u{1F91D}',
+  share: '\u{1F91D}',
+  loot: '\uD83D\uDC5D',
+  hygiene: '\uD83E\uDDFC',
   reproduce: '\u{1F495}',
   build: '\u{1F528}',
   destroy: '\u{1F4A5}',
@@ -28,8 +30,8 @@ const CAT_ICONS: Record<string, string> = {
 
 function catClass(cat: string): string {
   if (cat === 'attack' || cat === 'quarrel' || cat === 'destroy' || cat === 'death') return 'cat-bad';
-  if (cat === 'heal' || cat === 'help' || cat === 'faction' || cat === 'level') return 'cat-good';
-  if (cat === 'reproduce' || cat === 'spawn' || cat === 'build') return 'cat-warn';
+  if (cat === 'heal' || cat === 'share' || cat === 'faction' || cat === 'level') return 'cat-good';
+  if (cat === 'reproduce' || cat === 'spawn' || cat === 'build' || cat === 'loot' || cat === 'hygiene') return 'cat-warn';
   return 'cat-info';
 }
 
@@ -51,10 +53,12 @@ export interface DomRefs {
     btnPause: HTMLButtonElement | null;
     btnResume: HTMLButtonElement | null;
     btnSpawnCrop: HTMLButtonElement | null;
-    btnDrawWalls: HTMLButtonElement | null;
-    btnEraseWalls: HTMLButtonElement | null;
+    btnDrawObstacles: HTMLButtonElement | null;
+    btnEraseObstacles: HTMLButtonElement | null;
     btnSave: HTMLButtonElement | null;
     btnLoad: HTMLButtonElement | null;
+    btnSpawnTree: HTMLButtonElement | null;
+    btnSpawnCloud: HTMLButtonElement | null;
   };
   fileLoad: HTMLInputElement | null;
   ranges: {
@@ -77,7 +81,7 @@ export interface DomRefs {
     stFactions: HTMLElement | null;
     stCrops: HTMLElement | null;
     stFarms: HTMLElement | null;
-    stWalls: HTMLElement | null;
+    stObstacles: HTMLElement | null;
     stFlags: HTMLElement | null;
     stTick: HTMLElement | null;
     stFps: HTMLElement | null;
@@ -86,6 +90,8 @@ export interface DomRefs {
     stTickMax: HTMLElement | null;
     stBirths: HTMLElement | null;
     stDeaths: HTMLElement | null;
+    stWater: HTMLElement | null;
+    stTrees: HTMLElement | null;
   };
   barEls: {
     barAgents: HTMLElement | null;
@@ -111,10 +117,12 @@ export class UIManager {
         btnPause: qs('#btnPause') as HTMLButtonElement | null,
         btnResume: qs('#btnResume') as HTMLButtonElement | null,
         btnSpawnCrop: qs('#btnSpawnCrop') as HTMLButtonElement | null,
-        btnDrawWalls: qs('#btnDrawWalls') as HTMLButtonElement | null,
-        btnEraseWalls: qs('#btnEraseWalls') as HTMLButtonElement | null,
+        btnDrawObstacles: qs('#btnDrawObstacles') as HTMLButtonElement | null,
+        btnEraseObstacles: qs('#btnEraseObstacles') as HTMLButtonElement | null,
         btnSave: qs('#btnSave') as HTMLButtonElement | null,
         btnLoad: qs('#btnLoad') as HTMLButtonElement | null,
+        btnSpawnTree: qs('#btnSpawnTree') as HTMLButtonElement | null,
+        btnSpawnCloud: qs('#btnSpawnCloud') as HTMLButtonElement | null,
       },
       fileLoad: qs('#fileLoad') as HTMLInputElement | null,
       ranges: {
@@ -137,7 +145,7 @@ export class UIManager {
         stFactions: qs('#stFactions'),
         stCrops: qs('#stCrops'),
         stFarms: qs('#stFarms'),
-        stWalls: qs('#stWalls'),
+        stObstacles: qs('#stObstacles'),
         stFlags: qs('#stFlags'),
         stTick: qs('#stTick'),
         stFps: qs('#stFps'),
@@ -146,6 +154,8 @@ export class UIManager {
         stTickMax: qs('#stTickMax'),
         stBirths: qs('#stBirths'),
         stDeaths: qs('#stDeaths'),
+        stWater: qs('#stWater'),
+        stTrees: qs('#stTrees'),
       },
       barEls: {
         barAgents: qs('#barAgents'),
@@ -269,12 +279,17 @@ export class UIManager {
     const s = stats as Record<string, HTMLElement | null>;
     if (s.stAgents) s.stAgents.textContent = String(world.agents.length);
     if (s.stFactions) s.stFactions.textContent = String(world.factions.size);
-    if (s.stCrops) s.stCrops.textContent = String(world.crops.size);
+    if (s.stCrops) s.stCrops.textContent = String(world.foodBlocks.size);
     if (s.stFarms) s.stFarms.textContent = String(world.farms.size);
-    if (s.stWalls) s.stWalls.textContent = String(world.walls.size);
+    if (s.stObstacles) s.stObstacles.textContent = String(world.obstacles.size);
     if (s.stFlags) s.stFlags.textContent = String(world.flags.size);
     if (s.stBirths) s.stBirths.textContent = String(world.totalBirths);
     if (s.stDeaths) s.stDeaths.textContent = String(world.totalDeaths);
+    // Count unique water blocks (large blocks share references across cells)
+    const seenWater = new Set<string>();
+    for (const wb of world.waterBlocks.values()) seenWater.add(wb.id);
+    if (s.stWater) s.stWater.textContent = String(seenWater.size);
+    if (s.stTrees) s.stTrees.textContent = String(world.treeBlocks.size);
     if (s.stTick) s.stTick.textContent = UIManager.formatTickCount(world.tick);
     if (s.stFps) s.stFps.textContent = fps.toFixed(0);
     if (s.stTickAvg) s.stTickAvg.textContent = tAvg.toFixed(1);
@@ -282,7 +297,7 @@ export class UIManager {
     if (s.stTickMax) s.stTickMax.textContent = tMax.toFixed(1);
     if (s.barAgents) s.barAgents.textContent = String(world.agents.length).padStart(2, '0');
     if (s.barFactions) s.barFactions.textContent = String(world.factions.size).padStart(2, '0');
-    if (s.barCrops) s.barCrops.textContent = String(world.crops.size).padStart(2, '0');
+    if (s.barCrops) s.barCrops.textContent = String(world.foodBlocks.size).padStart(2, '0');
   }
 
   static rebuildFactionsListIfNeeded(world: World, factionsList: HTMLElement | null): void {
@@ -326,12 +341,16 @@ export class UIManager {
 
       for (const { fid, f, members, avgLvl } of entries) {
         const color = f.color;
+        const flag = world.flags.get(fid);
+        const storageStr = flag?.storage
+          ? ` &middot; 🍖${flag.storage.food} 💧${flag.storage.water} 🪵${flag.storage.wood}`
+          : '';
         const div = document.createElement('div');
         div.className = 'faction-item';
         div.innerHTML = `
           <div class="faction-color" style="background:${color}"></div>
           <span class="faction-name">${fid.slice(0, 8)}</span>
-          <span class="faction-detail">${members.length} members &middot; Lv ${avgLvl.toFixed(1)}</span>
+          <span class="faction-detail">${members.length} members &middot; Lv ${avgLvl.toFixed(1)}${storageStr}</span>
         `;
         factionsList.appendChild(div);
       }
@@ -377,6 +396,10 @@ export class UIManager {
               ? `<span class="badge-faction" style="background:${factionColor}22;color:${factionColor};border-color:${factionColor}55">${a.factionId.slice(0, 8).toUpperCase()}</span>`
               : ''
             }
+            ${a.diseased
+              ? `<span class="badge-action" style="background:#4ade8022;color:#4ade80;border-color:#4ade8055">🤢 DISEASED</span>`
+              : ''
+            }
             ${actionType
               ? `<span class="badge-action">${actionType.toUpperCase()}</span>`
               : ''
@@ -397,20 +420,64 @@ export class UIManager {
         <div>
           <div class="agent-stat-header">
             <span>ENERGY</span>
-            <span>${a.energy.toFixed(1)}</span>
+            <span>${a.energy.toFixed(1)}/${a.maxEnergy}</span>
           </div>
           <div class="agent-stat-bar">
-            <div class="agent-stat-fill energy" style="width:${Math.min(100, a.energy / 2)}%"></div>
+            <div class="agent-stat-fill energy" style="width:${Math.min(100, (a.energy / a.maxEnergy) * 100)}%"></div>
+          </div>
+        </div>
+        <div>
+          <div class="agent-stat-header">
+            <span>FULLNESS</span>
+            <span>${a.fullness.toFixed(1)}/100</span>
+          </div>
+          <div class="agent-stat-bar">
+            <div class="agent-stat-fill" style="background:#f0a040;width:${a.fullness}%"></div>
+          </div>
+        </div>
+        <div>
+          <div class="agent-stat-header">
+            <span>INSPIRATION</span>
+            <span>${a.inspiration.toFixed(1)}/100</span>
+          </div>
+          <div class="agent-stat-bar">
+            <div class="agent-stat-fill" style="background:#c084fc;width:${a.inspiration}%"></div>
+          </div>
+        </div>
+        <div>
+          <div class="agent-stat-header">
+            <span>SOCIAL</span>
+            <span>${a.social.toFixed(1)}/100</span>
+          </div>
+          <div class="agent-stat-bar">
+            <div class="agent-stat-fill" style="background:#fb923c;width:${a.social}%"></div>
+          </div>
+        </div>
+        <div>
+          <div class="agent-stat-header">
+            <span>HYGIENE</span>
+            <span>${a.hygiene.toFixed(1)}/100</span>
+          </div>
+          <div class="agent-stat-bar">
+            <div class="agent-stat-fill" style="background:#38bdf8;width:${a.hygiene}%"></div>
+          </div>
+        </div>
+        <div>
+          <div class="agent-stat-header">
+            <span>INVENTORY</span>
+            <span>${a.inventoryTotal()}/${TUNE.inventory.capacity}</span>
+          </div>
+          <div style="font-size:10px;margin-top:2px;color:var(--muted)">
+            \u{1F356} ${a.inventory.food} &nbsp; \u{1F4A7} ${a.inventory.water} &nbsp; \u{1FAB5} ${a.inventory.wood}
           </div>
         </div>
       </div>
       <div class="agent-details" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border)">
         <div style="color:var(--muted)">POSITION</div><div>${a.cellX}, ${a.cellY}</div>
         <div style="color:var(--muted)">ATTACK</div><div>${a.attack.toFixed(1)}</div>
+        <div style="color:var(--muted)">XP</div><div>${a.xp} / ${a.xpToNextLevel()}</div>
         <div style="color:var(--muted)">AGE</div><div>${a.ageTicks} ticks</div>
-        <div style="color:var(--muted)">TRAVEL</div><div>${a.travelPref}</div>
-        <div style="color:var(--muted)">AGGRESSION</div><div>${a.aggression.toFixed(2)}</div>
-        <div style="color:var(--muted)">COOPERATION</div><div>${a.cooperation.toFixed(2)}</div>
+        <div style="color:var(--muted)">INSPIRATION</div><div>${a.inspiration.toFixed(0)}</div>
       </div>`;
   }
 

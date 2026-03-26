@@ -37,7 +37,7 @@ Factions form automatically under these conditions:
 
 **Condition 1: Social bonding**
 ```javascript
-// After talk, help, or heal action completes
+// After talk, share, or heal action completes
 if (!agent1.factionId && !agent2.factionId) {
   relationship = getRelationship(agent1, agent2)
   if (relationship >= 0.6) {
@@ -46,12 +46,12 @@ if (!agent1.factionId && !agent2.factionId) {
 }
 ```
 
-**Condition 2: Help recruitment**
+**Condition 2: Share recruitment**
 ```javascript
-// After help action completes
-if (helper.factionId && !recipient.factionId) {
-  if (random < 0.5 && getRelationship(helper, recipient) >= 0.4) {
-    setFaction(recipient, helper.factionId)
+// After share action completes
+if (sharer.factionId && !recipient.factionId) {
+  if (random < 0.5 && getRelationship(sharer, recipient) >= 0.4) {
+    setFaction(recipient, sharer.factionId)
   }
 }
 ```
@@ -95,7 +95,8 @@ flag = {
   x: spot.x,
   y: spot.y,
   hp: random(12, 18),
-  maxHp: 18
+  maxHp: 18,
+  storage: { food: 0, water: 0, wood: 0 }  // Phase 4
 }
 ```
 
@@ -108,6 +109,7 @@ flag = {
 | Heal Aura Radius | 4 cells |
 | Heal Aura Rate | 3.75 HP/tick |
 | Blocks movement | Yes |
+| Storage capacity (Phase 4) | 30 per resource type (food, water, wood) |
 
 ### Healing Aura
 
@@ -128,6 +130,63 @@ function applyFlagHealing(world) {
 
 **Effective healing:** ~15 HP per tick (at 40ms tick rate)
 
+### Flag Storage (Phase 4)
+
+Faction flags serve as communal resource storage for faction members. Each flag can store up to 30 units of each resource type (food, water, wood).
+
+#### Depositing Resources
+
+Agents deposit resources into their faction flag when they are adjacent to the flag and have >= 3 items in inventory. This is an opportunistic action -- agents deposit when passing near their flag, not as a high-priority seek action.
+
+```javascript
+function tryDeposit(world, agent, flag) {
+  if (manhattanDistance(agent, flag) !== 1) return false
+  if (agent.factionId !== flag.factionId) return false
+  if (agent.inventoryTotal() < 3) return false
+
+  // Start deposit action (300-500ms, no energy cost)
+  // On completion: transfer resources from inventory to flag storage
+  // Respects flag storage cap of 30 per type
+}
+```
+
+#### Withdrawing Resources
+
+Agents withdraw resources from their faction flag when they need food or water and are adjacent to the flag with stored resources.
+
+```javascript
+function tryWithdraw(world, agent, flag) {
+  if (manhattanDistance(agent, flag) !== 1) return false
+  if (agent.factionId !== flag.factionId) return false
+  // Agent must need resources (e.g., low fullness or hygiene)
+  // Flag must have relevant stored resources
+
+  // Start withdraw action (300-500ms, no energy cost)
+  // On completion: transfer resources from flag storage to inventory
+  // Respects agent inventory cap of 20 total
+}
+```
+
+#### Flag Destruction and Loot
+
+When a faction flag is destroyed, all stored resources are dropped as a loot bag (👝) at the flag's location. This makes flag destruction strategically significant -- destroying an enemy flag not only removes their healing aura but also makes their stored resources available for pickup.
+
+```javascript
+function destroyFlag(world, flag) {
+  // If flag has stored resources, spawn a loot bag
+  if (flag.storage.food > 0 || flag.storage.water > 0 || flag.storage.wood > 0) {
+    spawnLootBag(world, flag.x, flag.y, {
+      food: flag.storage.food,
+      water: flag.storage.water,
+      wood: flag.storage.wood
+    })
+  }
+
+  world.flagCells.delete(key(flag.x, flag.y))
+  world.flags.delete(flag.factionId)
+}
+```
+
 ## Faction Membership
 
 ### Joining
@@ -135,7 +194,7 @@ function applyFlagHealing(world) {
 Agents join factions through:
 
 1. **Formation:** Creating a new faction with another agent
-2. **Recruitment:** Being helped by a faction member (50% chance, rel ≥ 0.4)
+2. **Recruitment:** Being shared with by a faction member (50% chance, rel ≥ 0.4)
 3. **Birth:** Inheriting from parent(s)
 
 **Inheritance rules:**
@@ -182,9 +241,11 @@ function _disbandFaction(world, fid, reason) {
     if (agent):
       agent.factionId = null
 
-  // Destroy flag
+  // Destroy flag (drops stored resources as loot bag)
   flag = world.flags.get(fid)
   if (flag):
+    if (flag.storage.food > 0 || flag.storage.water > 0 || flag.storage.wood > 0):
+      spawnLootBag(world, flag.x, flag.y, flag.storage)
     world.flagCells.delete(key(flag.x, flag.y))
     world.flags.delete(fid)
 
@@ -201,36 +262,30 @@ function _disbandFaction(world, fid, reason) {
 - **Rate:** 3.75 HP per tick
 - **Requirement:** Must be faction member
 
-### 2. Food Sharing
+### 2. Flag Resource Storage (Phase 4)
 
-- **Share:** 30% of harvested energy
-- **Recipients:** Faction members within radius 5
-- **Distribution:** Equal split among recipients
+- **Storage capacity:** 30 per resource type (food, water, wood)
+- **Deposit:** Agents deposit when near own flag with >= 3 inventory items (300–500ms, no energy cost)
+- **Withdraw:** Agents withdraw when needing food/water and near own flag (300–500ms, no energy cost)
+- **Loot on destruction:** All stored resources drop as a loot bag (👝) when the flag is destroyed
 
-```javascript
-function harvestAt(world, agent, x, y) {
-  // ... harvest crop ...
+### 3. Resource Sharing (Phase 4)
 
-  if (agent.factionId):
-    recipients = agents where:
-      factionId === agent.factionId
-      id !== agent.id
-      distance(agent, member) <= 5
+- **Share action:** Agents transfer inventory resources (food, water, wood) to other agents
+- **Duration:** 300–500ms
+- **Cost:** 0.4 energy/sec
+- **Social bonus:** +8 social for sharer, +5 social for recipient
+- **Relationship:** +0.14 for both agents
+- **XP:** +5 for sharer
+- **Recruitment:** 50% chance at relationship >= 0.4
 
-    share = cropGain * 0.3  // 8.4 energy
-    perRecipient = share / recipients.length
-    for recipient in recipients:
-      recipient.energy = min(ENERGY_CAP, recipient.energy + perRecipient)
-}
-```
-
-### 3. Social Bonuses
+### 4. Social Bonuses
 
 - **Cooperation:** +0.25 probability when same-faction neighbors present
 - **Talk:** 10% improved relationship gain
 - **Quarrel:** 40% reduced relationship loss
 
-### 4. Building Synergy
+### 5. Building Synergy
 
 - Faction members cluster near flags
 - Farms built by members create local food abundance

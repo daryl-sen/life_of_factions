@@ -1,5 +1,5 @@
-import type { IActionState, IPosition, TravelPref } from '../../shared/types';
-import { TUNE, ENERGY_CAP } from '../../shared/constants';
+import type { IActionState, IInventory, IPosition } from '../../shared/types';
+import { TUNE } from '../../shared/constants';
 import { RelationshipMap } from './relationships';
 
 export class Agent {
@@ -13,6 +13,7 @@ export class Agent {
   health: number;
   maxHealth: number;
   energy: number;
+  maxEnergy: number;
   attack: number;
   level: number;
   ageTicks: number;
@@ -22,12 +23,23 @@ export class Agent {
   pathIdx: number;
   action: IActionState | null;
   lockMsRemaining: number;
-  travelPref: TravelPref;
   aggression: number;
   cooperation: number;
   replanAtTick: number;
   goal: IPosition | null;
   _underAttack: boolean;
+
+  // Needs system
+  fullness: number;
+  hygiene: number;
+  social: number;
+  inspiration: number;
+  xp: number;
+
+  // Inventory
+  inventory: IInventory;
+  poopTimerMs: number;
+  diseased: boolean;
 
   constructor(opts: {
     id: string;
@@ -37,6 +49,7 @@ export class Agent {
     health?: number;
     maxHealth?: number;
     energy?: number;
+    maxEnergy?: number;
     attack?: number;
     level?: number;
     ageTicks?: number;
@@ -46,11 +59,18 @@ export class Agent {
     pathIdx?: number;
     action?: IActionState | null;
     lockMsRemaining?: number;
-    travelPref?: TravelPref;
     aggression?: number;
     cooperation?: number;
     replanAtTick?: number;
     goal?: IPosition | null;
+    fullness?: number;
+    hygiene?: number;
+    social?: number;
+    inspiration?: number;
+    xp?: number;
+    inventory?: IInventory;
+    poopTimerMs?: number;
+    diseased?: boolean;
   }) {
     this.id = opts.id;
     this.name = opts.name;
@@ -62,6 +82,7 @@ export class Agent {
     this.health = opts.health ?? 100;
     this.maxHealth = opts.maxHealth ?? 100;
     this.energy = opts.energy ?? 100;
+    this.maxEnergy = opts.maxEnergy ?? TUNE.maxEnergyBase;
     this.attack = opts.attack ?? TUNE.baseDamage;
     this.level = opts.level ?? 1;
     this.ageTicks = opts.ageTicks ?? 0;
@@ -71,12 +92,21 @@ export class Agent {
     this.pathIdx = opts.pathIdx ?? 0;
     this.action = opts.action ?? null;
     this.lockMsRemaining = opts.lockMsRemaining ?? 0;
-    this.travelPref = opts.travelPref ?? 'near';
     this.aggression = opts.aggression ?? Math.random();
     this.cooperation = opts.cooperation ?? Math.random();
     this.replanAtTick = opts.replanAtTick ?? 0;
     this.goal = opts.goal ?? null;
     this._underAttack = false;
+
+    // Needs
+    this.fullness = opts.fullness ?? TUNE.fullness.start;
+    this.hygiene = opts.hygiene ?? TUNE.needs.hygieneStart;
+    this.social = opts.social ?? TUNE.needs.socialStart;
+    this.inspiration = opts.inspiration ?? TUNE.needs.inspirationStart;
+    this.xp = opts.xp ?? 0;
+    this.inventory = opts.inventory ?? { food: 0, water: 0, wood: 0 };
+    this.poopTimerMs = opts.poopTimerMs ?? 0;
+    this.diseased = opts.diseased ?? false;
   }
 
   takeDamage(amount: number): void {
@@ -92,22 +122,77 @@ export class Agent {
   }
 
   addEnergy(amount: number): void {
-    this.energy = Math.min(ENERGY_CAP, this.energy + amount);
+    this.energy = Math.min(this.maxEnergy, this.energy + amount);
   }
 
   clampStats(): void {
     if (this.energy < 0) this.energy = 0;
-    if (this.energy > ENERGY_CAP) this.energy = ENERGY_CAP;
+    if (this.energy > this.maxEnergy) this.energy = this.maxEnergy;
+    if (this.fullness < 0) this.fullness = 0;
+    if (this.fullness > TUNE.fullness.max) this.fullness = TUNE.fullness.max;
+    if (this.hygiene < 0) this.hygiene = 0;
+    if (this.hygiene > 100) this.hygiene = 100;
+    if (this.inspiration < 0) this.inspiration = 0;
+    if (this.inspiration > 100) this.inspiration = 100;
   }
 
   get isDead(): boolean {
     return this.health <= 0;
   }
 
+  // ── Fullness ──
+
+  drainFullness(amount: number): void {
+    this.fullness = Math.max(0, this.fullness - amount);
+  }
+
+  addFullness(amount: number): void {
+    this.fullness = Math.min(TUNE.fullness.max, this.fullness + amount);
+  }
+
+  // ── XP & Leveling ──
+
+  addXp(amount: number): void {
+    this.xp += amount;
+  }
+
+  xpToNextLevel(): number {
+    return this.level * TUNE.xp.perLevel;
+  }
+
+  canLevelUp(): boolean {
+    return this.xp >= this.xpToNextLevel() && this.level < TUNE.levelCap;
+  }
+
   levelUp(): void {
     if (this.level >= TUNE.levelCap) return;
+    this.xp -= this.xpToNextLevel();
     this.level++;
     this.maxHealth += 8;
     this.attack += 1.5;
+    this.maxEnergy += TUNE.maxEnergyPerLevel;
+  }
+
+  // ── Inventory ──
+
+  inventoryTotal(): number {
+    return this.inventory.food + this.inventory.water + this.inventory.wood;
+  }
+
+  inventoryFull(): boolean {
+    return this.inventoryTotal() >= TUNE.inventory.capacity;
+  }
+
+  addToInventory(type: keyof IInventory, amount: number): number {
+    const space = TUNE.inventory.capacity - this.inventoryTotal();
+    const actual = Math.min(amount, space);
+    this.inventory[type] += actual;
+    return actual;
+  }
+
+  removeFromInventory(type: keyof IInventory, amount: number): number {
+    const actual = Math.min(this.inventory[type], amount);
+    this.inventory[type] -= actual;
+    return actual;
   }
 }

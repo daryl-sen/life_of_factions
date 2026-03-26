@@ -1,4 +1,4 @@
-import { CELL, GRID, COLORS, AGENT_EMOJIS, WORLD_EMOJIS } from '../../shared/constants';
+import { CELL, GRID, COLORS, AGENT_EMOJIS, WORLD_EMOJIS, FOOD_EMOJIS, TUNE } from '../../shared/constants';
 import { getIdleEmoji } from '../../shared/utils';
 import type { World } from '../world';
 import type { Agent } from '../agent';
@@ -18,14 +18,21 @@ export class Renderer {
     );
 
     if (world.drawGrid) this._drawGrid(ctx, camera);
-    this._drawCrops(ctx, world);
+    this._drawWaterBlocks(ctx, world);
+    this._drawTreeBlocks(ctx, world);
+    this._drawSeedlings(ctx, world);
+    this._drawPoopBlocks(ctx, world);
+    this._drawFoodBlocks(ctx, world);
+    this._drawLootBags(ctx, world);
     this._drawFarms(ctx, world);
-    this._drawWalls(ctx, world);
+    this._drawObstacles(ctx, world);
     this._drawFlags(ctx, world);
 
     const pendingAttackLines: [Agent, Agent][] = [];
     this._drawAgents(ctx, world, pendingAttackLines);
     this._drawAttackLines(ctx, camera, pendingAttackLines);
+
+    this._drawClouds(ctx, world, camera);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
@@ -59,9 +66,60 @@ export class Renderer {
     ctx.drawImage(ec, x + (CELL - dw) / 2, y + (CELL - dh) / 2, dw, dh);
   }
 
-  private _drawCrops(ctx: CanvasRenderingContext2D, world: World): void {
-    for (const c of world.crops.values())
-      this._drawCellEmoji(ctx, c.x, c.y, c.emoji || WORLD_EMOJIS.crops[0]);
+  private _drawWaterBlocks(ctx: CanvasRenderingContext2D, world: World): void {
+    const drawn = new Set<string>();
+    for (const wb of world.waterBlocks.values()) {
+      if (drawn.has(wb.id)) continue;
+      drawn.add(wb.id);
+      const pct = wb.units / wb.maxUnits;
+      ctx.globalAlpha = 0.4 + 0.6 * pct;
+      for (const c of wb.cells) {
+        this._drawCellEmoji(ctx, c.x, c.y, WORLD_EMOJIS.water);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  private _drawTreeBlocks(ctx: CanvasRenderingContext2D, world: World): void {
+    for (const tree of world.treeBlocks.values()) {
+      const pct = tree.units / tree.maxUnits;
+      ctx.globalAlpha = 0.4 + 0.6 * pct;
+      this._drawCellEmoji(ctx, tree.x, tree.y, tree.emoji);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  private _drawSeedlings(ctx: CanvasRenderingContext2D, world: World): void {
+    for (const s of world.seedlings.values()) {
+      this._drawCellEmoji(ctx, s.x, s.y, WORLD_EMOJIS.seedling);
+    }
+  }
+
+  private _drawPoopBlocks(ctx: CanvasRenderingContext2D, world: World): void {
+    for (const poop of world.poopBlocks.values()) {
+      const fadeRatio = Math.max(0.3, poop.decayMs / TUNE.poop.decayMs);
+      ctx.globalAlpha = fadeRatio;
+      this._drawCellEmoji(ctx, poop.x, poop.y, WORLD_EMOJIS.poop);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  private _drawFoodBlocks(ctx: CanvasRenderingContext2D, world: World): void {
+    for (const fb of world.foodBlocks.values()) {
+      const pct = fb.units / fb.maxUnits;
+      ctx.globalAlpha = 0.4 + 0.6 * pct;
+      this._drawCellEmoji(ctx, fb.x, fb.y, fb.emoji || FOOD_EMOJIS.lq[0]);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  private _drawLootBags(ctx: CanvasRenderingContext2D, world: World): void {
+    for (const bag of world.lootBags.values()) {
+      const fadeRatio = Math.max(0.3, bag.decayMs / TUNE.lootBag.decayMs);
+      ctx.globalAlpha = fadeRatio;
+      this._drawCellEmoji(ctx, bag.x, bag.y, WORLD_EMOJIS.lootBag);
+      ctx.globalAlpha = 1;
+    }
   }
 
   private _drawFarms(ctx: CanvasRenderingContext2D, world: World): void {
@@ -69,11 +127,11 @@ export class Renderer {
       this._drawCellEmoji(ctx, f.x, f.y, WORLD_EMOJIS.farm);
   }
 
-  private _drawWalls(ctx: CanvasRenderingContext2D, world: World): void {
-    for (const w of world.walls.values()) {
-      const dmg = 1 - w.hp / w.maxHp;
+  private _drawObstacles(ctx: CanvasRenderingContext2D, world: World): void {
+    for (const o of world.obstacles.values()) {
+      const dmg = 1 - o.hp / o.maxHp;
       ctx.globalAlpha = dmg > 0 ? 1 - Math.min(0.7, dmg) : 1;
-      this._drawCellEmoji(ctx, w.x, w.y, WORLD_EMOJIS.wall);
+      this._drawCellEmoji(ctx, o.x, o.y, o.emoji);
       ctx.globalAlpha = 1;
     }
   }
@@ -184,5 +242,14 @@ export class Renderer {
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
+  }
+
+  private _drawClouds(ctx: CanvasRenderingContext2D, world: World, _camera: Camera): void {
+    for (const cloud of world.clouds) {
+      const fadeRatio = Math.max(0, cloud.lifetimeMs / 5000);
+      ctx.globalAlpha = Math.min(0.7, fadeRatio);
+      this._drawCellEmoji(ctx, cloud.x, cloud.y, WORLD_EMOJIS.cloud, CELL * 2);
+      ctx.globalAlpha = 1;
+    }
   }
 }

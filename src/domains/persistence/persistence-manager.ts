@@ -1,6 +1,6 @@
-import { CELL, GRID } from '../../shared/constants';
+import { CELL, GRID, TUNE } from '../../shared/constants';
 import { VERSION } from '../../shared/version';
-import { key } from '../../shared/utils';
+import { key, rndi } from '../../shared/utils';
 import type { World } from '../world';
 import type { DomRefs } from '../ui/ui-manager';
 import { Agent } from '../agent';
@@ -15,9 +15,9 @@ export class PersistenceManager {
       createdAtTick: f.createdAtTick,
     }));
     const flags = [...world.flags.values()];
-    const walls = [...world.walls.values()];
+    const obstacles = [...world.obstacles.values()];
     const farms = [...world.farms.values()];
-    const crops = [...world.crops.values()];
+    const foodBlocks = [...world.foodBlocks.values()];
     const agents = world.agents.map((a) => ({
       id: a.id,
       name: a.name,
@@ -26,6 +26,7 @@ export class PersistenceManager {
       health: a.health,
       maxHealth: a.maxHealth,
       energy: a.energy,
+      maxEnergy: a.maxEnergy,
       attack: a.attack,
       level: a.level,
       ageTicks: a.ageTicks,
@@ -42,9 +43,16 @@ export class PersistenceManager {
           }
         : null,
       lockMsRemaining: a.lockMsRemaining,
-      travelPref: a.travelPref,
       aggression: a.aggression,
       cooperation: a.cooperation,
+      fullness: a.fullness,
+      hygiene: a.hygiene,
+      social: a.social,
+      inspiration: a.inspiration,
+      xp: a.xp,
+      inventory: a.inventory,
+      poopTimerMs: a.poopTimerMs,
+      diseased: a.diseased,
     }));
     return {
       meta: { version: VERSION, savedAt: Date.now() },
@@ -61,15 +69,35 @@ export class PersistenceManager {
       },
       factions,
       flags,
-      walls,
+      obstacles,
       farms,
-      crops,
+      foodBlocks,
+      waterBlocks: PersistenceManager._serializeWaterBlocks(world),
+      treeBlocks: [...world.treeBlocks.values()],
+      seedlings: [...world.seedlings.values()],
+      lootBags: [...world.lootBags.values()],
+      poopBlocks: [...world.poopBlocks.values()],
       agents,
       log: { limit: world.log.limit, arr: world.log.arr },
       selectedId: world.selectedId,
       activeLogCats: [...world.activeLogCats],
       activeLogAgentId: world.activeLogAgentId || null,
     };
+  }
+
+  private static _serializeWaterBlocks(world: World): unknown[] {
+    const seen = new Set<string>();
+    const result: unknown[] = [];
+    for (const wb of world.waterBlocks.values()) {
+      if (seen.has(wb.id)) continue;
+      seen.add(wb.id);
+      result.push({
+        id: wb.id, x: wb.x, y: wb.y,
+        units: wb.units, maxUnits: wb.maxUnits,
+        size: wb.size, cells: wb.cells,
+      });
+    }
+    return result;
   }
 
   static export(world: World, doRenderLog: () => void): void {
@@ -124,18 +152,89 @@ export class PersistenceManager {
       world.factions.set(f.id, faction);
     }
     for (const fl of d.flags || []) {
-      world.flags.set(fl.factionId, { ...fl });
+      world.flags.set(fl.factionId, {
+        ...fl,
+        storage: fl.storage ?? { food: 0, water: 0, wood: 0 },
+      });
       world.flagCells.add(key(fl.x, fl.y));
     }
-    for (const w of d.walls || [])
-      world.walls.set(key(w.x, w.y), { ...w });
-    for (const fm of d.farms || [])
-      world.farms.set(key(fm.x, fm.y), { ...fm });
-    for (const c of d.crops || [])
-      world.crops.set(key(c.x, c.y), { ...c });
+    for (const o of d.obstacles || d.walls || [])
+      world.obstacles.set(key(o.x, o.y), { ...o, emoji: o.emoji || '🪨' });
+    for (const fm of d.farms || []) {
+      world.farms.set(key(fm.x, fm.y), {
+        ...fm,
+        spawnsRemaining: fm.spawnsRemaining ?? TUNE.farm.maxSpawns,
+        spawnTimerMs: fm.spawnTimerMs ?? rndi(TUNE.farm.spawnIntervalRange[0], TUNE.farm.spawnIntervalRange[1]),
+      });
+    }
+    for (const c of (d.foodBlocks || d.crops || [])) {
+      world.foodBlocks.set(key(c.x, c.y), {
+        id: c.id,
+        x: c.x,
+        y: c.y,
+        emoji: c.emoji,
+        quality: c.quality ?? 'lq',
+        units: c.units ?? 1,
+        maxUnits: c.maxUnits ?? 1,
+      });
+    }
+
+    // Restore water blocks
+    for (const wb of d.waterBlocks || []) {
+      const block = {
+        id: wb.id, x: wb.x, y: wb.y,
+        units: wb.units ?? 5, maxUnits: wb.maxUnits ?? 5,
+        size: wb.size ?? 'small',
+        cells: wb.cells ?? [{ x: wb.x, y: wb.y }],
+      };
+      for (const c of block.cells) {
+        world.waterBlocks.set(key(c.x, c.y), block);
+      }
+    }
+    // Restore tree blocks
+    for (const tb of d.treeBlocks || []) {
+      world.treeBlocks.set(key(tb.x, tb.y), {
+        id: tb.id, x: tb.x, y: tb.y,
+        emoji: tb.emoji, units: tb.units ?? 3,
+        maxUnits: tb.maxUnits ?? 3,
+      });
+    }
+    // Restore seedlings
+    for (const s of d.seedlings || []) {
+      world.seedlings.set(key(s.x, s.y), {
+        id: s.id, x: s.x, y: s.y,
+        plantedAtTick: s.plantedAtTick ?? 0,
+        growthDurationMs: s.growthDurationMs ?? 60000,
+        growthElapsedMs: s.growthElapsedMs ?? 0,
+      });
+    }
+    // Restore loot bags
+    for (const lb of d.lootBags || []) {
+      world.lootBags.set(key(lb.x, lb.y), {
+        id: lb.id,
+        x: lb.x,
+        y: lb.y,
+        inventory: lb.inventory ?? { food: 0, water: 0, wood: 0 },
+        decayMs: lb.decayMs ?? 30000,
+      });
+    }
+    // Restore poop blocks
+    for (const pb of d.poopBlocks || []) {
+      world.poopBlocks.set(key(pb.x, pb.y), {
+        id: pb.id,
+        x: pb.x,
+        y: pb.y,
+        decayMs: pb.decayMs ?? 30000,
+      });
+    }
+    // Reset ephemeral cloud state
+    world.clouds = [];
+    world._nextCloudSpawnMs = 0;
 
     for (const a of d.agents || []) {
       let action = a.action ? { ...a.action } : null;
+      // Backward compat: rename 'help' → 'share'
+      if (action && (action as any).type === 'help') action.type = 'share';
       if (
         action?.payload?.targetId &&
         !(d.agents || []).some((x: Record<string, unknown>) => x.id === action!.payload!.targetId)
@@ -150,6 +249,7 @@ export class PersistenceManager {
         health: a.health,
         maxHealth: a.maxHealth,
         energy: a.energy,
+        maxEnergy: a.maxEnergy ?? TUNE.maxEnergyBase,
         attack: a.attack,
         level: a.level,
         ageTicks: a.ageTicks,
@@ -159,9 +259,16 @@ export class PersistenceManager {
         pathIdx: a.pathIdx || 0,
         action,
         lockMsRemaining: a.lockMsRemaining || 0,
-        travelPref: a.travelPref || 'near',
         aggression: a.aggression ?? Math.random(),
         cooperation: a.cooperation ?? Math.random(),
+        fullness: a.fullness ?? TUNE.fullness.start,
+        hygiene: a.hygiene ?? TUNE.needs.hygieneStart,
+        social: a.social ?? TUNE.needs.socialStart,
+        inspiration: a.inspiration ?? TUNE.needs.inspirationStart,
+        xp: a.xp ?? 0,
+        inventory: a.inventory ?? { food: 0, water: 0, wood: 0 },
+        poopTimerMs: a.poopTimerMs ?? 0,
+        diseased: a.diseased ?? false,
       });
       world.agents.push(agent);
       world.agentsById.set(agent.id, agent);

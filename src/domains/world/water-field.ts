@@ -2,17 +2,17 @@ import { GRID } from '../../shared/constants';
 import { key } from '../../shared/utils';
 import type { Grid } from './grid';
 
-const FF_INF = 0xffff;
-const ffIdx = (x: number, y: number): number => y * GRID + x;
+const WF_INF = 0xffff;
+const wfIdx = (x: number, y: number): number => y * GRID + x;
 
-export class FoodField {
+export class WaterField {
   readonly data: Uint16Array;
   private _lastTick = -1;
 
   constructor() {
     const N = GRID * GRID;
     this.data = new Uint16Array(N);
-    this.data.fill(FF_INF);
+    this.data.fill(WF_INF);
   }
 
   get lastTick(): number {
@@ -21,8 +21,8 @@ export class FoodField {
 
   recompute(grid: Grid, tick: number): void {
     const N = GRID * GRID;
-    this.data.fill(FF_INF);
-    if (grid.foodBlocks.size === 0) {
+    this.data.fill(WF_INF);
+    if (grid.waterBlocks.size === 0) {
       this._lastTick = tick;
       return;
     }
@@ -32,35 +32,50 @@ export class FoodField {
       if (grid.obstacles.has(k)) return true;
       if (grid.farms.has(k)) return true;
       if (grid.flagCells.has(k)) return true;
-      if (grid.waterBlocks.has(k)) return true;
       if (grid.treeBlocks.has(k)) return true;
+      // Water blocks themselves are seeds, not obstacles for this field
       return false;
     };
     const qx = new Int16Array(N);
     const qy = new Int16Array(N);
     let head = 0;
     let tail = 0;
-    for (const c of grid.foodBlocks.values()) {
-      const i = ffIdx(c.x, c.y);
-      this.data[i] = 0;
-      qx[tail] = c.x;
-      qy[tail] = c.y;
-      tail++;
+
+    // Seed BFS with all water block cells (adjacency — cells next to water, not on it)
+    const seeded = new Set<number>();
+    for (const wb of grid.waterBlocks.values()) {
+      for (const c of wb.cells) {
+        const adj: [number, number][] = [
+          [c.x + 1, c.y], [c.x - 1, c.y],
+          [c.x, c.y + 1], [c.x, c.y - 1],
+        ];
+        for (const [nx, ny] of adj) {
+          if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) continue;
+          if (grid.waterBlocks.has(key(nx, ny))) continue; // skip water cells
+          if (staticBlocked(nx, ny)) continue;
+          const i = wfIdx(nx, ny);
+          if (seeded.has(i)) continue;
+          seeded.add(i);
+          this.data[i] = 0;
+          qx[tail] = nx;
+          qy[tail] = ny;
+          tail++;
+        }
+      }
     }
     while (head < tail) {
       const x = qx[head];
       const y = qy[head];
       head++;
-      const d0 = this.data[ffIdx(x, y)];
+      const d0 = this.data[wfIdx(x, y)];
       const nbrs: [number, number][] = [
-        [x + 1, y],
-        [x - 1, y],
-        [x, y + 1],
-        [x, y - 1],
+        [x + 1, y], [x - 1, y],
+        [x, y + 1], [x, y - 1],
       ];
       for (const [nx, ny] of nbrs) {
         if (staticBlocked(nx, ny)) continue;
-        const ii = ffIdx(nx, ny);
+        if (grid.waterBlocks.has(key(nx, ny))) continue;
+        const ii = wfIdx(nx, ny);
         if (this.data[ii] > d0 + 1) {
           this.data[ii] = d0 + 1;
           qx[tail] = nx;
@@ -73,8 +88,8 @@ export class FoodField {
   }
 
   distanceAt(x: number, y: number): number {
-    return this.data[ffIdx(x, y)];
+    return this.data[wfIdx(x, y)];
   }
 
-  static readonly INF = FF_INF;
+  static readonly INF = WF_INF;
 }
