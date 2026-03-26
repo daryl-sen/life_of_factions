@@ -44,7 +44,9 @@ export class World {
 
   // Convenience accessors that delegate to grid
   get walls() { return this.grid.walls; }
-  get crops() { return this.grid.crops; }
+  get foodBlocks() { return this.grid.foodBlocks; }
+  /** @deprecated Use foodBlocks */
+  get crops() { return this.grid.foodBlocks; }
   get farms() { return this.grid.farms; }
   get flags() { return this.grid.flags; }
   get flagCells() { return this.grid.flagCells; }

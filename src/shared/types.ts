@@ -13,7 +13,10 @@ export type ActionType =
   | 'help'
   | 'attack_flag'
   | 'reproduce'
-  | 'sleep';
+  | 'sleep'
+  | 'harvest'
+  | 'eat'
+  | 'drink';
 
 export type LogCategory =
   | 'talk'
@@ -30,7 +33,8 @@ export type LogCategory =
   | 'spawn'
   | 'info'
   | 'sleep'
-  | 'eat';
+  | 'eat'
+  | 'harvest';
 
 export type PaintMode = 'none' | 'draw' | 'erase';
 
@@ -43,6 +47,8 @@ export interface IActionState {
 
 export interface IActionPayload {
   targetId?: string;
+  targetPos?: { x: number; y: number };
+  resourceType?: string;
 }
 
 export interface ILogEntry {
@@ -53,11 +59,22 @@ export interface ILogEntry {
   extra: Record<string, unknown>;
 }
 
-export interface ICrop {
+export type FoodQuality = 'hq' | 'lq';
+
+export interface IFoodBlock {
   id: string;
   x: number;
   y: number;
   emoji: string;
+  quality: FoodQuality;
+  units: number;
+  maxUnits: number;
+}
+
+export interface IInventory {
+  food: number;
+  water: number;
+  wood: number;
 }
 
 export interface IFarm {

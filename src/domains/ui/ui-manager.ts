@@ -1,4 +1,4 @@
-import { LOG_CATS, AGENT_EMOJIS } from '../../shared/constants';
+import { LOG_CATS, AGENT_EMOJIS, TUNE } from '../../shared/constants';
 import { getIdleEmoji } from '../../shared/utils';
 import type { LogCategory } from '../../shared/types';
 import type { World } from '../world';
@@ -269,7 +269,7 @@ export class UIManager {
     const s = stats as Record<string, HTMLElement | null>;
     if (s.stAgents) s.stAgents.textContent = String(world.agents.length);
     if (s.stFactions) s.stFactions.textContent = String(world.factions.size);
-    if (s.stCrops) s.stCrops.textContent = String(world.crops.size);
+    if (s.stCrops) s.stCrops.textContent = String(world.foodBlocks.size);
     if (s.stFarms) s.stFarms.textContent = String(world.farms.size);
     if (s.stWalls) s.stWalls.textContent = String(world.walls.size);
     if (s.stFlags) s.stFlags.textContent = String(world.flags.size);
@@ -282,7 +282,7 @@ export class UIManager {
     if (s.stTickMax) s.stTickMax.textContent = tMax.toFixed(1);
     if (s.barAgents) s.barAgents.textContent = String(world.agents.length).padStart(2, '0');
     if (s.barFactions) s.barFactions.textContent = String(world.factions.size).padStart(2, '0');
-    if (s.barCrops) s.barCrops.textContent = String(world.crops.size).padStart(2, '0');
+    if (s.barCrops) s.barCrops.textContent = String(world.foodBlocks.size).padStart(2, '0');
   }
 
   static rebuildFactionsListIfNeeded(world: World, factionsList: HTMLElement | null): void {
@@ -410,6 +410,15 @@ export class UIManager {
           </div>
           <div class="agent-stat-bar">
             <div class="agent-stat-fill" style="background:#f0a040;width:${a.fullness}%"></div>
+          </div>
+        </div>
+        <div>
+          <div class="agent-stat-header">
+            <span>INVENTORY</span>
+            <span>${a.inventoryTotal()}/${TUNE.inventory.capacity}</span>
+          </div>
+          <div style="font-size:10px;margin-top:2px;color:var(--muted)">
+            \u{1F356} ${a.inventory.food} &nbsp; \u{1F4A7} ${a.inventory.water} &nbsp; \u{1FAB5} ${a.inventory.wood}
           </div>
         </div>
       </div>

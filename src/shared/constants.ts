@@ -17,6 +17,9 @@ export const TUNE = {
     attack_flag: 1.0,
     reproduce: 1.5,
     sleep: 0,
+    harvest: 0.25,
+    eat: 0,
+    drink: 0,
   } as Record<ActionType, number>,
   cropGain: 28,
   starveHpPerSec: 1.0,
@@ -70,6 +73,31 @@ export const TUNE = {
     mandatoryThreshold: 20,
     voluntaryThreshold: 80,
   },
+  inventory: {
+    capacity: 20,
+  },
+  harvest: {
+    costPerSec: 0.25,
+    duration: {
+      food_hq: 600,
+      food_lq: 1200,
+      water: 1000,
+      wood: 1500,
+    } as Record<string, number>,
+  },
+  eat: {
+    duration: [300, 500] as [number, number],
+    poopWindowMs: 30000,
+    poopChance: 0.10,
+  },
+  drink: {
+    duration: [300, 500] as [number, number],
+    hygieneGain: 30,
+  },
+  foodBlock: {
+    hqUnits: [2, 4] as [number, number],
+    lqUnits: [1, 2] as [number, number],
+  },
 } as const;
 
 export const ACTION_DURATIONS: Record<ActionType, [number, number]> = {
@@ -81,6 +109,9 @@ export const ACTION_DURATIONS: Record<ActionType, [number, number]> = {
   attack_flag: [1000, 2000],
   reproduce: [2000, 3200],
   sleep: [8000, 12000],
+  harvest: [600, 1500],
+  eat: [300, 500],
+  drink: [300, 500],
 };
 
 
@@ -116,6 +147,9 @@ export const AGENT_EMOJIS: Record<string, string> = {
   help: '🫢',
   reproduce: '😍',
   sleep: '😴',
+  harvest: '🫨',
+  eat: '🤔',
+  drink: '🤔',
 };
 
 export const IDLE_EMOJIS = {
@@ -126,8 +160,12 @@ export const IDLE_EMOJIS = {
   default: '🙂',
 };
 
+export const FOOD_EMOJIS = {
+  hq: ['🥔', '🍎', '🍑', '🌽', '🍅'],
+  lq: ['🌿', '🥬', '🥦', '🍀'],
+} as const;
+
 export const WORLD_EMOJIS = {
-  crops: ['🌿', '🌱', '🍀', '🌾', '🥕', '🍅', '🫛'],
   farm: '🏡',
   wall: '🪨',
   flag: '🚩',
@@ -149,4 +187,5 @@ export const LOG_CATS: readonly LogCategory[] = [
   'info',
   'sleep',
   'eat',
+  'harvest',
 ];

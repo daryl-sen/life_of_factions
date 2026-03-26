@@ -1,4 +1,4 @@
-import { CELL, GRID, COLORS, AGENT_EMOJIS, WORLD_EMOJIS } from '../../shared/constants';
+import { CELL, GRID, COLORS, AGENT_EMOJIS, WORLD_EMOJIS, FOOD_EMOJIS } from '../../shared/constants';
 import { getIdleEmoji } from '../../shared/utils';
 import type { World } from '../world';
 import type { Agent } from '../agent';
@@ -18,7 +18,7 @@ export class Renderer {
     );
 
     if (world.drawGrid) this._drawGrid(ctx, camera);
-    this._drawCrops(ctx, world);
+    this._drawFoodBlocks(ctx, world);
     this._drawFarms(ctx, world);
     this._drawWalls(ctx, world);
     this._drawFlags(ctx, world);
@@ -59,9 +59,13 @@ export class Renderer {
     ctx.drawImage(ec, x + (CELL - dw) / 2, y + (CELL - dh) / 2, dw, dh);
   }
 
-  private _drawCrops(ctx: CanvasRenderingContext2D, world: World): void {
-    for (const c of world.crops.values())
-      this._drawCellEmoji(ctx, c.x, c.y, c.emoji || WORLD_EMOJIS.crops[0]);
+  private _drawFoodBlocks(ctx: CanvasRenderingContext2D, world: World): void {
+    for (const fb of world.foodBlocks.values()) {
+      const pct = fb.units / fb.maxUnits;
+      ctx.globalAlpha = 0.4 + 0.6 * pct;
+      this._drawCellEmoji(ctx, fb.x, fb.y, fb.emoji || FOOD_EMOJIS.lq[0]);
+      ctx.globalAlpha = 1;
+    }
   }
 
   private _drawFarms(ctx: CanvasRenderingContext2D, world: World): void {

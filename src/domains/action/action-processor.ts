@@ -1,5 +1,5 @@
 import { TUNE } from '../../shared/constants';
-import { manhattan, log } from '../../shared/utils';
+import { manhattan, log, key } from '../../shared/utils';
 import type { World } from '../world';
 import type { Agent } from '../agent';
 import { FactionManager } from '../faction';
@@ -17,8 +17,11 @@ export class ActionProcessor {
       return;
     }
 
-    // Don't cancel sleep or attack on low energy
-    if (agent.energy < TUNE.energyLowThreshold && act.type !== 'attack' && act.type !== 'sleep') {
+    // Don't cancel sleep, attack, harvest, eat, or drink on low energy
+    if (agent.energy < TUNE.energyLowThreshold &&
+      act.type !== 'attack' && act.type !== 'sleep' &&
+      act.type !== 'harvest' && act.type !== 'eat' && act.type !== 'drink'
+    ) {
       agent.action = null;
       return;
     }
@@ -41,6 +44,13 @@ export class ActionProcessor {
       } else {
         if (dist !== 1) { agent.action = null; return; }
       }
+    }
+
+    // Harvest proximity: must stay adjacent to target position
+    if (act.type === 'harvest' && act.payload?.targetPos) {
+      const tp = act.payload.targetPos;
+      const dist = manhattan(agent.cellX, agent.cellY, tp.x, tp.y);
+      if (dist > 1) { agent.action = null; return; }
     }
 
     if (act.tickCounterMs >= 500) {
@@ -128,6 +138,12 @@ export class ActionProcessor {
       ActionProcessor._checkLevelUp(world, agent);
     } else if (act.type === 'sleep') {
       log(world, 'sleep', `${agent.name} woke up`, agent.id, {});
+    } else if (act.type === 'harvest') {
+      ActionProcessor._completeHarvest(world, agent);
+    } else if (act.type === 'eat') {
+      ActionProcessor._completeEat(world, agent);
+    } else if (act.type === 'drink') {
+      ActionProcessor._completeDrink(world, agent);
     }
 
     if (targ && !agent.factionId && !targ.factionId) {
@@ -150,7 +166,7 @@ export class ActionProcessor {
       }
     }
 
-    if (act.type === 'reproduce' && targ) {
+    if (act.type === 'reproduce' && targ && targ.health > 0) {
       if (manhattan(agent.cellX, agent.cellY, targ.cellX, targ.cellY) === 1) {
         const spots: [number, number][] = [
           [agent.cellX + 1, agent.cellY],
@@ -175,5 +191,40 @@ export class ActionProcessor {
         }
       }
     }
+  }
+
+  private static _completeHarvest(world: World, agent: Agent): void {
+    const act = agent.action!;
+    const tp = act.payload?.targetPos;
+    if (!tp) return;
+    const k = key(tp.x, tp.y);
+    const block = world.foodBlocks.get(k);
+    if (!block || block.units <= 0) return;
+    if (agent.inventoryFull()) return;
+    block.units--;
+    agent.addToInventory('food', 1);
+    agent.addXp(TUNE.xp.perHarvest);
+    log(world, 'harvest', `${agent.name} harvested food`, agent.id, { x: tp.x, y: tp.y });
+    if (block.units <= 0) {
+      world.foodBlocks.delete(k);
+    }
+    ActionProcessor._checkLevelUp(world, agent);
+  }
+
+  private static _completeEat(world: World, agent: Agent): void {
+    const removed = agent.removeFromInventory('food', 1);
+    if (removed <= 0) return;
+    agent.addFullness(TUNE.fullness.cropGain);
+    agent.addXp(TUNE.xp.perEat);
+    agent.poopTimerMs = TUNE.eat.poopWindowMs;
+    log(world, 'eat', `${agent.name} ate food`, agent.id, {});
+    ActionProcessor._checkLevelUp(world, agent);
+  }
+
+  private static _completeDrink(world: World, agent: Agent): void {
+    const removed = agent.removeFromInventory('water', 1);
+    if (removed <= 0) return;
+    agent.hygiene = Math.min(100, agent.hygiene + TUNE.drink.hygieneGain);
+    log(world, 'eat', `${agent.name} drank water`, agent.id, {});
   }
 }

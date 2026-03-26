@@ -1,6 +1,6 @@
 # Resources and Economy
 
-Resources drive agent behavior. Energy and fullness are the two primary survival resources. Energy is restored only via sleep; fullness is restored by eating crops.
+Resources drive agent behavior. Energy and fullness are the two primary survival resources. Energy is restored only via sleep; fullness is restored by eating food from inventory. Agents carry resources in a personal inventory and must harvest food blocks before consuming them.
 
 ## Energy System
 
@@ -68,7 +68,7 @@ Fullness is a survival resource that replaces energy's former role in starvation
 | Passive decay | -0.03 per tick |
 | Movement decay | -0.08 per cell |
 | Action decay | -0.02 per second during any action |
-| Recovery | Eating crops: +20 fullness |
+| Recovery | Eating food from inventory: +20 fullness |
 
 ### Fullness Thresholds
 
@@ -113,77 +113,122 @@ The following needs are tracked on agents but have no gameplay effect in Phase 1
 | Social | 50 | 0–100 |
 | Inspiration | 50 | 0–100 |
 
-## Crops
+## Inventory System
 
-### Crop Properties
+Agents carry resources in a personal inventory. All resource consumption requires harvesting into inventory first, then consuming from inventory via a separate action.
+
+### Inventory Properties
 
 | Property | Value |
 |----------|-------|
-| Fullness gain | +20 |
-| XP gain | +5 (eat) / +2 (harvest) |
-| Global cap | 100 |
-| Emojis | 🌿 🌱 🍀 🌾 🥕 🍅 🫛 |
+| Capacity | **20 total units** across all resource types |
+| Resource types | food, water, wood |
+| Starting inventory | 0 (agents start with nothing) |
 
-### Crop Spawning
-
-Crops spawn each tick based on:
-
-1. **Global cap:** Maximum 100 crops
-2. **Farm boost:** Higher probability near farms
-3. **Spawn multiplier:** User-configurable (0.1x to 5x)
-
-**Farm boost calculation:**
-```javascript
-for each potential spawn location:
-  baseProbability = random()
-  for each farm within radius 3:
-    boost = (distance / radius)^2
-    baseProbability *= boost
-
-if (baseProbability < threshold) and (total crops < 100):
-  spawn crop
+```typescript
+interface IInventory {
+  food: number;     // food units (no quality distinction once harvested)
+  water: number;    // water units
+  wood: number;     // wood units
+}
+// Total: food + water + wood <= 20
 ```
 
-### Harvesting
+When inventory is full, harvest actions are blocked (agent will not attempt to harvest). Agents should prioritize consuming or depositing before harvesting more.
+
+## Food Blocks
+
+Food exists as blocks on the grid with a unit count that must be harvested before consumption. Two quality tiers affect harvest speed and yield, but once in inventory all food is identical (fungible).
+
+### Food Block Properties
+
+| Property | High Quality (HQ) | Low Quality (LQ) |
+|----------|-------------------|-------------------|
+| Emojis | 🥔🍎🍑🌽🍅 | 🌿🥬🥦🍀 |
+| Source | Farms only | Nature (world-gen near trees) |
+| Units per block | 2–4 | 1–2 |
+| Harvest time per unit | 600ms | 1200ms |
+| Passable | Yes | Yes |
+| Depletion | Block removed when 0 units remain | Block removed when 0 units remain |
+
+### Food Spawning
+
+**Random food spawning is removed.** Food comes only from:
+
+1. **Farms:** Produce HQ food blocks in their vicinity
+2. **World-gen:** 5–10 LQ food blocks scattered near trees at world creation
+
+**Instant-consume on step is removed.** Agents must:
+1. Harvest food into inventory (harvest action, 🫨 emoji)
+2. Eat from inventory (eat action, 🤔 emoji)
+
+### Harvest Action
+
+The harvest action transfers 1 unit from an adjacent food block to the agent's inventory.
 
 ```javascript
-function harvestAt(world, agent, x, y) {
-  crop = world.crops.get(key(x, y))
-  if (!crop) return false
+function tryHarvest(world, agent, foodBlock) {
+  if (manhattanDistance(agent, foodBlock) !== 1) return false
+  if (agent.inventoryTotal() >= 20) return false  // Inventory full
+  if (foodBlock.units <= 0) return false
 
-  world.crops.delete(key(x, y))
+  // Start harvest action
+  // Duration: HQ food 600ms, LQ food 1200ms
+  // Energy cost: 0.25/sec
+  // On completion:
+  foodBlock.units -= 1
+  agent.inventory.food += 1
+  agent.xp += 2  // harvest XP
 
-  // Agent gains fullness (not energy)
-  agent.fullness = min(100, agent.fullness + 20)
-
-  // XP gain
-  agent.xp += 5  // eat XP
-
-  // Level check (XP-based)
-  levelCheck(world, agent)
-
-  // Faction sharing
-  if (agent.factionId):
-    shareWithFactionMembers(agent)
+  if (foodBlock.units <= 0) {
+    world.foodBlocks.delete(key(foodBlock.x, foodBlock.y))
+  }
 
   return true
 }
 ```
 
-### Faction Sharing
-
-30% of harvested energy is shared:
+### Eat Action (from inventory)
 
 ```javascript
-recipients = faction members within radius 5
-share = 28 * 0.3 = 8.4 energy
-perRecipient = 8.4 / recipients.length
+function tryEat(agent) {
+  if (agent.inventory.food <= 0) return false
 
-for recipient in recipients:
-  recipient.energy = min(200, recipient.energy + perRecipient)
+  // Start eat action (300-500ms, no energy cost)
+  // On completion:
+  agent.inventory.food -= 1
+  agent.fullness = min(100, agent.fullness + 20)
+  agent.xp += 5
+
+  levelCheck(world, agent)
+  return true
+}
 ```
 
-**Example:** With 4 nearby faction members, each gets ~2.1 energy from another's harvest.
+### Drink Action (from inventory)
+
+```javascript
+function tryDrink(agent) {
+  if (agent.inventory.water <= 0) return false
+
+  // Start drink action (300-500ms, no energy cost)
+  // On completion:
+  agent.inventory.water -= 1
+  agent.hygiene = min(100, agent.hygiene + 30)
+
+  return true
+}
+```
+
+**Note:** The drink action requires water in inventory. Water blocks are added in Phase 3.
+
+### Food-Seeking Decision Priority
+
+When an agent needs food (fullness < 40 proactive, < 20 urgent):
+
+1. **Eat from inventory** if agent has food in inventory
+2. **Harvest adjacent food block** if one is within distance 1
+3. **Pathfind to nearest food block** and harvest it
 
 ## Farms
 
@@ -236,10 +281,21 @@ function tryBuildFarm(world, agent) {
 ### Resource Flows
 
 ```
-Eating Crop:
-  → +20 fullness (not energy)
+Harvest (food block → inventory):
+  → +1 food to inventory
+  → +2 XP
+  → -0.25 energy/sec (HQ: 600ms, LQ: 1200ms)
+
+Eat (from inventory):
+  → -1 food from inventory
+  → +20 fullness
   → +5 XP
-  → Faction sharing (fullness-based)
+  → No energy cost (300-500ms)
+
+Drink (from inventory):
+  → -1 water from inventory
+  → +30 hygiene
+  → No energy cost (300-500ms)
 
 Sleep Action (8–12s):
   → +8 energy per 500ms tick
@@ -249,6 +305,7 @@ Energy Drains:
   - Passive: ~0.25/sec
   - Movement: 0.12/step
   - Actions: 0.2–1.5/sec (halved from v1.3)
+  - Harvest: 0.25/sec
   - Building: 12 (farm)
 
 Fullness Drains:
@@ -259,7 +316,7 @@ Fullness Drains:
 
 ### Sustainability Calculation
 
-**Minimum harvest rate to avoid fullness starvation:**
+**Minimum eat rate to avoid fullness starvation:**
 
 ```
 passiveDecay = 0.03/tick (~0.75/sec at 40ms ticks)
@@ -268,8 +325,13 @@ actionDecay = 0.02/sec
 
 // Assuming 2 steps/sec and minimal actions:
 totalDecay = 0.75 + 0.16 + 0.02 = 0.93/sec
-harvestsNeeded = 0.93 / 20 = 0.047 harvests/sec
-// One harvest every ~21 seconds minimum
+eatsNeeded = 0.93 / 20 = 0.047 eats/sec
+// One eat every ~21 seconds minimum
+
+// Each eat requires 1 food in inventory, which requires a harvest action:
+// HQ harvest: 600ms + eat: ~400ms = ~1s total cycle
+// LQ harvest: 1200ms + eat: ~400ms = ~1.6s total cycle
+// Agents can sustain themselves with occasional harvests
 ```
 
 **Energy sustainability via sleep:**
@@ -299,11 +361,11 @@ totalDrain = 0.49/sec
 | Action | XP Gained |
 |--------|-----------|
 | Kill | +50 |
-| Eat (crop) | +5 |
+| Eat (from inventory) | +5 |
 | Heal complete | +10 |
 | Share complete | +5 |
 | Build farm | +15 |
-| Harvest | +2 |
+| Harvest (per unit) | +2 |
 
 ### Level-Up Trigger
 

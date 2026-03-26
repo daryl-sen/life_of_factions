@@ -1,4 +1,4 @@
-# Emoji Life — Technical Specification (v1.4.0, 2026-03-25)
+# Emoji Life — Technical Specification (v3.2.0, 2026-03-25)
 
 ## Purpose
 
@@ -66,8 +66,15 @@ Agent {
   social: float             // 0..100 (placeholder, not active)
   inspiration: float        // 0..100 (placeholder, not active)
 
+  // Inventory (Phase 2)
+  inventory: {
+    food: int               // 0..20 (shared cap)
+    water: int              // 0..20 (shared cap)
+    wood: int               // 0..20 (shared cap)
+  }                         // Total units across all types capped at 20
+
   action: null | {
-    type: 'talk'|'quarrel'|'attack'|'under_attack'|'heal'|'help'|'attack_wall'|'attack_flag'|'reproduce'|'sleep'
+    type: 'talk'|'quarrel'|'attack'|'under_attack'|'heal'|'help'|'attack_wall'|'attack_flag'|'reproduce'|'sleep'|'harvest'|'eat'|'drink'
     remainingMs: float
     tickCounterMs: float
     payload?: { targetId?: ID, ... }
@@ -79,8 +86,9 @@ Agent {
 ### 2.2 Terrain & Objects
 
 * **Wall**: destructible, blocks movement
-* **Crop**: harvestable resource (global cap)
-* **Farm**: boosts nearby crop spawn probability; blocks movement; agents can **build** new farms (energy cost)
+* **Food block (HQ)**: high-quality food from farms; emojis 🥔🍎🍑🌽🍅; 2–4 units; passable; depletes when all units harvested
+* **Food block (LQ)**: low-quality food from nature/world-gen; emojis 🌿🥬🥦🍀; 1–2 units; passable; depletes when all units harvested
+* **Farm**: spawns HQ food in 1-cell radius; blocks movement; agents can **build** new farms (energy cost)
 * **FlagSpawn**: faction spawn point, destructible, blocks movement
 
 ---
@@ -133,11 +141,72 @@ Fullness is a new survival resource. Eating crops restores fullness (not energy)
 
 These are tracked on agents but have no gameplay effect in Phase 1.
 
-### 3.3 Resources
+### 3.3 Resources & Inventory
 
-* **Crops (green triangle)**: restore **fullness** (+20); small sharing to adjacent same-faction agents
-* **Farms (yellow square)**: increase nearby crop spawn probability within radius 3
-* **Global crop cap:** **150** concurrent crops (hard limit)
+#### Inventory System (Phase 2)
+
+Agents carry resources in a personal inventory:
+
+* **Capacity:** 20 total units across all resource types (food + water + wood)
+* **Starting inventory:** empty (0 of each)
+* **Resource types:** food, water, wood (food is fungible once harvested — no HQ/LQ distinction in inventory)
+* When inventory is full, harvest actions are blocked
+
+#### Food Blocks
+
+Food exists as blocks on the grid with a unit count. Two quality tiers affect harvest speed and yield, but once in inventory all food is identical.
+
+| Property | High Quality (HQ) | Low Quality (LQ) |
+|----------|-------------------|-------------------|
+| Emojis | 🥔🍎🍑🌽🍅 | 🌿🥬🥦🍀 |
+| Source | Farms only | Nature (world-gen near trees) |
+| Units per block | 2–4 | 1–2 |
+| Harvest time per unit | 600ms | 1200ms |
+| Passable | Yes | Yes |
+| Depletion | Block removed when 0 units remain | Block removed when 0 units remain |
+
+**Random food spawning is removed.** Food comes only from farms and world-gen.
+
+**World-gen food:** 5–10 LQ food blocks scattered near trees at world creation, providing initial food.
+
+**Instant-consume on step is removed.** Agents must harvest food into inventory, then eat from inventory.
+
+#### Farms
+
+* **Farm emoji:** 🌻
+* **Boost radius:** 3 cells (increases nearby crop spawn probability)
+* **Blocks movement:** Yes
+
+#### Harvest Action
+
+| Property | Value |
+|----------|-------|
+| Target | Adjacent food block (distance = 1) |
+| Duration | HQ food: 600ms; LQ food: 1200ms |
+| Energy cost | 0.25 energy/sec |
+| Effect | Transfers 1 unit from food block to agent inventory |
+| XP | +2 per harvest |
+| Emoji | 🫨 |
+| Blocked when | Inventory is full |
+
+#### Eat Action (from inventory)
+
+| Property | Value |
+|----------|-------|
+| Duration | 300–500ms |
+| Energy cost | None |
+| Effect | -1 food from inventory, +20 fullness, +5 XP |
+| Emoji | 🤔 |
+
+#### Drink Action (from inventory)
+
+| Property | Value |
+|----------|-------|
+| Duration | 300–500ms |
+| Energy cost | None |
+| Effect | -1 water from inventory, +30 hygiene |
+| Emoji | 🤔 |
+| Note | Requires water in inventory (water blocks added in Phase 3) |
 
 ### 3.4 Interactions
 
@@ -178,7 +247,7 @@ These are tracked on agents but have no gameplay effect in Phase 1.
 ### 3.8 Leveling (XP-Based)
 
 * Triggered by accumulating XP (replaces energy-surplus leveling)
-* **XP sources:** kill +50, eat +5, heal complete +10, share complete +5, build farm +15, harvest +2
+* **XP sources:** kill +50, eat (from inventory) +5, heal complete +10, share complete +5, build farm +15, harvest (per unit) +2
 * **Level curve:** level × 50 XP required per level
 * **Level-up effects:** maxHealth += 8, attack += 1.5, maxEnergy += 5
 * **Level cap:** **20**
@@ -198,14 +267,18 @@ These are tracked on agents but have no gameplay effect in Phase 1.
   * talk/quarrel/heal/help: **0.9–1.8s**
   * **attack:** **0.45–0.9s** (faster)
   * reproduce: **2.0–3.2s**
-  * **sleep:** **8–12s** (new)
+  * **sleep:** **8–12s**
+  * **harvest:** HQ food 600ms, LQ food 1200ms
+  * **eat/drink:** **300–500ms**
 * **Distance rules:**
 
   * Non-attack actions: distance **=1**
   * Attack: distance **≤2**
-  * Sleep: no target (solo action)
+  * Sleep, eat, drink: no target (solo/self actions)
+  * Harvest: adjacent to resource block (distance **=1**)
 * **Tick cadence:** effects apply roughly every **0.5s** during actions
-* **Per-second energy costs** (approx., halved from v1.3): talk 0.2, quarrel 0.4, **attack 1.1**, heal 1.5, help 0.8, attack\_wall 0.75, attack\_flag 1.0, **reproduce 1.5**
+* **Per-second energy costs** (approx., halved from v1.3): talk 0.2, quarrel 0.4, **attack 1.1**, heal 1.5, help 0.8, attack\_wall 0.75, attack\_flag 1.0, **reproduce 1.5**, **harvest 0.25**
+* **Zero-cost actions:** eat, drink (consume from inventory)
 * **Sleep:** restores +8 energy per 500ms tick (total 128–192 energy over full duration); mandatory at energy < 20, voluntary at energy < 40; interruptible by attack; emoji 😴
 * **Damage:** base 8; attack deals periodic damage scaled by level
 
@@ -262,7 +335,8 @@ These are tracked on agents but have no gameplay effect in Phase 1.
 **Economy & thresholds**
 
 * Move cost: **0.12** energy / step, **0.08** fullness / step
-* Crop gain: **+20 fullness** (no longer gives energy)
+* Eat (from inventory): **+20 fullness**, +5 XP (no longer gives energy)
+* Drink (from inventory): **+30 hygiene** (requires water, Phase 3)
 * **Mandatory sleep threshold:** energy < 20
 * **Voluntary sleep threshold:** energy < 40
 * **Proactive food seeking:** fullness < 40
@@ -279,6 +353,8 @@ These are tracked on agents but have no gameplay effect in Phase 1.
 * **attack:** **0.45–0.9s**
 * reproduce: **2.0–3.2s**
 * **sleep:** **8–12s** (restores +8 energy per 500ms tick)
+* **harvest:** HQ food 600ms, LQ food 1200ms
+* **eat/drink:** **300–500ms**
 
 **Combat & leveling (XP-based)**
 
@@ -295,7 +371,8 @@ These are tracked on agents but have no gameplay effect in Phase 1.
 * **Farm boost radius:** 3
 * **Build farm energy cost:** **12**
 * Farm build attempt probability (when well-fed): small, periodic
-* **Crop spawn cap:** **150** total
+* **Food blocks:** HQ from farms (2–4 units), LQ from world-gen (1–2 units)
+* **Inventory cap:** **20** total units (food + water + wood)
 
 **Factions**
 
@@ -318,17 +395,18 @@ These are tracked on agents but have no gameplay effect in Phase 1.
      1. Energy < 20 → mandatory sleep
      2. Under attack → flee/retaliate
      3. Health < 30% maxHP → seek faction flag
-     4. Fullness < 20 → urgent food seeking
+     4. Fullness < 20 → urgent food seeking: eat from inventory first; if no food in inventory, harvest adjacent food block; if none adjacent, pathfind to nearest food block
      5. Energy < 40 → voluntary sleep
      6. Normal state:
-        a. Fullness < 40 → proactive food seeking
-        b. Reproduction, attack, help/heal/talk
-        c. Roam
+        a. Fullness < 40 → proactive food seeking (same eat/harvest/pathfind priority as above)
+        b. Harvest nearby resources (if inventory not full and adjacent to resource block)
+        c. Reproduction, attack, help/heal/talk
+        d. Roam
    * If acting: process action (distance rules; energy drain; effects)
    * If not acting:
 
      * If **not locked** (or locked but being attacked):
-       **Move-first**: walk one path step (harvest if landed on crop; crops give +20 fullness)
+       **Move-first**: walk one path step
        **Plan-second**: if no path, follow decision priority above
      * Consider interactions (reproduce first, then social, then combat with range 2)
      * Try building (wall or farm; farm consumes energy)
@@ -374,6 +452,10 @@ These are tracked on agents but have no gameplay effect in Phase 1.
 10. **Sleep action**: agents sleep when energy < 20 (mandatory) or < 40 (voluntary); sleep lasts 8–12s and restores +8 energy per 500ms tick; interruptible by attack.
 10. **Faction visuals**: flags use faction colors; faction list shows ID, members, avg level, and flag status.
 11. **UI overflow**: factions list and log are scrollable and do not overflow their containers.
+12. **Inventory system** (Phase 2): agents have a 20-unit shared inventory for food, water, and wood. Harvest is blocked when inventory is full.
+13. **Food blocks** (Phase 2): food exists as grid blocks with unit counts; HQ food (from farms) harvests in 600ms, LQ food (from world-gen) harvests in 1200ms. Blocks deplete when all units are harvested.
+14. **Harvest/eat/drink actions** (Phase 2): harvest transfers 1 unit to inventory (🫨); eat consumes 1 food for +20 fullness and +5 XP (🤔); drink consumes 1 water for +30 hygiene (🤔).
+15. **No random food spawning** (Phase 2): food comes only from farms (HQ) and world-gen (LQ near trees). Stepping on food no longer auto-consumes.
 
 ---
 
@@ -396,8 +478,19 @@ These are tracked on agents but have no gameplay effect in Phase 1.
 * **Needs system scaffolding:** hygiene, social, inspiration fields added (placeholder, not active).
 * **Decision hierarchy rewritten** with sleep, fullness-based food seeking, and health-based flag seeking.
 
+### Phase 2 Changes (v3.2.0)
 
---- 
+* **Inventory system** added: agents carry food, water, and wood with a shared 20-unit cap.
+* **Food blocks reworked** with unit tracking and two quality tiers: HQ (from farms, 2–4 units, 600ms harvest) and LQ (from nature/world-gen, 1–2 units, 1200ms harvest). Food is fungible once in inventory.
+* **Harvest action** added (🫨): adjacent to food block, transfers 1 unit to inventory, costs 0.25 energy/sec, grants +2 XP. Food blocks deplete when all units harvested.
+* **Eat action** added (🤔): consumes 1 food from inventory, +20 fullness, +5 XP, no energy cost.
+* **Drink action** added (🤔): consumes 1 water from inventory, +30 hygiene, no energy cost. Requires water from Phase 3.
+* **Random food spawning removed.** Farms produce HQ food; world-gen seeds LQ food near trees.
+* **Instant-consume on step removed.** Agents must harvest into inventory then eat.
+* **Decision engine updated:** eat from inventory first, then harvest adjacent food, then pathfind to food block.
+
+
+---
 
 To bundle all the js files:
 

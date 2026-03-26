@@ -43,7 +43,11 @@ export class InteractionEngine {
 
     // 4. Critical fullness — urgent food seeking
     if (agent.fullness < TUNE.fullness.criticalThreshold) {
-      // Will be handled by SimulationEngine.seekFoodWhenHungry (called from tick)
+      // Eat from inventory if available
+      if (agent.inventory.food > 0) {
+        ActionFactory.tryStart(agent, 'eat');
+        return;
+      }
       // Signal: return without action/path so tick loop handles food seeking
       return;
     }
@@ -60,6 +64,11 @@ export class InteractionEngine {
 
     // 6a. Proactive food seeking
     if (agent.fullness < TUNE.fullness.seekThreshold) {
+      // Eat from inventory if available
+      if (agent.inventory.food > 0) {
+        ActionFactory.tryStart(agent, 'eat');
+        return;
+      }
       // Signal: return without action/path so tick loop handles food seeking
       return;
     }

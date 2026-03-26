@@ -14,6 +14,7 @@ function seedEnvironment(world: World): void {
     const y = rndi(5, 56);
     world.farms.set(key(x, y), { id: uuid(), x, y });
   }
+  SimulationEngine.seedInitialFood(world, rndi(5, 10));
 }
 
 export class Controls {

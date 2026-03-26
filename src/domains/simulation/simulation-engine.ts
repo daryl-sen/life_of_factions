@@ -1,78 +1,83 @@
-import { GRID, BASE_TICK_MS, TUNE, WORLD_EMOJIS } from '../../shared/constants';
-import { key, rndi, log, uuid, manhattan } from '../../shared/utils';
+import { GRID, BASE_TICK_MS, TUNE, FOOD_EMOJIS } from '../../shared/constants';
+import { key, rndi, log, uuid } from '../../shared/utils';
 import { Pathfinder } from '../../shared/pathfinding';
 import { FoodField } from '../world/food-field';
 import type { World } from '../world';
 import type { Agent } from '../agent';
-import { ActionProcessor, InteractionEngine } from '../action';
+import { ActionFactory, ActionProcessor, InteractionEngine } from '../action';
 import { FactionManager } from '../faction';
 import { RoamingStrategy } from './roaming';
 
 export class SimulationEngine {
-  // ── Crop spawning ──
+  // ── Food block spawning ──
 
-  private static _randomCropEmoji(): string {
-    return WORLD_EMOJIS.crops[Math.floor(Math.random() * WORLD_EMOJIS.crops.length)];
+  private static _randomFoodEmoji(quality: 'hq' | 'lq'): string {
+    const arr = FOOD_EMOJIS[quality];
+    return arr[Math.floor(Math.random() * arr.length)];
   }
 
   static addCrop(world: World, x: number, y: number): boolean {
-    if (world.crops.size >= TUNE.maxCrops) return false;
+    if (world.foodBlocks.size >= TUNE.maxCrops) return false;
     const k = key(x, y);
     if (
-      world.crops.has(k) ||
+      world.foodBlocks.has(k) ||
       world.walls.has(k) ||
       world.farms.has(k) ||
       world.flagCells.has(k)
     ) return false;
-    world.crops.set(k, { id: uuid(), x, y, emoji: SimulationEngine._randomCropEmoji() });
-    log(world, 'spawn', `crop @${x},${y}`, null, { x, y });
+    const units = rndi(TUNE.foodBlock.lqUnits[0], TUNE.foodBlock.lqUnits[1]);
+    world.foodBlocks.set(k, {
+      id: uuid(), x, y,
+      emoji: SimulationEngine._randomFoodEmoji('lq'),
+      quality: 'lq', units, maxUnits: units,
+    });
+    log(world, 'spawn', `food @${x},${y}`, null, { x, y });
     return true;
+  }
+
+  static seedInitialFood(world: World, count: number): void {
+    for (let i = 0; i < count; i++) {
+      const { x, y } = world.grid.randomFreeCell();
+      const k = key(x, y);
+      if (world.foodBlocks.has(k)) continue;
+      const units = rndi(TUNE.foodBlock.lqUnits[0], TUNE.foodBlock.lqUnits[1]);
+      world.foodBlocks.set(k, {
+        id: uuid(), x, y,
+        emoji: SimulationEngine._randomFoodEmoji('lq'),
+        quality: 'lq', units, maxUnits: units,
+      });
+    }
   }
 
   private static _maybeSpawnCrops(world: World): void {
-    if (world.crops.size >= TUNE.maxCrops) return;
-    const attempts = GRID;
-    const base = 3.75e-3 * world.spawnMult;
-    for (let i = 0; i < attempts; i++) {
-      if (world.crops.size >= TUNE.maxCrops) break;
-      const x = rndi(0, GRID - 1);
-      const y = rndi(0, GRID - 1);
-      const k = key(x, y);
-      if (
-        world.crops.has(k) ||
-        world.walls.has(k) ||
-        world.farms.has(k) ||
-        world.agentsByCell.has(k) ||
-        world.flagCells.has(k)
-      ) continue;
-      let prob = base;
-      for (const fm of world.farms.values()) {
-        const d = Math.abs(x - fm.x) + Math.abs(y - fm.y);
-        if (d <= TUNE.farmBoostRadius)
-          prob *= 1 + (TUNE.farmBoostRadius - d + 1) * 0.6;
+    if (world.foodBlocks.size >= TUNE.maxCrops) return;
+    // Only spawn HQ food near farms
+    for (const fm of world.farms.values()) {
+      if (world.foodBlocks.size >= TUNE.maxCrops) break;
+      if (Math.random() >= 0.02 * world.spawnMult) continue;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const dx = rndi(-TUNE.farmBoostRadius, TUNE.farmBoostRadius);
+        const dy = rndi(-TUNE.farmBoostRadius, TUNE.farmBoostRadius);
+        const x = fm.x + dx;
+        const y = fm.y + dy;
+        if (x < 0 || y < 0 || x >= GRID || y >= GRID) continue;
+        const k = key(x, y);
+        if (
+          world.foodBlocks.has(k) ||
+          world.walls.has(k) ||
+          world.farms.has(k) ||
+          world.agentsByCell.has(k) ||
+          world.flagCells.has(k)
+        ) continue;
+        const units = rndi(TUNE.foodBlock.hqUnits[0], TUNE.foodBlock.hqUnits[1]);
+        world.foodBlocks.set(k, {
+          id: uuid(), x, y,
+          emoji: SimulationEngine._randomFoodEmoji('hq'),
+          quality: 'hq', units, maxUnits: units,
+        });
+        break;
       }
-      if (Math.random() < prob)
-        world.crops.set(k, { id: uuid(), x, y, emoji: SimulationEngine._randomCropEmoji() });
     }
-  }
-
-  // ── Harvesting ──
-
-  private static _harvestAt(world: World, agent: Agent, x: number, y: number): boolean {
-    const k = key(x, y);
-    const crop = world.crops.get(k);
-    if (!crop) return false;
-    world.crops.delete(k);
-    // Crops now restore fullness, not energy
-    agent.addFullness(TUNE.fullness.cropGain);
-    agent.addXp(TUNE.xp.perEat);
-    log(world, 'eat', `${agent.name} ate food`, agent.id, { x, y });
-    // Check for XP-based level up
-    while (agent.canLevelUp()) {
-      agent.levelUp();
-      log(world, 'level', `${agent.name} leveled to ${agent.level}`, agent.id, {});
-    }
-    return true;
   }
 
   // ── Farm building ──
@@ -101,7 +106,7 @@ export class SimulationEngine {
     }
   }
 
-  // ── Food seeking (public for InteractionEngine) ──
+  // ── Food seeking ──
 
   private static _stepTowardFood(world: World, agent: Agent): boolean {
     const here = world.foodField.distanceAt(agent.cellX, agent.cellY);
@@ -127,34 +132,43 @@ export class SimulationEngine {
   }
 
   static seekFoodWhenHungry(world: World, agent: Agent): void {
-    if (world.crops.has(key(agent.cellX, agent.cellY))) {
-      SimulationEngine._harvestAt(world, agent, agent.cellX, agent.cellY);
+    // 1. Eat from inventory if available
+    if (agent.inventory.food > 0) {
+      ActionFactory.tryStart(agent, 'eat');
       return;
     }
+
+    // 2. Harvest adjacent food block if not inventory full
+    if (!agent.inventoryFull()) {
+      const adj: [number, number][] = [
+        [agent.cellX + 1, agent.cellY],
+        [agent.cellX - 1, agent.cellY],
+        [agent.cellX, agent.cellY + 1],
+        [agent.cellX, agent.cellY - 1],
+      ];
+      for (const [nx, ny] of adj) {
+        const k = key(nx, ny);
+        const block = world.foodBlocks.get(k);
+        if (block && block.units > 0 && !world.flagCells.has(k)) {
+          const resourceType = block.quality === 'hq' ? 'food_hq' : 'food_lq';
+          if (!agent.action) {
+            agent.action = ActionFactory.createHarvest(resourceType, { x: nx, y: ny });
+            return;
+          }
+        }
+      }
+    }
+
+    // 3. Pathfind to nearest food block
     if (world.tick - world.foodField.lastTick >= 5) {
       world.foodField.recompute(world.grid, world.tick);
     }
-    const adj: [number, number][] = [
-      [agent.cellX + 1, agent.cellY],
-      [agent.cellX - 1, agent.cellY],
-      [agent.cellX, agent.cellY + 1],
-      [agent.cellX, agent.cellY - 1],
-    ];
-    for (const [nx, ny] of adj) {
-      const k = key(nx, ny);
-      if (world.crops.has(k) && !world.flagCells.has(k)) {
-        agent.path = [{ x: nx, y: ny }];
-        agent.pathIdx = 0;
-        agent.goal = null;
-        return;
-      }
-    }
-    const scarcity = world.crops.size / Math.max(1, world.agents.length);
+    const scarcity = world.foodBlocks.size / Math.max(1, world.agents.length);
     if (scarcity < 0.35) {
       if (SimulationEngine._stepTowardFood(world, agent)) return;
     }
-    const filtered = [...world.crops.values()].filter(
-      (c) => !world.flagCells.has(key(c.x, c.y))
+    const filtered = [...world.foodBlocks.values()].filter(
+      (c) => c.units > 0 && !world.flagCells.has(key(c.x, c.y))
     );
     if (filtered.length) {
       const near = Pathfinder.findNearest(agent, filtered);
@@ -225,7 +239,7 @@ export class SimulationEngine {
   static tick(world: World): void {
     world.tick++;
 
-    const scarcity = world.crops.size / Math.max(1, world.agents.length);
+    const scarcity = world.foodBlocks.size / Math.max(1, world.agents.length);
     const budgetThisTick =
       scarcity < 0.25
         ? Math.max(6, Math.floor(world.pathBudgetMax * 0.5))
@@ -271,11 +285,19 @@ export class SimulationEngine {
       agent.energy -= 0.0625;
       // Passive fullness decay
       agent.drainFullness(TUNE.fullness.passiveDecay);
+      // Poop timer decay
+      if (agent.poopTimerMs > 0) agent.poopTimerMs -= BASE_TICK_MS;
       agent.lockMsRemaining = Math.max(0, (agent.lockMsRemaining || 0) - BASE_TICK_MS);
 
-      // Don't cancel sleep or attack on low energy
+      // Don't cancel sleep, attack, harvest, eat, or drink on low energy
       if (agent.energy < TUNE.energyLowThreshold) {
-        if (agent.action && agent.action.type !== 'attack' && agent.action.type !== 'sleep') {
+        if (agent.action &&
+          agent.action.type !== 'attack' &&
+          agent.action.type !== 'sleep' &&
+          agent.action.type !== 'harvest' &&
+          agent.action.type !== 'eat' &&
+          agent.action.type !== 'drink'
+        ) {
           agent.action = null;
         }
       }
@@ -299,8 +321,6 @@ export class SimulationEngine {
               agent.pathIdx++;
               agent.energy -= TUNE.moveEnergy;
               agent.drainFullness(TUNE.fullness.moveDecay);
-              if (world.crops.has(key(agent.cellX, agent.cellY)))
-                SimulationEngine._harvestAt(world, agent, agent.cellX, agent.cellY);
             } else {
               agent.path = null;
             }

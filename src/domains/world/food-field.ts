@@ -22,7 +22,7 @@ export class FoodField {
   recompute(grid: Grid, tick: number): void {
     const N = GRID * GRID;
     this.data.fill(FF_INF);
-    if (grid.crops.size === 0) {
+    if (grid.foodBlocks.size === 0) {
       this._lastTick = tick;
       return;
     }
@@ -38,7 +38,7 @@ export class FoodField {
     const qy = new Int16Array(N);
     let head = 0;
     let tail = 0;
-    for (const c of grid.crops.values()) {
+    for (const c of grid.foodBlocks.values()) {
       const i = ffIdx(c.x, c.y);
       this.data[i] = 0;
       qx[tail] = c.x;

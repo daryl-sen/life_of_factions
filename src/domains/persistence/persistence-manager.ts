@@ -17,7 +17,7 @@ export class PersistenceManager {
     const flags = [...world.flags.values()];
     const walls = [...world.walls.values()];
     const farms = [...world.farms.values()];
-    const crops = [...world.crops.values()];
+    const foodBlocks = [...world.foodBlocks.values()];
     const agents = world.agents.map((a) => ({
       id: a.id,
       name: a.name,
@@ -51,6 +51,8 @@ export class PersistenceManager {
       social: a.social,
       inspiration: a.inspiration,
       xp: a.xp,
+      inventory: a.inventory,
+      poopTimerMs: a.poopTimerMs,
     }));
     return {
       meta: { version: VERSION, savedAt: Date.now() },
@@ -69,7 +71,7 @@ export class PersistenceManager {
       flags,
       walls,
       farms,
-      crops,
+      foodBlocks,
       agents,
       log: { limit: world.log.limit, arr: world.log.arr },
       selectedId: world.selectedId,
@@ -137,8 +139,17 @@ export class PersistenceManager {
       world.walls.set(key(w.x, w.y), { ...w });
     for (const fm of d.farms || [])
       world.farms.set(key(fm.x, fm.y), { ...fm });
-    for (const c of d.crops || [])
-      world.crops.set(key(c.x, c.y), { ...c });
+    for (const c of (d.foodBlocks || d.crops || [])) {
+      world.foodBlocks.set(key(c.x, c.y), {
+        id: c.id,
+        x: c.x,
+        y: c.y,
+        emoji: c.emoji,
+        quality: c.quality ?? 'lq',
+        units: c.units ?? 1,
+        maxUnits: c.maxUnits ?? 1,
+      });
+    }
 
     for (const a of d.agents || []) {
       let action = a.action ? { ...a.action } : null;
@@ -174,6 +185,8 @@ export class PersistenceManager {
         social: a.social ?? TUNE.needs.socialStart,
         inspiration: a.inspiration ?? TUNE.needs.inspirationStart,
         xp: a.xp ?? 0,
+        inventory: a.inventory ?? { food: 0, water: 0, wood: 0 },
+        poopTimerMs: a.poopTimerMs ?? 0,
       });
       world.agents.push(agent);
       world.agentsById.set(agent.id, agent);

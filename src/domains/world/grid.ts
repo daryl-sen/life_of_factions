@@ -1,11 +1,11 @@
 import { GRID } from '../../shared/constants';
 import { key } from '../../shared/utils';
-import type { ICrop, IFarm, IWall, IFlag } from '../../shared/types';
+import type { IFoodBlock, IFarm, IWall, IFlag } from '../../shared/types';
 
 export class Grid {
   readonly size: number = GRID;
   readonly walls: Map<string, IWall> = new Map();
-  readonly crops: Map<string, ICrop> = new Map();
+  readonly foodBlocks: Map<string, IFoodBlock> = new Map();
   readonly farms: Map<string, IFarm> = new Map();
   readonly flags: Map<string, IFlag> = new Map();
   readonly flagCells: Set<string> = new Set();
@@ -33,7 +33,7 @@ export class Grid {
 
   clear(): void {
     this.walls.clear();
-    this.crops.clear();
+    this.foodBlocks.clear();
     this.farms.clear();
     this.flags.clear();
     this.flagCells.clear();

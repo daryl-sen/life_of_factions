@@ -1,4 +1,4 @@
-import type { IActionState, IPosition, TravelPref } from '../../shared/types';
+import type { IActionState, IInventory, IPosition, TravelPref } from '../../shared/types';
 import { TUNE } from '../../shared/constants';
 import { RelationshipMap } from './relationships';
 
@@ -37,6 +37,10 @@ export class Agent {
   inspiration: number;
   xp: number;
 
+  // Inventory
+  inventory: IInventory;
+  poopTimerMs: number;
+
   constructor(opts: {
     id: string;
     name: string;
@@ -65,6 +69,8 @@ export class Agent {
     social?: number;
     inspiration?: number;
     xp?: number;
+    inventory?: IInventory;
+    poopTimerMs?: number;
   }) {
     this.id = opts.id;
     this.name = opts.name;
@@ -99,6 +105,8 @@ export class Agent {
     this.social = opts.social ?? TUNE.needs.socialStart;
     this.inspiration = opts.inspiration ?? TUNE.needs.inspirationStart;
     this.xp = opts.xp ?? 0;
+    this.inventory = opts.inventory ?? { food: 0, water: 0, wood: 0 };
+    this.poopTimerMs = opts.poopTimerMs ?? 0;
   }
 
   takeDamage(amount: number): void {
@@ -159,5 +167,28 @@ export class Agent {
     this.maxHealth += 8;
     this.attack += 1.5;
     this.maxEnergy += TUNE.maxEnergyPerLevel;
+  }
+
+  // ── Inventory ──
+
+  inventoryTotal(): number {
+    return this.inventory.food + this.inventory.water + this.inventory.wood;
+  }
+
+  inventoryFull(): boolean {
+    return this.inventoryTotal() >= TUNE.inventory.capacity;
+  }
+
+  addToInventory(type: keyof IInventory, amount: number): number {
+    const space = TUNE.inventory.capacity - this.inventoryTotal();
+    const actual = Math.min(amount, space);
+    this.inventory[type] += actual;
+    return actual;
+  }
+
+  removeFromInventory(type: keyof IInventory, amount: number): number {
+    const actual = Math.min(this.inventory[type], amount);
+    this.inventory[type] -= actual;
+    return actual;
   }
 }

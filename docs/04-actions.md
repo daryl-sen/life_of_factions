@@ -13,8 +13,11 @@ Actions are discrete behaviors agents perform. Each action has a duration, energ
 | `help` | 0.9-1.8s | 0.8 | 1 | Yes | |
 | `reproduce` | 2.0-3.2s | 1.5 | 1 | Yes | |
 | `sleep` | 8-12s | 0 (restores) | self | Yes | 😴 |
+| `harvest` | 600-1200ms | 0.25 | 1 (adjacent block) | Yes | 🫨 |
+| `eat` | 300-500ms | 0 | self (from inventory) | Yes | 🤔 |
+| `drink` | 300-500ms | 0 | self (from inventory) | Yes | 🤔 |
 
-> **Note:** All action energy costs were halved in Phase 1 to account for the new sleep-based energy economy.
+> **Note:** All action energy costs were halved in Phase 1 to account for the new sleep-based energy economy. Harvest, eat, and drink actions were added in Phase 2.
 
 ## Social Actions
 
@@ -150,6 +153,84 @@ agent.energy = min(agent.maxEnergy, agent.energy + 8)
 
 **XP:** Sleep does not grant XP.
 
+## Resource Actions (Phase 2)
+
+### Harvest
+
+**Purpose:** Gather resources from adjacent food blocks into agent inventory.
+
+**Requirements:**
+- Adjacent to a food block (Manhattan distance = 1)
+- Inventory not full (total units < 20)
+- Food block has units remaining
+
+**Duration:** Depends on food quality:
+- High Quality (HQ) food: 600ms per unit
+- Low Quality (LQ) food: 1200ms per unit
+
+**Effect (on completion):**
+```javascript
+foodBlock.units -= 1
+agent.inventory.food += 1
+agent.xp += 2  // harvest XP
+
+if (foodBlock.units <= 0) {
+  world.foodBlocks.delete(key(foodBlock.x, foodBlock.y))
+}
+```
+
+**Properties:**
+- Energy cost: 0.25 energy/sec
+- Agent is locked in place during harvest
+- Emoji: 🫨
+- Blocked when inventory is full
+- Food block depletes (removed from grid) when all units are harvested
+- Multiple agents can harvest the same block simultaneously; they race for remaining units
+
+### Eat
+
+**Purpose:** Consume food from inventory to restore fullness.
+
+**Requirements:**
+- Agent has food in inventory (inventory.food > 0)
+
+**Duration:** 300–500ms
+
+**Effect (on completion):**
+```javascript
+agent.inventory.food -= 1
+agent.fullness = min(100, agent.fullness + 20)
+agent.xp += 5
+levelCheck(world, agent)
+```
+
+**Properties:**
+- No energy cost
+- Solo action (no target required)
+- Emoji: 🤔
+- Grants +5 XP
+
+### Drink
+
+**Purpose:** Consume water from inventory to restore hygiene.
+
+**Requirements:**
+- Agent has water in inventory (inventory.water > 0)
+
+**Duration:** 300–500ms
+
+**Effect (on completion):**
+```javascript
+agent.inventory.water -= 1
+agent.hygiene = min(100, agent.hygiene + 30)
+```
+
+**Properties:**
+- No energy cost
+- Solo action (no target required)
+- Emoji: 🤔
+- **Note:** Water blocks are added in Phase 3. Until then, water cannot be obtained.
+
 ---
 
 ## Action Mechanics
@@ -213,9 +294,13 @@ Locks are applied to both agents for social actions. Locks are decremented each 
 | heal | 1.35 | 2.70 | 2.03 |
 | help | 0.72 | 1.44 | 1.08 |
 | reproduce | 3.0 | 4.8 | 3.9 (+16 upfront) |
-| sleep | 0 (restores 128–192) | — | — |
+| sleep | 0 (restores 128–192) | -- | -- |
+| harvest (HQ) | 0.15 | 0.15 | 0.15 |
+| harvest (LQ) | 0.30 | 0.30 | 0.30 |
+| eat | 0 | 0 | 0 |
+| drink | 0 | 0 | 0 |
 
-> **Note:** Costs halved from previous version to balance with sleep-only energy recovery.
+> **Note:** Costs halved from previous version to balance with sleep-only energy recovery. Eat and drink have zero energy cost.
 
 ## Action Completion Effects
 
@@ -224,11 +309,11 @@ Locks are applied to both agents for social actions. Locks are decremented each 
 | Completion | XP |
 |------------|-----|
 | Kill (attack) | +50 |
-| Eat (crop) | +5 |
+| Eat (from inventory) | +5 |
 | Heal complete | +10 |
 | Share/help complete | +5 |
 | Build farm | +15 |
-| Harvest | +2 |
+| Harvest (per unit) | +2 |
 
 ### Faction Formation
 
