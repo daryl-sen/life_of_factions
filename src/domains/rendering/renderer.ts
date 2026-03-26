@@ -21,6 +21,7 @@ export class Renderer {
     this._drawWaterBlocks(ctx, world);
     this._drawTreeBlocks(ctx, world);
     this._drawSeedlings(ctx, world);
+    this._drawEggs(ctx, world);
     this._drawPoopBlocks(ctx, world);
     this._drawFoodBlocks(ctx, world);
     this._drawLootBags(ctx, world);
@@ -92,6 +93,12 @@ export class Renderer {
   private _drawSeedlings(ctx: CanvasRenderingContext2D, world: World): void {
     for (const s of world.seedlings.values()) {
       this._drawCellEmoji(ctx, s.x, s.y, WORLD_EMOJIS.seedling);
+    }
+  }
+
+  private _drawEggs(ctx: CanvasRenderingContext2D, world: World): void {
+    for (const egg of world.eggs.values()) {
+      this._drawCellEmoji(ctx, egg.x, egg.y, WORLD_EMOJIS.egg);
     }
   }
 
@@ -172,11 +179,6 @@ export class Renderer {
       }
 
       this._drawAgentEmoji(ctx, x, y, CELL / 2 - 3, col, emoji);
-
-      // HP bar
-      const hpw = Math.max(0, Math.floor((CELL - 6) * (agent.health / agent.maxHealth)));
-      ctx.fillStyle = COLORS.hp;
-      ctx.fillRect(x + 3, y - 4, hpw, 2);
 
       // Collect attack lines
       if (agent.action?.type === 'attack' && agent.action.payload?.targetId) {

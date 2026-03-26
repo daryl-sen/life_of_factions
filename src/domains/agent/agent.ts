@@ -1,5 +1,5 @@
 import type { IActionState, IInventory, IPosition } from '../../shared/types';
-import { TUNE } from '../../shared/constants';
+import { TUNE, BASE_TICK_MS } from '../../shared/constants';
 import { RelationshipMap } from './relationships';
 
 export class Agent {
@@ -44,6 +44,9 @@ export class Agent {
   // Baby stage
   babyMsRemaining: number;
 
+  // Aging
+  maxAgeTicks: number;
+
   constructor(opts: {
     id: string;
     name: string;
@@ -75,6 +78,7 @@ export class Agent {
     poopTimerMs?: number;
     diseased?: boolean;
     babyMsRemaining?: number;
+    maxAgeTicks?: number;
   }) {
     this.id = opts.id;
     this.name = opts.name;
@@ -112,6 +116,13 @@ export class Agent {
     this.poopTimerMs = opts.poopTimerMs ?? 0;
     this.diseased = opts.diseased ?? false;
     this.babyMsRemaining = opts.babyMsRemaining ?? 0;
+
+    if (opts.maxAgeTicks != null) {
+      this.maxAgeTicks = opts.maxAgeTicks;
+    } else {
+      const maxAgeMs = TUNE.agent.maxAgeRange[0] + Math.random() * (TUNE.agent.maxAgeRange[1] - TUNE.agent.maxAgeRange[0]);
+      this.maxAgeTicks = Math.floor(maxAgeMs / BASE_TICK_MS);
+    }
   }
 
   takeDamage(amount: number): void {

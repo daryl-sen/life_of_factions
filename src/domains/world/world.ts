@@ -24,7 +24,7 @@ export class World {
   totalBirths = 0;
   totalDeaths = 0;
   speedPct = 100;
-  spawnMult = 1;
+  cloudSpawnRate = 1;
   running = false;
   selectedId: string | null = null;
   paintMode: PaintMode = 'none';
@@ -62,4 +62,5 @@ export class World {
   get seedlings() { return this.grid.seedlings; }
   get lootBags() { return this.grid.lootBags; }
   get poopBlocks() { return this.grid.poopBlocks; }
+  get eggs() { return this.grid.eggs; }
 }

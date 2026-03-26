@@ -50,7 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Wire input + controls
   InputHandler.setup(canvas, camera, world, dom);
-  Controls.wire(world, dom, doRenderLog);
+  Controls.wire(world, dom, doRenderLog, refreshCanvasSize);
 
   // Faction sort dropdown
   if (dom.factionSortEl) {

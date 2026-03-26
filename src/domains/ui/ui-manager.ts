@@ -59,22 +59,26 @@ export interface DomRefs {
     btnLoad: HTMLButtonElement | null;
     btnSpawnTree: HTMLButtonElement | null;
     btnSpawnCloud: HTMLButtonElement | null;
+    btnReplenish: HTMLButtonElement | null;
   };
   fileLoad: HTMLInputElement | null;
   ranges: {
     rngAgents: HTMLInputElement | null;
     rngSpeed: HTMLInputElement | null;
-    rngSpawn: HTMLInputElement | null;
+    rngCloudRate: HTMLInputElement | null;
+    rngWorldSize: HTMLInputElement | null;
   };
   labels: {
     lblAgents: HTMLElement | null;
     lblSpeed: HTMLElement | null;
-    lblSpawn: HTMLElement | null;
+    lblCloudRate: HTMLElement | null;
+    lblWorldSize: HTMLElement | null;
   };
   nums: {
     numAgents: HTMLInputElement | null;
     numSpeed: HTMLInputElement | null;
-    numSpawn: HTMLInputElement | null;
+    numCloudRate: HTMLInputElement | null;
+    numWorldSize: HTMLInputElement | null;
   };
   statsEls: {
     stAgents: HTMLElement | null;
@@ -123,22 +127,26 @@ export class UIManager {
         btnLoad: qs('#btnLoad') as HTMLButtonElement | null,
         btnSpawnTree: qs('#btnSpawnTree') as HTMLButtonElement | null,
         btnSpawnCloud: qs('#btnSpawnCloud') as HTMLButtonElement | null,
+        btnReplenish: qs('#btnReplenish') as HTMLButtonElement | null,
       },
       fileLoad: qs('#fileLoad') as HTMLInputElement | null,
       ranges: {
         rngAgents: qs('#rngAgents') as HTMLInputElement | null,
         rngSpeed: qs('#rngSpeed') as HTMLInputElement | null,
-        rngSpawn: qs('#rngSpawn') as HTMLInputElement | null,
+        rngCloudRate: qs('#rngCloudRate') as HTMLInputElement | null,
+        rngWorldSize: qs('#rngWorldSize') as HTMLInputElement | null,
       },
       labels: {
         lblAgents: qs('#lblAgents'),
         lblSpeed: qs('#lblSpeed'),
-        lblSpawn: qs('#lblSpawn'),
+        lblCloudRate: qs('#lblCloudRate'),
+        lblWorldSize: qs('#lblWorldSize'),
       },
       nums: {
         numAgents: qs('#numAgents') as HTMLInputElement | null,
         numSpeed: qs('#numSpeed') as HTMLInputElement | null,
-        numSpawn: qs('#numSpawn') as HTMLInputElement | null,
+        numCloudRate: qs('#numCloudRate') as HTMLInputElement | null,
+        numWorldSize: qs('#numWorldSize') as HTMLInputElement | null,
       },
       statsEls: {
         stAgents: qs('#stAgents'),

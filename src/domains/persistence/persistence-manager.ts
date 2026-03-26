@@ -54,6 +54,7 @@ export class PersistenceManager {
       poopTimerMs: a.poopTimerMs,
       diseased: a.diseased,
       babyMsRemaining: a.babyMsRemaining,
+      maxAgeTicks: a.maxAgeTicks,
     }));
     return {
       meta: { version: VERSION, savedAt: Date.now() },
@@ -61,7 +62,7 @@ export class PersistenceManager {
       state: {
         tick: world.tick,
         speedPct: world.speedPct,
-        spawnMult: world.spawnMult,
+        cloudSpawnRate: world.cloudSpawnRate,
         drawGrid: world.drawGrid,
         pauseOnBlur: world.pauseOnBlur,
         totalBirths: world.totalBirths,
@@ -141,7 +142,7 @@ export class PersistenceManager {
     world.factions.clear();
     world.tick = d.state?.tick ?? 0;
     world.speedPct = d.state?.speedPct ?? world.speedPct;
-    world.spawnMult = d.state?.spawnMult ?? world.spawnMult;
+    world.cloudSpawnRate = d.state?.cloudSpawnRate ?? world.cloudSpawnRate;
     world.drawGrid = d.state?.drawGrid ?? true;
     world.pauseOnBlur = d.state?.pauseOnBlur ?? false;
     world.totalBirths = d.state?.totalBirths ?? 0;
@@ -198,6 +199,8 @@ export class PersistenceManager {
         id: tb.id, x: tb.x, y: tb.y,
         emoji: tb.emoji, units: tb.units ?? 3,
         maxUnits: tb.maxUnits ?? 3,
+        ageTotalMs: tb.ageTotalMs ?? 0,
+        maxAgeMs: tb.maxAgeMs ?? rndi(TUNE.tree.maxAgeRange[0], TUNE.tree.maxAgeRange[1]),
       });
     }
     // Restore seedlings
@@ -271,6 +274,7 @@ export class PersistenceManager {
         poopTimerMs: a.poopTimerMs ?? 0,
         diseased: a.diseased ?? false,
         babyMsRemaining: a.babyMsRemaining ?? 0,
+        maxAgeTicks: a.maxAgeTicks,
       });
       world.agents.push(agent);
       world.agentsById.set(agent.id, agent);
@@ -294,8 +298,8 @@ export class PersistenceManager {
     if (dom.ranges.rngSpeed) dom.ranges.rngSpeed.value = String(world.speedPct);
     if (dom.nums.numSpeed) dom.nums.numSpeed.value = String(world.speedPct);
     if (dom.labels.lblSpeed) dom.labels.lblSpeed.textContent = `${world.speedPct}%`;
-    if (dom.ranges.rngSpawn) dom.ranges.rngSpawn.value = String(world.spawnMult);
-    if (dom.nums.numSpawn) dom.nums.numSpawn.value = String(world.spawnMult);
-    if (dom.labels.lblSpawn) dom.labels.lblSpawn.textContent = world.spawnMult.toFixed(1) + '\u00d7';
+    if (dom.ranges.rngCloudRate) dom.ranges.rngCloudRate.value = String(world.cloudSpawnRate);
+    if (dom.nums.numCloudRate) dom.nums.numCloudRate.value = String(world.cloudSpawnRate);
+    if (dom.labels.lblCloudRate) dom.labels.lblCloudRate.textContent = world.cloudSpawnRate.toFixed(1) + '\u00d7';
   }
 }

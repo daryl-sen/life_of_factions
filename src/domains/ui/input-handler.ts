@@ -14,6 +14,9 @@ export class InputHandler {
       world.paintMode = next;
       if (btnDrawObstacles) btnDrawObstacles.classList.toggle('toggled', next === 'draw');
       if (btnEraseObstacles) btnEraseObstacles.classList.toggle('toggled', next === 'erase');
+      // Deactivate replenish when switching to draw/erase
+      const btnReplenish = dom.buttons.btnReplenish;
+      if (btnReplenish) btnReplenish.classList.remove('toggled');
     }
     btnDrawObstacles?.addEventListener('click', () => setPaintMode('draw'));
     btnEraseObstacles?.addEventListener('click', () => setPaintMode('erase'));
@@ -165,7 +168,7 @@ export class InputHandler {
       }
     });
 
-    // Agent selection
+    // Agent selection & replenish tool
     canvas.addEventListener('click', (e) => {
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
@@ -177,6 +180,21 @@ export class InputHandler {
       const y = Math.floor(wpos.y / CELL);
       if (x < 0 || y < 0 || x >= GRID || y >= GRID) return;
       const id = world.agentsByCell.get(key(x, y));
+
+      if (world.paintMode === 'replenish' && id) {
+        const agent = world.agentsById.get(id);
+        if (agent) {
+          agent.health = agent.maxHealth;
+          agent.energy = agent.maxEnergy;
+          agent.fullness = 100;
+          agent.hygiene = 100;
+          agent.social = 100;
+          agent.inspiration = 100;
+          agent.diseased = false;
+        }
+        return;
+      }
+
       world.selectedId = id || null;
       UIManager.updateInspector(world, dom.inspector);
     });

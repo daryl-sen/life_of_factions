@@ -43,7 +43,7 @@ export type LogCategory =
   | 'loot'
   | 'hygiene';
 
-export type PaintMode = 'none' | 'draw' | 'erase';
+export type PaintMode = 'none' | 'draw' | 'erase' | 'replenish';
 
 export interface IActionState {
   type: ActionType;
@@ -143,6 +143,8 @@ export interface ITreeBlock {
   emoji: string;
   units: number;
   maxUnits: number;
+  ageTotalMs: number;
+  maxAgeMs: number;
 }
 
 export interface ISeedling {
@@ -168,6 +170,13 @@ export interface IPoopBlock {
   x: number;
   y: number;
   decayMs: number;
+}
+
+export interface IEgg {
+  id: string;
+  x: number;
+  y: number;
+  hatchTimerMs: number;
 }
 
 export interface ICameraState {
