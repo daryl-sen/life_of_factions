@@ -200,6 +200,7 @@ export class SimulationEngine {
         if (a.factionId && world.factions.has(a.factionId)) {
           world.factions.get(a.factionId)!.members.delete(a.id);
         }
+        world.totalDeaths++;
         log(world, 'death', `${a.name} died`, a.id, {});
         return false;
       }

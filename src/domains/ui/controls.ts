@@ -73,10 +73,12 @@ export class Controls {
       world.factions.clear();
       world.log = new RingLog(200);
       world.tick = 0;
+      world.totalBirths = 0;
+      world.totalDeaths = 0;
       world.selectedId = null;
       world.activeLogCats = new Set(LOG_CATS);
       UIManager.setupLogFilters(world, dom.logFilters, doRenderLog);
-      world.speedPct = Number(ranges.rngSpeed?.value || 50);
+      world.speedPct = Number(ranges.rngSpeed?.value || 100);
       world.spawnMult = Number(ranges.rngSpawn?.value || 1);
       seedEnvironment(world);
       spawnAgents(Number(ranges.rngAgents?.value || 20));
@@ -84,6 +86,8 @@ export class Controls {
       if (buttons.btnStart) buttons.btnStart.disabled = true;
       if (buttons.btnPause) buttons.btnPause.disabled = false;
       if (buttons.btnResume) buttons.btnResume.disabled = true;
+      if (ranges.rngAgents) ranges.rngAgents.disabled = true;
+      if (nums.numAgents) nums.numAgents.disabled = true;
       world.log.push({
         t: performance.now(),
         cat: 'info',
@@ -119,10 +123,12 @@ export class Controls {
       reader.onload = () => {
         try {
           const data = JSON.parse(reader.result as string);
-          PersistenceManager.restore(world, data, { doRenderLog, gridChk: dom.gridChk });
+          PersistenceManager.restore(world, data, { doRenderLog, dom });
           if (buttons.btnPause) buttons.btnPause.disabled = true;
           if (buttons.btnResume) buttons.btnResume.disabled = false;
           if (buttons.btnStart) buttons.btnStart.disabled = true;
+          if (ranges.rngAgents) ranges.rngAgents.disabled = true;
+          if (nums.numAgents) nums.numAgents.disabled = true;
         } catch (err) {
           alert('Failed to load save: ' + (err as Error).message);
         } finally {

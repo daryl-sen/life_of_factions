@@ -19,13 +19,16 @@ export class World {
   activeLogAgentId: string | null = null;
 
   tick = 0;
-  speedPct = 50;
+  totalBirths = 0;
+  totalDeaths = 0;
+  speedPct = 100;
   spawnMult = 1;
   running = false;
   selectedId: string | null = null;
   paintMode: PaintMode = 'none';
   pauseOnBlur = false;
   drawGrid = false;
+  factionSort: 'members' | 'created' | 'name' | 'level' = 'members';
 
   pathBudgetMax: number = Number.isFinite(TUNE.pathBudgetPerTick)
     ? TUNE.pathBudgetPerTick

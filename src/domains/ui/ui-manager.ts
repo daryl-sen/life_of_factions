@@ -84,6 +84,8 @@ export interface DomRefs {
     stTickAvg: HTMLElement | null;
     stTickMin: HTMLElement | null;
     stTickMax: HTMLElement | null;
+    stBirths: HTMLElement | null;
+    stDeaths: HTMLElement | null;
   };
   barEls: {
     barAgents: HTMLElement | null;
@@ -96,6 +98,7 @@ export interface DomRefs {
   logFilters: HTMLElement | null;
   pauseChk: HTMLInputElement | null;
   gridChk: HTMLInputElement | null;
+  factionSortEl: HTMLSelectElement | null;
 }
 
 export class UIManager {
@@ -141,6 +144,8 @@ export class UIManager {
         stTickAvg: qs('#stTickAvg'),
         stTickMin: qs('#stTickMin'),
         stTickMax: qs('#stTickMax'),
+        stBirths: qs('#stBirths'),
+        stDeaths: qs('#stDeaths'),
       },
       barEls: {
         barAgents: qs('#barAgents'),
@@ -153,7 +158,15 @@ export class UIManager {
       logFilters: qs('#logFilters'),
       pauseChk: qs('#cbPauseOnBlur') as HTMLInputElement | null,
       gridChk: qs('#cbDrawGrid') as HTMLInputElement | null,
+      factionSortEl: qs('#factionSort') as HTMLSelectElement | null,
     };
+  }
+
+  static formatTickCount(n: number): string {
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 100_000) return (n / 1_000).toFixed(0) + 'K';
+    if (n >= 10_000) return (n / 1_000).toFixed(1) + 'K';
+    return String(n);
   }
 
   static renderLog(world: World, logList: HTMLElement | null): void {
@@ -260,7 +273,9 @@ export class UIManager {
     if (s.stFarms) s.stFarms.textContent = String(world.farms.size);
     if (s.stWalls) s.stWalls.textContent = String(world.walls.size);
     if (s.stFlags) s.stFlags.textContent = String(world.flags.size);
-    if (s.stTick) s.stTick.textContent = String(world.tick);
+    if (s.stBirths) s.stBirths.textContent = String(world.totalBirths);
+    if (s.stDeaths) s.stDeaths.textContent = String(world.totalDeaths);
+    if (s.stTick) s.stTick.textContent = UIManager.formatTickCount(world.tick);
     if (s.stFps) s.stFps.textContent = fps.toFixed(0);
     if (s.stTickAvg) s.stTickAvg.textContent = tAvg.toFixed(1);
     if (s.stTickMin) s.stTickMin.textContent = tMin.toFixed(1);
@@ -276,25 +291,47 @@ export class UIManager {
     const sig =
       world.factions.size +
       '|' +
+      world.factionSort +
+      '|' +
       [...world.factions]
         .map(([fid, f]) => fid + ':' + f.members.size)
         .join(',');
     if (sig !== world._lastFactionsSig || now - world._lastFactionsDomAt >= 2000) {
       factionsList.innerHTML = '';
-      for (const [fid, f] of world.factions) {
-        const color = f.color;
+
+      // Build sortable entries
+      const entries = [...world.factions].map(([fid, f]) => {
         const members = [...f.members]
           .map((id) => world.agentsById.get(id))
           .filter(Boolean);
-        const avgLvl = (
-          members.reduce((s, a) => s + a!.level, 0) / (members.length || 1)
-        ).toFixed(1);
+        const avgLvl = members.reduce((s, a) => s + a!.level, 0) / (members.length || 1);
+        return { fid, f, members, avgLvl };
+      });
+
+      // Sort
+      switch (world.factionSort) {
+        case 'members':
+          entries.sort((a, b) => b.members.length - a.members.length);
+          break;
+        case 'created':
+          entries.sort((a, b) => a.f.createdAtTick - b.f.createdAtTick);
+          break;
+        case 'name':
+          entries.sort((a, b) => a.fid.localeCompare(b.fid));
+          break;
+        case 'level':
+          entries.sort((a, b) => b.avgLvl - a.avgLvl);
+          break;
+      }
+
+      for (const { fid, f, members, avgLvl } of entries) {
+        const color = f.color;
         const div = document.createElement('div');
         div.className = 'faction-item';
         div.innerHTML = `
           <div class="faction-color" style="background:${color}"></div>
           <span class="faction-name">${fid.slice(0, 8)}</span>
-          <span class="faction-detail">${members.length} members &middot; Lv ${avgLvl}</span>
+          <span class="faction-detail">${members.length} members &middot; Lv ${avgLvl.toFixed(1)}</span>
         `;
         factionsList.appendChild(div);
       }
@@ -366,6 +403,14 @@ export class UIManager {
             <div class="agent-stat-fill energy" style="width:${Math.min(100, a.energy / 2)}%"></div>
           </div>
         </div>
+      </div>
+      <div class="agent-details" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border)">
+        <div style="color:var(--muted)">POSITION</div><div>${a.cellX}, ${a.cellY}</div>
+        <div style="color:var(--muted)">ATTACK</div><div>${a.attack.toFixed(1)}</div>
+        <div style="color:var(--muted)">AGE</div><div>${a.ageTicks} ticks</div>
+        <div style="color:var(--muted)">TRAVEL</div><div>${a.travelPref}</div>
+        <div style="color:var(--muted)">AGGRESSION</div><div>${a.aggression.toFixed(2)}</div>
+        <div style="color:var(--muted)">COOPERATION</div><div>${a.cooperation.toFixed(2)}</div>
       </div>`;
   }
 

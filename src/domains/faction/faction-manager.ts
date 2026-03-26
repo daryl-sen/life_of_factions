@@ -37,7 +37,7 @@ export class FactionManager {
   static create(world: World, members: Agent[]): string {
     const fid = generatePronounceableString(6);
     const color = FactionManager._nextColor(world);
-    const faction = new Faction(fid, color);
+    const faction = new Faction(fid, color, undefined, world.tick);
     world.factions.set(fid, faction);
     for (const a of members) {
       if (a.factionId) {
@@ -90,7 +90,7 @@ export class FactionManager {
     if (newFid) {
       if (!world.factions.has(newFid)) {
         const color = FactionManager._nextColor(world);
-        const faction = new Faction(newFid, color);
+        const faction = new Faction(newFid, color, undefined, world.tick);
         world.factions.set(newFid, faction);
         FactionManager._placeFlag(world, newFid, [agent]);
       }
@@ -143,7 +143,7 @@ export class FactionManager {
     for (const [fid, set] of actual) {
       if (!world.factions.has(fid)) {
         const color = FactionManager._nextColor(world);
-        const faction = new Faction(fid, color, set);
+        const faction = new Faction(fid, color, set, world.tick);
         world.factions.set(fid, faction);
       } else {
         const f = world.factions.get(fid)!;
