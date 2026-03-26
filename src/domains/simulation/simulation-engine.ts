@@ -1,4 +1,5 @@
 import { GRID, BASE_TICK_MS, TUNE, FOOD_EMOJIS, TREE_EMOJIS, WORLD_EMOJIS } from '../../shared/constants';
+import type { ResourceMemoryType } from '../../shared/types';
 import { key, manhattan, rndi, log, uuid } from '../../shared/utils';
 import { Pathfinder } from '../../shared/pathfinding';
 import { FoodField } from '../world/food-field';
@@ -287,10 +288,78 @@ export class SimulationEngine {
     }
   }
 
+  // ── Water decay ──
+
+  private static _tickWaterDecay(world: World): void {
+    const toDelete: string[] = [];
+    const seen = new Set<string>();
+    for (const [k, wb] of world.waterBlocks) {
+      if (seen.has(wb.id)) continue;
+      seen.add(wb.id);
+      wb.units -= TUNE.water.baseDecayPerTick;
+      if (wb.units <= 0) {
+        for (const c of wb.cells) toDelete.push(key(c.x, c.y));
+      } else if (wb.size === 'large' && wb.units < wb.maxUnits * TUNE.water.shrinkThreshold) {
+        // Shrink large to small (keep first cell only)
+        const keep = wb.cells[0];
+        for (let i = 1; i < wb.cells.length; i++) {
+          world.waterBlocks.delete(key(wb.cells[i].x, wb.cells[i].y));
+        }
+        wb.size = 'small' as const;
+        wb.cells = [keep];
+        wb.x = keep.x;
+        wb.y = keep.y;
+      }
+    }
+    for (const k of toDelete) world.waterBlocks.delete(k);
+  }
+
+  // ── Seedling near water ──
+
+  private static _tickSeedlingNearWater(world: World): void {
+    const seen = new Set<string>();
+    for (const wb of world.waterBlocks.values()) {
+      if (seen.has(wb.id)) continue;
+      seen.add(wb.id);
+      if (Math.random() < TUNE.tree.seedlingNearWaterChance) {
+        // Spawn seedling within 3 cells of this water block
+        for (let attempt = 0; attempt < 10; attempt++) {
+          const x = wb.x + rndi(-3, 3);
+          const y = wb.y + rndi(-3, 3);
+          if (x < 0 || y < 0 || x >= GRID || y >= GRID) continue;
+          if (world.grid.isCellOccupied(x, y)) continue;
+          const dur = rndi(TUNE.tree.seedlingGrowthRange[0], TUNE.tree.seedlingGrowthRange[1]);
+          world.seedlings.set(key(x, y), {
+            id: uuid(), x, y,
+            plantedAtTick: world.tick,
+            growthDurationMs: dur,
+            growthElapsedMs: 0,
+          });
+          break;
+        }
+      }
+    }
+  }
+
   // ── Cloud / rain ──
 
   private static _tickClouds(world: World): void {
-    // Spawn new cloud (rate-adjusted)
+    // Dynamic cloud spawn rate based on water coverage
+    const totalCells = GRID * GRID;
+    const seenWater = new Set<string>();
+    let waterCellCount = 0;
+    for (const wb of world.waterBlocks.values()) {
+      if (!seenWater.has(wb.id)) {
+        seenWater.add(wb.id);
+        waterCellCount += wb.cells.length;
+      }
+    }
+    const currentCoverage = waterCellCount / totalCells;
+    const target = TUNE.cloud.targetWaterCoverage;
+    // Scale: when coverage is 0, rate multiplier is ~3x; when at target, ~1x; when 2x target, ~0.2x
+    const dynamicMultiplier = Math.max(0.1, Math.min(4, (target / Math.max(0.001, currentCoverage))));
+
+    // Spawn new cloud (rate-adjusted by both slider and dynamic multiplier)
     if (world.cloudSpawnRate > 0) {
       world._nextCloudSpawnMs -= BASE_TICK_MS;
       if (world._nextCloudSpawnMs <= 0) {
@@ -304,7 +373,7 @@ export class SimulationEngine {
           rained: false,
         });
         const baseInterval = rndi(TUNE.cloud.spawnIntervalRange[0], TUNE.cloud.spawnIntervalRange[1]);
-        world._nextCloudSpawnMs = Math.max(1000, baseInterval / world.cloudSpawnRate);
+        world._nextCloudSpawnMs = Math.max(1000, baseInterval / (world.cloudSpawnRate * dynamicMultiplier));
       }
     }
 
@@ -331,6 +400,83 @@ export class SimulationEngine {
       }
     }
     world.clouds = remaining;
+  }
+
+  // ── Vision scan — agents observe nearby resources ──
+
+  static scanVision(world: World, agent: Agent): void {
+    const range = TUNE.agent.visionRange;
+    const x0 = Math.max(0, agent.cellX - range);
+    const x1 = Math.min(GRID - 1, agent.cellX + range);
+    const y0 = Math.max(0, agent.cellY - range);
+    const y1 = Math.min(GRID - 1, agent.cellY + range);
+
+    for (let x = x0; x <= x1; x++) {
+      for (let y = y0; y <= y1; y++) {
+        if (manhattan(agent.cellX, agent.cellY, x, y) > range) continue;
+        const k = key(x, y);
+        if (world.foodBlocks.has(k) || world.seedlings.has(k)) {
+          agent.rememberResource('food', x, y, world.tick);
+        }
+        if (world.waterBlocks.has(k)) {
+          agent.rememberResource('water', x, y, world.tick);
+        }
+        if (world.treeBlocks.has(k)) {
+          agent.rememberResource('wood', x, y, world.tick);
+        }
+      }
+    }
+  }
+
+  /** Try to pathfind to a remembered resource location. Returns true if path was set. */
+  static seekFromMemory(world: World, agent: Agent, type: ResourceMemoryType): boolean {
+    const entries = agent.resourceMemory.get(type)!;
+    if (entries.length === 0) return false;
+
+    // Check each remembered location — if resource is gone, forget it
+    let bestIdx = -1;
+    let bestDist = Infinity;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i];
+      const k = key(e.x, e.y);
+      let stillExists = false;
+      if (type === 'food') {
+        stillExists = world.foodBlocks.has(k) || world.seedlings.has(k);
+      } else if (type === 'water') {
+        stillExists = world.waterBlocks.has(k);
+      } else {
+        stillExists = world.treeBlocks.has(k);
+      }
+      if (!stillExists) {
+        entries.splice(i, 1);
+        continue;
+      }
+      const d = manhattan(agent.cellX, agent.cellY, e.x, e.y);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+
+    if (bestIdx < 0) return false;
+    const target = entries[bestIdx];
+    // For water, target adjacent cell (water is impassable)
+    if (type === 'water') {
+      const adjCells: [number, number][] = [
+        [target.x + 1, target.y], [target.x - 1, target.y],
+        [target.x, target.y + 1], [target.x, target.y - 1],
+      ];
+      for (const [ax, ay] of adjCells) {
+        if (ax < 0 || ay < 0 || ax >= GRID || ay >= GRID) continue;
+        if (!world.grid.isBlocked(ax, ay, agent.id)) {
+          Pathfinder.planPathTo(world, agent, ax, ay);
+          return agent.path !== null && agent.path.length > 0;
+        }
+      }
+      return false;
+    }
+    Pathfinder.planPathTo(world, agent, target.x, target.y);
+    return agent.path !== null && agent.path.length > 0;
   }
 
   // ── Food seeking ──
@@ -392,7 +538,34 @@ export class SimulationEngine {
       }
     }
 
-    // 3. Pathfind to nearest food block
+    // 3. Look within vision range for food
+    const vr = TUNE.agent.visionRange;
+    let closestFood: { x: number; y: number; d: number } | null = null;
+    for (let dx = -vr; dx <= vr; dx++) {
+      for (let dy = -vr; dy <= vr; dy++) {
+        const d = Math.abs(dx) + Math.abs(dy);
+        if (d > vr) continue;
+        const fx = agent.cellX + dx;
+        const fy = agent.cellY + dy;
+        if (fx < 0 || fy < 0 || fx >= GRID || fy >= GRID) continue;
+        const k = key(fx, fy);
+        const block = world.foodBlocks.get(k);
+        if ((block && block.units > 0 && !world.flagCells.has(k)) || world.seedlings.has(k)) {
+          if (!closestFood || d < closestFood.d) {
+            closestFood = { x: fx, y: fy, d };
+          }
+        }
+      }
+    }
+    if (closestFood) {
+      Pathfinder.planPathTo(world, agent, closestFood.x, closestFood.y);
+      if (agent.path && agent.path.length > 0) return;
+    }
+
+    // 4. Use resource memory
+    if (SimulationEngine.seekFromMemory(world, agent, 'food')) return;
+
+    // 5. Full pathfind (global search)
     if (world.tick - world.foodField.lastTick >= 5) {
       world.foodField.recompute(world.grid, world.tick);
     }
@@ -410,6 +583,9 @@ export class SimulationEngine {
         return;
       }
     }
+
+    // 6. Nothing found — wander
+    RoamingStrategy.biasedRoam(world, agent);
   }
 
   // ── Water seeking ──
@@ -465,7 +641,43 @@ export class SimulationEngine {
       }
     }
 
-    // 3. Pathfind to nearest water block
+    // 3. Look within vision range for water
+    const vr = TUNE.agent.visionRange;
+    let closestWater: { x: number; y: number; d: number } | null = null;
+    for (let dx = -vr; dx <= vr; dx++) {
+      for (let dy = -vr; dy <= vr; dy++) {
+        const d = Math.abs(dx) + Math.abs(dy);
+        if (d > vr) continue;
+        const wx = agent.cellX + dx;
+        const wy = agent.cellY + dy;
+        if (wx < 0 || wy < 0 || wx >= GRID || wy >= GRID) continue;
+        const block = world.waterBlocks.get(key(wx, wy));
+        if (block && block.units > 0) {
+          if (!closestWater || d < closestWater.d) {
+            closestWater = { x: wx, y: wy, d };
+          }
+        }
+      }
+    }
+    if (closestWater) {
+      // Target adjacent cell to water (water is impassable)
+      const adjCells: [number, number][] = [
+        [closestWater.x + 1, closestWater.y], [closestWater.x - 1, closestWater.y],
+        [closestWater.x, closestWater.y + 1], [closestWater.x, closestWater.y - 1],
+      ];
+      for (const [ax, ay] of adjCells) {
+        if (ax < 0 || ay < 0 || ax >= GRID || ay >= GRID) continue;
+        if (!world.grid.isBlocked(ax, ay, agent.id)) {
+          Pathfinder.planPathTo(world, agent, ax, ay);
+          if (agent.path && agent.path.length > 0) return;
+        }
+      }
+    }
+
+    // 4. Use resource memory
+    if (SimulationEngine.seekFromMemory(world, agent, 'water')) return;
+
+    // 5. Full pathfind (global search)
     if (world.tick - world.waterField.lastTick >= 5) {
       world.waterField.recompute(world.grid, world.tick);
     }
@@ -479,11 +691,11 @@ export class SimulationEngine {
       seen.add(wb.id);
       // Target adjacent cells, not the water itself (it's impassable)
       for (const c of wb.cells) {
-        const adjCells: [number, number][] = [
+        const adjWater: [number, number][] = [
           [c.x + 1, c.y], [c.x - 1, c.y],
           [c.x, c.y + 1], [c.x, c.y - 1],
         ];
-        for (const [ax, ay] of adjCells) {
+        for (const [ax, ay] of adjWater) {
           if (ax < 0 || ay < 0 || ax >= GRID || ay >= GRID) continue;
           if (!world.grid.isBlocked(ax, ay, agent.id)) {
             waterPositions.push({ x: ax, y: ay });
@@ -495,8 +707,12 @@ export class SimulationEngine {
       const near = Pathfinder.findNearest(agent, waterPositions);
       if (near) {
         Pathfinder.planPathTo(world, agent, near.target.x, near.target.y);
+        return;
       }
     }
+
+    // 6. Nothing found — wander
+    RoamingStrategy.biasedRoam(world, agent);
   }
 
   // ── Opportunistic resource harvest ──
@@ -660,6 +876,8 @@ export class SimulationEngine {
     SimulationEngine._tickSeedlings(world);
     SimulationEngine._tickTreePassiveSpawns(world);
     SimulationEngine._tickClouds(world);
+    SimulationEngine._tickWaterDecay(world);
+    SimulationEngine._tickSeedlingNearWater(world);
 
     for (const b of world.agents) b._underAttack = false;
     for (const b of world.agents) {
@@ -678,6 +896,8 @@ export class SimulationEngine {
       agent.drainFullness(TUNE.fullness.passiveDecay);
       // Passive inspiration decay
       agent.inspiration = Math.max(0, agent.inspiration - TUNE.inspiration.passiveDecay);
+      // Passive social decay
+      agent.social = Math.max(0, agent.social - TUNE.social.passiveDecay);
       // Poop timer decay
       if (agent.poopTimerMs > 0) agent.poopTimerMs -= BASE_TICK_MS;
       agent.lockMsRemaining = Math.max(0, (agent.lockMsRemaining || 0) - BASE_TICK_MS);
@@ -787,6 +1007,11 @@ export class SimulationEngine {
             } else if (!occupant) {
               world.agentsByCell.set(ck, agent.id);
             }
+          }
+
+          // Vision scan — update resource memory
+          if (!agent.action) {
+            SimulationEngine.scanVision(world, agent);
           }
 
           // Idle decision — delegate to InteractionEngine for priority hierarchy

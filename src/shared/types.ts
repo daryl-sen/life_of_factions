@@ -179,6 +179,14 @@ export interface IEgg {
   hatchTimerMs: number;
 }
 
+export type ResourceMemoryType = 'food' | 'water' | 'wood';
+
+export interface IResourceMemoryEntry {
+  x: number;
+  y: number;
+  tick: number;
+}
+
 export interface ICameraState {
   x: number;
   y: number;

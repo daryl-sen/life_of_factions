@@ -1,4 +1,4 @@
-# Emoji Life — Technical Specification (v3.2.0, 2026-03-25)
+# Emoji Life — Technical Specification (v3.2.4, 2026-03-26)
 
 ## Purpose
 
@@ -63,7 +63,7 @@ Agent {
   // Needs system
   fullness: float           // 0..100; passive decay, restored by eating
   hygiene: float            // 0..100; decay from movement/actions/poop, restored by drinking water
-  social: float             // 0..100 (placeholder, not active)
+  social: float             // 0..100; passive decay −0.01/tick; recovered by sharing (+8 sharer, +5 recipient)
   inspiration: float        // 0..100; passive decay −0.015/tick; recovered by play (+15), clean (+10), build farm (+25)
 
   // Disease system (Phase 5)
@@ -76,6 +76,9 @@ Agent {
     water: int              // 0..20 (shared cap)
     wood: int               // 0..20 (shared cap)
   }                         // Total units across all types capped at 20
+
+  // Resource memory (v3.2.4)
+  resourceMemory: Map<'food'|'water'|'wood', {x,y,tick}[]>  // up to 2 coords per type (max 6 total)
 
   action: null | {
     type: 'talk'|'quarrel'|'attack'|'under_attack'|'heal'|'share'|'attack_wall'|'attack_flag'|'reproduce'|'sleep'|'harvest'|'harvest_water'|'harvest_wood'|'eat'|'drink'|'deposit'|'withdraw'|'pickup'|'poop'|'clean'|'play'|'build_farm'
@@ -192,7 +195,7 @@ This scaling is applied once when the action is created, not continuously during
 
 #### Placeholder Needs
 
-* **Social:** starts 50 (tracked on agents but no gameplay effect)
+* **Social:** starts 50, passive decay −0.01/tick; recovered by sharing
 
 ### 3.3 Resources & Inventory
 
@@ -236,14 +239,18 @@ Water exists as blocks on the grid that agents harvest for drinking water.
 | Harvest time per unit | 1000ms | 1000ms |
 | Shrinking | N/A | Shrinks to small at 25% threshold (≤5 units) |
 | Depletion | Block removed when 0 units remain | Becomes small water block at ≤5 units |
+| Base decay | −0.008 units/tick | −0.008 units/tick (same rate) |
+
+**Seedling spawning near water:** Each water block has a very small chance (0.05%) per tick to spawn a seedling within 3 cells of it.
 
 **World-gen water:** 3–6 water sources placed at world creation (mix of small and large).
 
-**Cloud/rain system:** Clouds spawn periodically to replenish water on the map.
+**Cloud/rain system:** Clouds spawn periodically to replenish water on the map. Cloud spawn rate is **dynamic** — when water coverage is low, clouds spawn faster; when coverage approaches the 5% target, clouds spawn at the base rate; above target, clouds slow down. The UI slider acts as a global multiplier on top of this dynamic rate.
 
 | Property | Value |
 |----------|-------|
-| Cloud spawn rate | 1 cloud every 60–120 seconds |
+| Cloud spawn rate | Base: 1 cloud every 60–120 seconds (dynamically scaled by water coverage) |
+| Target water coverage | ~5% of grid cells |
 | Cloud duration | 5–10 seconds |
 | Cloud emoji | 🌧️ |
 | Rain spawn | Spawns water blocks below the cloud |
@@ -714,8 +721,8 @@ Faction flags now store resources for the faction.
      1. Energy < 20 → mandatory sleep
      2. Under attack → flee/retaliate
      3. Health < 30% maxHP → seek faction flag
-     4. Fullness < 20 → urgent food seeking: eat from inventory first; if no food in inventory, harvest adjacent food block; if none adjacent, pathfind to nearest food block
-     5. Hygiene < 20 → critical water seeking: drink from inventory first; if no water in inventory, harvest adjacent water block; if none adjacent, pathfind to nearest water block
+     4. Fullness < 20 → urgent food seeking: eat from inventory first; if no food in inventory, harvest adjacent food block; if none adjacent, scan within vision range (10 cells), check resource memory, then full pathfind; if nothing found, wander
+     5. Hygiene < 20 → critical water seeking: drink from inventory first; if no water in inventory, harvest adjacent water block; if none adjacent, scan within vision range (10 cells), check resource memory, then full pathfind; if nothing found, wander
      6. Energy < 40 → voluntary sleep
      7. Normal state:
         a. Fullness < 40 → proactive food seeking (same eat/harvest/pathfind priority as above); withdraw from own flag if nearby and flag has food
@@ -727,7 +734,16 @@ Faction flags now store resources for the faction.
         f. Pickup loot bags (before roaming)
         g. Clean adjacent poop block (opportunistic)
         h. Reproduction, attack, share/heal/talk
-        i. Roam
+        i. Roam (only if vision scan + resource memory + full pathfind all fail)
+
+   **Vision & Resource Memory (v3.2.4):**
+   * Agents have a **line of sight of 10 cells** (Manhattan distance)
+   * Each tick (when idle), agents scan their vision range and remember resource locations
+   * **Resource memory:** up to 2 coordinates per resource type (food, water, wood), max 6 total
+   * When a new resource is spotted and memory is full, the oldest entry for that type is replaced
+   * When seeking a resource: (1) check adjacent cells, (2) scan within vision range, (3) check resource memory, (4) full pathfind, (5) wander
+   * If an agent travels to a remembered location and the resource is gone, the memory entry is deleted
+
    * If acting: process action (distance rules; energy drain; effects)
    * If not acting:
 
@@ -878,6 +894,15 @@ Faction flags now store resources for the faction.
 * **Build farm reworked:** the old random-chance farm building mechanic is replaced by an explicit `build_farm` action. Requires 3 wood in inventory + 6 energy. Duration: 2000ms fixed, 0.25 energy/sec. Spawns a farm (🌻) on an adjacent free cell. Grants +15 XP and +25 inspiration.
 * **Farm spawn system reworked:** each farm now tracks `spawnsRemaining` (starts at 10) and `spawnTimerMs` (15–25 second interval between spawns). Farms spawn HQ food on adjacent cells (radius 1), with a maximum of 4 food blocks within radius 1. When `spawnsRemaining` reaches 0, the farm is destroyed and removed from the grid.
 * **Decision priority updated:** inspiration < 40 inserted at priority 7c (seek play or clean poop). Old poop check moved to priority 7c2.
+
+### v3.2.4 — Balance & Enhancements
+
+* **Water blocks now decay:** base decay rate of −0.008 units/tick. Water blocks naturally evaporate over time and need cloud replenishment.
+* **Dynamic cloud spawn rate:** cloud spawn frequency now scales inversely with current water coverage. Target is ~5% grid coverage. The UI slider acts as a global multiplier on top of the dynamic rate.
+* **Seedlings near water:** each water block has a 0.05% chance per tick to spontaneously spawn a seedling within 3 cells.
+* **Social need now decays:** passive decay at −0.01/tick (was placeholder with no decay). Social need is recovered via sharing (+8 sharer, +5 recipient).
+* **Inspiration text removed from inspector panel:** the details grid no longer shows the redundant text value — the bar remains.
+* **Agent vision system:** agents now have a 10-cell Manhattan distance line of sight. They scan visible resources each tick and maintain a resource memory (up to 2 coordinates per type: food, water, wood; max 6 total). Resource seeking now follows: adjacent → vision range → memory → full pathfind → wander. Stale memory entries are cleaned up when the agent visits the location and the resource is gone.
 
 ---
 
