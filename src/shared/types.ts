@@ -10,20 +10,23 @@ export type ActionType =
   | 'quarrel'
   | 'attack'
   | 'heal'
-  | 'help'
+  | 'share'
   | 'attack_flag'
   | 'reproduce'
   | 'sleep'
   | 'harvest'
   | 'eat'
-  | 'drink';
+  | 'drink'
+  | 'deposit'
+  | 'withdraw'
+  | 'pickup';
 
 export type LogCategory =
   | 'talk'
   | 'quarrel'
   | 'attack'
   | 'heal'
-  | 'help'
+  | 'share'
   | 'reproduce'
   | 'build'
   | 'destroy'
@@ -34,7 +37,8 @@ export type LogCategory =
   | 'info'
   | 'sleep'
   | 'eat'
-  | 'harvest';
+  | 'harvest'
+  | 'loot';
 
 export type PaintMode = 'none' | 'draw' | 'erase';
 
@@ -49,6 +53,7 @@ export interface IActionPayload {
   targetId?: string;
   targetPos?: { x: number; y: number };
   resourceType?: string;
+  amount?: number;
 }
 
 export interface ILogEntry {
@@ -91,6 +96,12 @@ export interface IWall {
   maxHp: number;
 }
 
+export interface IFlagStorage {
+  food: number;
+  water: number;
+  wood: number;
+}
+
 export interface IFlag {
   id: string;
   factionId: string;
@@ -98,6 +109,15 @@ export interface IFlag {
   y: number;
   hp: number;
   maxHp: number;
+  storage: IFlagStorage;
+}
+
+export interface ILootBag {
+  id: string;
+  x: number;
+  y: number;
+  inventory: IInventory;
+  decayMs: number;
 }
 
 export interface IWaterBlock {

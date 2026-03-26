@@ -1,6 +1,6 @@
 import { GRID } from '../../shared/constants';
 import { key } from '../../shared/utils';
-import type { IFoodBlock, IFarm, IWall, IFlag, IWaterBlock, ITreeBlock, ISeedling } from '../../shared/types';
+import type { IFoodBlock, IFarm, IWall, IFlag, IWaterBlock, ITreeBlock, ISeedling, ILootBag } from '../../shared/types';
 
 export class Grid {
   readonly size: number = GRID;
@@ -13,6 +13,7 @@ export class Grid {
   readonly waterBlocks: Map<string, IWaterBlock> = new Map();
   readonly treeBlocks: Map<string, ITreeBlock> = new Map();
   readonly seedlings: Map<string, ISeedling> = new Map();
+  readonly lootBags: Map<string, ILootBag> = new Map();
 
   isBlocked(x: number, y: number, ignoreId: string | null = null): boolean {
     if (x < 0 || y < 0 || x >= this.size || y >= this.size) return true;
@@ -62,5 +63,6 @@ export class Grid {
     this.waterBlocks.clear();
     this.treeBlocks.clear();
     this.seedlings.clear();
+    this.lootBags.clear();
   }
 }

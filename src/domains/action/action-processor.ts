@@ -1,4 +1,5 @@
 import { TUNE } from '../../shared/constants';
+import type { IInventory } from '../../shared/types';
 import { manhattan, log, key } from '../../shared/utils';
 import type { World } from '../world';
 import type { Agent } from '../agent';
@@ -6,6 +7,7 @@ import { FactionManager } from '../faction';
 import { AgentFactory } from '../agent';
 import { InteractionEngine } from './interaction-engine';
 import { SimulationEngine } from '../simulation/simulation-engine';
+import { LootBagManager } from '../world/loot-bag-manager';
 
 export class ActionProcessor {
   static process(world: World, agent: Agent, dtMs: number): void {
@@ -18,10 +20,11 @@ export class ActionProcessor {
       return;
     }
 
-    // Don't cancel sleep, attack, harvest, eat, or drink on low energy
+    // Don't cancel sleep, attack, harvest, eat, drink, or short utility actions on low energy
     if (agent.energy < TUNE.energyLowThreshold &&
       act.type !== 'attack' && act.type !== 'sleep' &&
-      act.type !== 'harvest' && act.type !== 'eat' && act.type !== 'drink'
+      act.type !== 'harvest' && act.type !== 'eat' && act.type !== 'drink' &&
+      act.type !== 'deposit' && act.type !== 'withdraw' && act.type !== 'pickup'
     ) {
       agent.action = null;
       return;
@@ -52,6 +55,22 @@ export class ActionProcessor {
       const tp = act.payload.targetPos;
       const dist = manhattan(agent.cellX, agent.cellY, tp.x, tp.y);
       if (dist > 1) { agent.action = null; return; }
+    }
+
+    // Deposit/withdraw proximity: must stay adjacent to own faction flag
+    if ((act.type === 'deposit' || act.type === 'withdraw') && agent.factionId) {
+      const flag = world.flags.get(agent.factionId);
+      if (!flag || manhattan(agent.cellX, agent.cellY, flag.x, flag.y) > 1) {
+        agent.action = null; return;
+      }
+    }
+
+    // Pickup proximity: must be on or adjacent to loot bag
+    if (act.type === 'pickup' && act.payload?.targetPos) {
+      const tp = act.payload.targetPos;
+      if (manhattan(agent.cellX, agent.cellY, tp.x, tp.y) > 1) {
+        agent.action = null; return;
+      }
     }
 
     if (act.tickCounterMs >= 500) {
@@ -97,14 +116,13 @@ export class ActionProcessor {
     } else if (act.type === 'heal' && targ) {
       targ.healBy(2);
       log(world, 'heal', `${agent.name} healed ${targ.name}`, agent.id, { to: targ.id });
-    } else if (act.type === 'help' && targ) {
-      const high = agent.energy > agent.maxEnergy * 0.7;
-      const ratio = high ? 0.2 : 0.1;
-      const transfer = Math.max(0, agent.energy * ratio);
-      if (transfer > 0) {
-        agent.drainEnergy(transfer);
-        targ.addEnergy(transfer);
-        log(world, 'help', `${agent.name} gave ${transfer.toFixed(1)} energy to ${targ.name}`, agent.id, { to: targ.id, transfer });
+    } else if (act.type === 'share' && targ) {
+      // Transfer 1 resource unit per tick from sharer to target
+      const rt = ActionProcessor._pickShareResource(agent, targ);
+      if (rt && agent.inventory[rt] > 0 && !targ.inventoryFull()) {
+        agent.removeFromInventory(rt, 1);
+        targ.addToInventory(rt, 1);
+        log(world, 'share', `${agent.name} gave 1 ${rt} to ${targ.name}`, agent.id, { to: targ.id, resource: rt });
       }
     } else if (act.type === 'quarrel' && targ) {
       const delta =
@@ -134,8 +152,12 @@ export class ActionProcessor {
     if (act.type === 'heal' && targ) {
       agent.addXp(TUNE.xp.perHeal);
       ActionProcessor._checkLevelUp(world, agent);
-    } else if (act.type === 'help' && targ) {
+    } else if (act.type === 'share' && targ) {
       agent.addXp(TUNE.xp.perShare);
+      agent.social = Math.min(100, agent.social + TUNE.share.sharerSocial);
+      targ.social = Math.min(100, targ.social + TUNE.share.recipientSocial);
+      agent.relationships.set(targ.id, agent.relationships.get(targ.id) + TUNE.share.relationshipGain);
+      targ.relationships.set(agent.id, targ.relationships.get(agent.id) + TUNE.share.relationshipGain);
       ActionProcessor._checkLevelUp(world, agent);
     } else if (act.type === 'sleep') {
       log(world, 'sleep', `${agent.name} woke up`, agent.id, {});
@@ -145,22 +167,28 @@ export class ActionProcessor {
       ActionProcessor._completeEat(world, agent);
     } else if (act.type === 'drink') {
       ActionProcessor._completeDrink(world, agent);
+    } else if (act.type === 'deposit') {
+      ActionProcessor._completeDeposit(world, agent);
+    } else if (act.type === 'withdraw') {
+      ActionProcessor._completeWithdraw(world, agent);
+    } else if (act.type === 'pickup') {
+      ActionProcessor._completePickup(world, agent);
     }
 
     if (targ && !agent.factionId && !targ.factionId) {
       const rel = agent.relationships.get(targ.id);
       if (
-        (act.type === 'talk' || act.type === 'help' || act.type === 'heal') &&
+        (act.type === 'talk' || act.type === 'share' || act.type === 'heal') &&
         rel >= TUNE.factionFormRelThreshold
       ) {
         FactionManager.create(world, [agent, targ]);
       }
     }
 
-    if (act.type === 'help' && targ && agent.factionId) {
+    if (act.type === 'share' && targ && agent.factionId) {
       if (
-        Math.random() < TUNE.helpConvertChance &&
-        agent.relationships.get(targ.id) >= TUNE.helpConvertRelThreshold &&
+        Math.random() < TUNE.shareConvertChance &&
+        agent.relationships.get(targ.id) >= TUNE.shareConvertRelThreshold &&
         targ.factionId !== agent.factionId
       ) {
         FactionManager.setFaction(world, targ, agent.factionId, 'recruitment');
@@ -285,5 +313,68 @@ export class ActionProcessor {
     if (removed <= 0) return;
     agent.hygiene = Math.min(100, agent.hygiene + TUNE.drink.hygieneGain);
     log(world, 'eat', `${agent.name} drank water`, agent.id, {});
+  }
+
+  private static _completeDeposit(world: World, agent: Agent): void {
+    if (!agent.factionId) return;
+    const flag = world.flags.get(agent.factionId);
+    if (!flag) return;
+    const act = agent.action!;
+    const rt = (act.payload?.resourceType || 'food') as keyof typeof flag.storage;
+    const cap = TUNE.flagStorage.capacityPerType;
+    const space = cap - flag.storage[rt];
+    if (space <= 0) return;
+    const amount = act.payload?.amount ?? agent.inventory[rt];
+    const actual = Math.min(amount, agent.inventory[rt], space);
+    if (actual <= 0) return;
+    agent.removeFromInventory(rt, actual);
+    flag.storage[rt] += actual;
+    log(world, 'share', `${agent.name} deposited ${actual} ${rt}`, agent.id, { resource: rt, amount: actual });
+  }
+
+  private static _completeWithdraw(world: World, agent: Agent): void {
+    if (!agent.factionId) return;
+    const flag = world.flags.get(agent.factionId);
+    if (!flag) return;
+    const act = agent.action!;
+    const rt = (act.payload?.resourceType || 'food') as keyof typeof flag.storage;
+    if (flag.storage[rt] <= 0) return;
+    const amount = act.payload?.amount ?? flag.storage[rt];
+    const actual = agent.addToInventory(rt, Math.min(amount, flag.storage[rt]));
+    if (actual <= 0) return;
+    flag.storage[rt] -= actual;
+    log(world, 'share', `${agent.name} withdrew ${actual} ${rt}`, agent.id, { resource: rt, amount: actual });
+  }
+
+  private static _completePickup(world: World, agent: Agent): void {
+    const act = agent.action!;
+    const tp = act.payload?.targetPos;
+    if (!tp) return;
+    const k = key(tp.x, tp.y);
+    const bag = world.lootBags.get(k);
+    if (!bag) return;
+    const types: (keyof typeof bag.inventory)[] = ['food', 'water', 'wood'];
+    for (const rt of types) {
+      if (bag.inventory[rt] <= 0) continue;
+      const added = agent.addToInventory(rt, bag.inventory[rt]);
+      bag.inventory[rt] -= added;
+    }
+    const remaining = bag.inventory.food + bag.inventory.water + bag.inventory.wood;
+    if (remaining <= 0) {
+      world.lootBags.delete(k);
+    }
+    log(world, 'loot', `${agent.name} picked up loot`, agent.id, { x: tp.x, y: tp.y });
+  }
+
+  private static _pickShareResource(agent: Agent, targ: Agent): keyof IInventory | null {
+    if (agent.inventoryTotal() <= 0) return null;
+    if (targ.fullness < 40 && agent.inventory.food > 0) return 'food';
+    if (targ.hygiene < 40 && agent.inventory.water > 0) return 'water';
+    // Give whatever agent has most of
+    const { food, water, wood } = agent.inventory;
+    if (food >= water && food >= wood && food > 0) return 'food';
+    if (water >= food && water >= wood && water > 0) return 'water';
+    if (wood > 0) return 'wood';
+    return null;
   }
 }

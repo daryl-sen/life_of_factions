@@ -74,7 +74,7 @@ Agent {
   }                         // Total units across all types capped at 20
 
   action: null | {
-    type: 'talk'|'quarrel'|'attack'|'under_attack'|'heal'|'help'|'attack_wall'|'attack_flag'|'reproduce'|'sleep'|'harvest'|'harvest_water'|'harvest_wood'|'eat'|'drink'
+    type: 'talk'|'quarrel'|'attack'|'under_attack'|'heal'|'share'|'attack_wall'|'attack_flag'|'reproduce'|'sleep'|'harvest'|'harvest_water'|'harvest_wood'|'eat'|'drink'|'deposit'|'withdraw'|'pickup'
     remainingMs: float
     tickCounterMs: float
     payload?: { targetId?: ID, ... }
@@ -109,7 +109,7 @@ Agent {
 
   * Agents advance along any existing path before planning a new one
   * Prevents path reset loops when adjacent to crops
-* **Movement locks:** while performing **non-attack** interactions (talk/heal/help/reproduce), participants are **locked** in place; lock is ignored if the agent is being **attacked** (they may move to escape)
+* **Movement locks:** while performing **non-attack** interactions (talk/heal/share/reproduce), participants are **locked** in place; lock is ignored if the agent is being **attacked** (they may move to escape)
 
 ### 3.2 Energy, Fullness & Needs
 
@@ -293,6 +293,74 @@ Trees are a source of wood and contribute to the food economy through passive sp
 | Emoji | 🤔 |
 | Note | Requires water in inventory (water blocks added in Phase 3) |
 
+#### Share Action (Phase 4 — replaces "help")
+
+The former "help" action is renamed to "share." Instead of transferring energy, it transfers inventory resources (food, water, wood) from sharer to target.
+
+| Property | Value |
+|----------|-------|
+| Duration | 300–500ms |
+| Energy cost | 0.4/sec |
+| Effect | Transfers inventory resources (food, water, wood) from sharer to target |
+| XP | +5 for sharer |
+| Social | +8 social for sharer, +5 social for recipient |
+| Relationship | +0.14 for both agents |
+| Emoji | (inherited from former help action) |
+| Faction recruitment | 50% chance to recruit target if relationship ≥ 0.4 (preserved from help) |
+
+#### Deposit Action (Phase 4)
+
+| Property | Value |
+|----------|-------|
+| Target | Own faction flag (adjacent, distance = 1) |
+| Duration | 300–500ms |
+| Energy cost | None |
+| Effect | Transfers resources from agent inventory to flag storage |
+| Trigger | Opportunistic: agent near own flag with inventory ≥ 3 |
+
+#### Withdraw Action (Phase 4)
+
+| Property | Value |
+|----------|-------|
+| Target | Own faction flag (adjacent, distance = 1) |
+| Duration | 300–500ms |
+| Energy cost | None |
+| Effect | Transfers resources from flag storage to agent inventory |
+| Trigger | Agent needs food/water and is near own flag with stored resources |
+
+#### Pickup Action (Phase 4)
+
+| Property | Value |
+|----------|-------|
+| Target | Loot bag on agent's cell or adjacent cell |
+| Duration | 300–500ms |
+| Energy cost | None |
+| Effect | Takes all contents from loot bag up to agent's inventory cap |
+
+#### Loot Bags (Phase 4)
+
+Loot bags (👝) are temporary resource containers that spawn on the grid.
+
+| Property | Value |
+|----------|-------|
+| Emoji | 👝 |
+| Passable | Yes |
+| Decay timer | 30 seconds with fade effect |
+| Spawn triggers | Agent death (agent's full inventory), flag destruction (all stored resources) |
+| Pickup | Any agent can pick up (300–500ms action, takes all contents up to inventory cap) |
+| Merging | Multiple bags on the same cell merge; merge resets decay timer |
+
+#### Faction Flag Storage (Phase 4)
+
+Faction flags now store resources for the faction.
+
+| Property | Value |
+|----------|-------|
+| Storage capacity | 30 per resource type (food, water, wood) |
+| Deposit | Agent adjacent to own flag with ≥ 3 inventory items (300–500ms action, no energy cost) |
+| Withdraw | Agent adjacent to own flag, needing resources, flag has stored resources (300–500ms action, no energy cost) |
+| On flag destruction | All stored resources drop as a loot bag at the flag's location |
+
 ### 3.4 Interactions
 
 * All **non-attack** interactions require **adjacency** (Manhattan distance = 1) and **lock** both agents for the duration.
@@ -311,6 +379,7 @@ Trees are a source of wood and contribute to the food economy through passive sp
   * Unique color (also applied to its flag)
   * Member set
 * Flags heal nearby members (aura), can be destroyed
+* **Flag storage (Phase 4):** flags store resources (30 per type: food, water, wood). Agents deposit and withdraw resources when near their flag. On flag destruction, all stored resources drop as a loot bag.
 
 ### 3.6 Building & Destruction
 
@@ -349,21 +418,25 @@ Trees are a source of wood and contribute to the food economy through passive sp
 
 * **Base durations** (randomized per action):
 
-  * talk/quarrel/heal/help: **0.9–1.8s**
+  * talk/quarrel/heal: **0.9–1.8s**
+  * **share:** **300–500ms** (formerly "help")
   * **attack:** **0.45–0.9s** (faster)
   * reproduce: **2.0–3.2s**
   * **sleep:** **8–12s**
   * **harvest:** HQ food 600ms, LQ food 1200ms, water 1000ms, wood 1500ms
   * **eat/drink:** **300–500ms**
+  * **deposit/withdraw/pickup:** **300–500ms**
 * **Distance rules:**
 
   * Non-attack actions: distance **=1**
   * Attack: distance **≤2**
   * Sleep, eat, drink: no target (solo/self actions)
   * Harvest: adjacent to resource block (distance **=1**; applies to food, water, and tree blocks)
+  * Deposit/withdraw: adjacent to own faction flag (distance **=1**)
+  * Pickup: on loot bag cell or adjacent
 * **Tick cadence:** effects apply roughly every **0.5s** during actions
-* **Per-second energy costs** (approx., halved from v1.3): talk 0.2, quarrel 0.4, **attack 1.1**, heal 1.5, help 0.8, attack\_wall 0.75, attack\_flag 1.0, **reproduce 1.5**, **harvest 0.25**
-* **Zero-cost actions:** eat, drink (consume from inventory)
+* **Per-second energy costs** (approx., halved from v1.3): talk 0.2, quarrel 0.4, **attack 1.1**, heal 1.5, **share 0.4**, attack\_wall 0.75, attack\_flag 1.0, **reproduce 1.5**, **harvest 0.25**
+* **Zero-cost actions:** eat, drink, deposit, withdraw, pickup
 * **Sleep:** restores +8 energy per 500ms tick (total 128–192 energy over full duration); mandatory at energy < 20, voluntary at energy < 40; interruptible by attack; emoji 😴
 * **Damage:** base 8; attack deals periodic damage scaled by level
 
@@ -432,16 +505,18 @@ Trees are a source of wood and contribute to the food economy through passive sp
 
 **Actions (energy/sec) — halved from v1.3**
 
-* talk 0.2, quarrel 0.4, **attack 1.1**, heal 1.5, help 0.8, attack\_wall 0.75, attack\_flag 1.0, **reproduce 1.5**
+* talk 0.2, quarrel 0.4, **attack 1.1**, heal 1.5, **share 0.4**, attack\_wall 0.75, attack\_flag 1.0, **reproduce 1.5**
 
 **Action durations**
 
-* talk/quarrel/heal/help: **0.9–1.8s**
+* talk/quarrel/heal: **0.9–1.8s**
+* **share:** **300–500ms** (formerly "help")
 * **attack:** **0.45–0.9s**
 * reproduce: **2.0–3.2s**
 * **sleep:** **8–12s** (restores +8 energy per 500ms tick)
 * **harvest:** HQ food 600ms, LQ food 1200ms, water 1000ms, wood 1500ms
 * **eat/drink:** **300–500ms**
+* **deposit/withdraw/pickup:** **300–500ms** (no energy cost)
 
 **Combat & leveling (XP-based)**
 
@@ -496,11 +571,13 @@ Trees are a source of wood and contribute to the food economy through passive sp
      5. Hygiene < 20 → critical water seeking: drink from inventory first; if no water in inventory, harvest adjacent water block; if none adjacent, pathfind to nearest water block
      6. Energy < 40 → voluntary sleep
      7. Normal state:
-        a. Fullness < 40 → proactive food seeking (same eat/harvest/pathfind priority as above)
-        b. Hygiene < 40 → proactive water seeking (same drink/harvest/pathfind priority as water seeking above)
-        c. Harvest nearby resources (if inventory not full and adjacent to resource block; wood harvesting is opportunistic)
-        d. Reproduction, attack, help/heal/talk
-        e. Roam
+        a. Fullness < 40 → proactive food seeking (same eat/harvest/pathfind priority as above); withdraw from own flag if nearby and flag has food
+        b. Hygiene < 40 → proactive water seeking (same drink/harvest/pathfind priority as water seeking above); withdraw from own flag if nearby and flag has water
+        c. Deposit resources to own faction flag (opportunistic: near own flag with inventory ≥ 3)
+        d. Harvest nearby resources (if inventory not full and adjacent to resource block; wood harvesting is opportunistic)
+        e. Pickup loot bags (before roaming)
+        f. Reproduction, attack, share/heal/talk
+        g. Roam
    * If acting: process action (distance rules; energy drain; effects)
    * If not acting:
 
@@ -541,7 +618,7 @@ Trees are a source of wood and contribute to the food economy through passive sp
 
 1. **Start** button initializes world; **Pause/Resume** work.
 2. **Crop cap**: total concurrent crops never exceeds **150** (Spawn Crop button respects this).
-3. **Interactions lock**: during talk/heal/help/reproduce, agents do **not move**; if they’re **attacked**, they may move despite being locked.
+3. **Interactions lock**: during talk/heal/share/reproduce, agents do **not move**; if they’re **attacked**, they may move despite being locked.
 4. **Attack range & speed**: agents can attack targets at Manhattan distance **≤2**; attack completes in **≤0.9s**.
 5. **Adjacency rule**: all non-attack actions (including reproduction) only occur at **distance = 1**; actions cancel if distance rule is violated.
 6. **Reproduction**: occurs noticeably over long runs (under default settings); upfront commitment and finishing energy costs are deducted from parents.
@@ -562,6 +639,11 @@ Trees are a source of wood and contribute to the food economy through passive sp
 20. **Hygiene system activated** (Phase 3): hygiene decays at −0.02/tick, restored by drinking water (+30). Critical water seeking at hygiene < 20, proactive at < 40.
 21. **Wood harvesting** (Phase 3): opportunistic harvesting when agents pass near trees. 1500ms per unit, adds wood to inventory.
 22. **World-gen updated** (Phase 3): 3–6 water sources and 8–15 trees placed at world creation.
+23. **Share action** (Phase 4): the former "help" action is renamed to "share" and transfers inventory resources (food, water, wood) instead of energy. Duration 300–500ms, cost 0.4/sec, +5 XP, +8 social for sharer, +5 social for recipient, +0.14 relationship. Faction recruitment preserved (50% at rel >= 0.4).
+24. **Faction flag storage** (Phase 4): flags store up to 30 of each resource type (food, water, wood). Agents deposit when near own flag with >= 3 inventory (300–500ms, no energy cost). Agents withdraw when needing resources and near own flag with stored resources (300–500ms, no energy cost). On flag destruction, all stored resources drop as a loot bag.
+25. **Loot bags** (Phase 4): 👝 emoji, passable, 30s decay timer with fade effect. Spawn on agent death (agent's full inventory) and on flag destruction (stored resources). Any agent can pick up (300–500ms, takes all contents up to inventory cap). Multiple bags on same cell merge; merge resets decay timer.
+26. **Deposit/withdraw/pickup actions** (Phase 4): deposit (300–500ms, no energy cost), withdraw (300–500ms, no energy cost), pickup (300–500ms, no energy cost).
+27. **Decision priority updated** (Phase 4): deposit is opportunistic (near own flag with inventory >= 3). Withdraw when needing food/water and near own flag with stored resources. Pickup loot bags checked before roaming.
 
 ---
 
@@ -607,6 +689,14 @@ Trees are a source of wood and contribute to the food economy through passive sp
 * **Wood harvesting:** opportunistic when agents pass near trees. Low-priority action.
 * **World-gen updated:** 3–6 water sources and 8–15 trees placed at world creation.
 * **Decision priorities updated:** added hygiene < 20 as priority 5 (critical) and hygiene < 40 as priority 7b (proactive).
+
+### Phase 4 Changes (v3.2.0 — Faction Storage and Sharing)
+
+* **Help renamed to Share:** the "help" action is now "share." Instead of transferring energy, it transfers inventory resources (food, water, wood) from sharer to target. Duration reduced to 300–500ms, energy cost 0.4/sec, +5 XP, +8 social for sharer, +5 social for recipient, +0.14 relationship. Faction recruitment mechanic preserved (50% chance at relationship >= 0.4).
+* **Faction flag storage:** flags now store resources (30 per type: food, water, wood). Agents deposit when near their flag with >= 3 inventory items (300–500ms, no energy cost). Agents withdraw when needing resources and near their flag with stored resources (300–500ms, no energy cost).
+* **Loot bags (👝):** spawn on agent death (agent's full inventory) and on flag destruction (all stored resources). Passable, 30-second decay timer with fade effect. Any agent can pick up (300–500ms, takes all contents up to inventory cap). Multiple bags on the same cell merge; merge resets decay timer.
+* **New actions:** deposit (300–500ms, no energy cost), withdraw (300–500ms, no energy cost), pickup (300–500ms, no energy cost).
+* **Decision priority updated:** deposit is opportunistic (near own flag with inventory >= 3). Withdraw when needing food/water and near own flag. Pickup loot bags checked before roaming.
 
 ---
 

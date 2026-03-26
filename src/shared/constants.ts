@@ -13,13 +13,16 @@ export const TUNE = {
     quarrel: 0.4,
     attack: 1.1,
     heal: 1.5,
-    help: 0.8,
+    share: 0.4,
     attack_flag: 1.0,
     reproduce: 1.5,
     sleep: 0,
     harvest: 0.25,
     eat: 0,
     drink: 0,
+    deposit: 0,
+    withdraw: 0,
+    pickup: 0,
   } as Record<ActionType, number>,
   cropGain: 28,
   starveHpPerSec: 1.0,
@@ -34,8 +37,8 @@ export const TUNE = {
   factionThreshold: 0.5,
   factionMinSize: 2,
   factionFormRelThreshold: 0.6,
-  helpConvertChance: 0.5,
-  helpConvertRelThreshold: 0.4,
+  shareConvertChance: 0.5,
+  shareConvertRelThreshold: 0.4,
   energyLowThreshold: 40,
   levelCap: 20,
   maxCrops: 100,
@@ -124,6 +127,17 @@ export const TUNE = {
     criticalThreshold: 20,
     seekThreshold: 40,
   },
+  flagStorage: {
+    capacityPerType: 30,
+  },
+  lootBag: {
+    decayMs: 30000,
+  },
+  share: {
+    sharerSocial: 8,
+    recipientSocial: 5,
+    relationshipGain: 0.14,
+  },
 } as const;
 
 export const ACTION_DURATIONS: Record<ActionType, [number, number]> = {
@@ -131,13 +145,16 @@ export const ACTION_DURATIONS: Record<ActionType, [number, number]> = {
   quarrel: [900, 1800],
   attack: [450, 900],
   heal: [900, 1800],
-  help: [900, 1800],
+  share: [300, 500],
   attack_flag: [1000, 2000],
   reproduce: [2000, 3200],
   sleep: [8000, 12000],
   harvest: [600, 1500],
   eat: [300, 500],
   drink: [300, 500],
+  deposit: [300, 500],
+  withdraw: [300, 500],
+  pickup: [300, 500],
 };
 
 
@@ -170,12 +187,15 @@ export const AGENT_EMOJIS: Record<string, string> = {
   quarrel: '😤',
   attack: '😡',
   heal: '🤗',
-  help: '🫢',
+  share: '🫢',
   reproduce: '😍',
   sleep: '😴',
   harvest: '🫨',
   eat: '🤔',
   drink: '🤔',
+  deposit: '📦',
+  withdraw: '📦',
+  pickup: '🤔',
 };
 
 export const IDLE_EMOJIS = {
@@ -198,6 +218,7 @@ export const WORLD_EMOJIS = {
   water: '💦',
   cloud: '🌧️',
   seedling: '🌱',
+  lootBag: '👝',
 } as const;
 
 export const TREE_EMOJIS: readonly string[] = ['🌲', '🌳', '🌴', '🎄'];
@@ -207,7 +228,7 @@ export const LOG_CATS: readonly LogCategory[] = [
   'quarrel',
   'attack',
   'heal',
-  'help',
+  'share',
   'reproduce',
   'build',
   'destroy',
@@ -219,4 +240,5 @@ export const LOG_CATS: readonly LogCategory[] = [
   'sleep',
   'eat',
   'harvest',
+  'loot',
 ];

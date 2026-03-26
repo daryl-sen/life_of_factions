@@ -1,4 +1,4 @@
-import { CELL, GRID, COLORS, AGENT_EMOJIS, WORLD_EMOJIS, FOOD_EMOJIS } from '../../shared/constants';
+import { CELL, GRID, COLORS, AGENT_EMOJIS, WORLD_EMOJIS, FOOD_EMOJIS, TUNE } from '../../shared/constants';
 import { getIdleEmoji } from '../../shared/utils';
 import type { World } from '../world';
 import type { Agent } from '../agent';
@@ -22,6 +22,7 @@ export class Renderer {
     this._drawTreeBlocks(ctx, world);
     this._drawSeedlings(ctx, world);
     this._drawFoodBlocks(ctx, world);
+    this._drawLootBags(ctx, world);
     this._drawFarms(ctx, world);
     this._drawWalls(ctx, world);
     this._drawFlags(ctx, world);
@@ -98,6 +99,15 @@ export class Renderer {
       const pct = fb.units / fb.maxUnits;
       ctx.globalAlpha = 0.4 + 0.6 * pct;
       this._drawCellEmoji(ctx, fb.x, fb.y, fb.emoji || FOOD_EMOJIS.lq[0]);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  private _drawLootBags(ctx: CanvasRenderingContext2D, world: World): void {
+    for (const bag of world.lootBags.values()) {
+      const fadeRatio = Math.max(0.3, bag.decayMs / TUNE.lootBag.decayMs);
+      ctx.globalAlpha = fadeRatio;
+      this._drawCellEmoji(ctx, bag.x, bag.y, WORLD_EMOJIS.lootBag);
       ctx.globalAlpha = 1;
     }
   }

@@ -42,7 +42,7 @@ agent.energy -= 0.12  // Per cell moved
 - quarrel: 0.4
 - attack: 1.1
 - heal: 1.5
-- help: 0.8
+- share: 0.4
 - reproduce: 1.5
 
 ### Energy Recovery (Sleep)
@@ -412,6 +412,72 @@ function tryHarvestWood(world, agent, treeBlock) {
 
 **Wood harvesting behavior:** Agents harvest wood opportunistically when passing near trees, rather than actively seeking them out. Wood harvesting is a low-priority action attempted when agents are adjacent to a tree and have inventory space.
 
+## Loot Bags (Phase 4)
+
+Loot bags (👝) are temporary resource containers that spawn on the grid when agents die or faction flags are destroyed.
+
+### Loot Bag Properties
+
+| Property | Value |
+|----------|-------|
+| Emoji | 👝 |
+| Passable | Yes |
+| Decay timer | 30 seconds |
+| Fade effect | Visual opacity decreases as decay timer counts down |
+
+### Death Drops
+
+When an agent dies, a loot bag spawns at the agent's death location containing the agent's full inventory:
+
+```javascript
+function onAgentDeath(world, agent) {
+  if (agent.inventory.food > 0 || agent.inventory.water > 0 || agent.inventory.wood > 0) {
+    spawnLootBag(world, agent.cellX, agent.cellY, {
+      food: agent.inventory.food,
+      water: agent.inventory.water,
+      wood: agent.inventory.wood
+    })
+  }
+}
+```
+
+### Flag Destruction Drops
+
+When a faction flag is destroyed, all stored resources drop as a loot bag at the flag's location. See `docs/07-factions.md` for details on flag storage.
+
+### Loot Bag Merging
+
+When multiple loot bags exist on the same cell, they merge into a single bag:
+- All contents are combined
+- The decay timer is reset to 30 seconds
+
+### Loot Bag Decay
+
+Loot bags decay after 30 seconds if not picked up:
+- A visual fade effect indicates remaining time
+- When the timer reaches 0, the bag and all its contents are removed from the grid
+
+### Pickup Action
+
+Any agent can pick up a loot bag via the pickup action:
+- **Duration:** 300–500ms
+- **Energy cost:** None
+- **Effect:** Takes all contents from the loot bag up to the agent's inventory cap (20 total)
+- **Decision priority:** Checked before roaming (priority 7e)
+
+## Faction Flag Storage (Phase 4)
+
+Faction flags serve as communal resource storage. See `docs/07-factions.md` for full details.
+
+| Property | Value |
+|----------|-------|
+| Storage capacity | 30 per resource type (food, water, wood) |
+| Deposit trigger | Adjacent to own flag, inventory >= 3 items |
+| Withdraw trigger | Adjacent to own flag, needing resources, flag has stored resources |
+| Deposit/Withdraw duration | 300–500ms |
+| Deposit/Withdraw energy cost | None |
+| On flag destruction | All stored resources drop as a loot bag |
+
 ## Farms
 
 ### Farm Properties
@@ -489,6 +555,30 @@ Harvest Wood (tree block → inventory):
   → +2 XP
   → -0.25 energy/sec (1500ms per unit)
   → 10% seedling spawn, 5% LQ food spawn
+
+Share (inventory → target inventory):
+  → Transfers food, water, wood to target
+  → +5 XP for sharer
+  → +8 social for sharer, +5 social for recipient
+  → +0.14 relationship
+  → -0.4 energy/sec (300-500ms)
+
+Deposit (inventory → flag storage):
+  → Transfers resources to faction flag
+  → No energy cost (300-500ms)
+
+Withdraw (flag storage → inventory):
+  → Transfers resources from faction flag
+  → No energy cost (300-500ms)
+
+Pickup (loot bag → inventory):
+  → Takes all contents up to inventory cap
+  → No energy cost (300-500ms)
+
+Loot Bag Spawn:
+  → Agent death: drops full inventory
+  → Flag destruction: drops all stored resources
+  → 30s decay timer, bags on same cell merge
 
 Sleep Action (8–12s):
   → +8 energy per 500ms tick

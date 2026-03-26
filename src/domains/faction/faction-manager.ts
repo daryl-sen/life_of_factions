@@ -2,6 +2,7 @@ import { FACTION_COLORS, TUNE } from '../../shared/constants';
 import { generatePronounceableString, key, rndi, log, uuid } from '../../shared/utils';
 import type { World } from '../world';
 import type { Agent } from '../agent';
+import { LootBagManager } from '../world/loot-bag-manager';
 import { Faction } from './faction';
 
 export class FactionManager {
@@ -27,6 +28,7 @@ export class FactionManager {
       y: spot.y,
       hp: rndi(TUNE.flagHp[0], TUNE.flagHp[1]),
       maxHp: TUNE.flagHp[1],
+      storage: { food: 0, water: 0, wood: 0 },
     });
     world.flagCells.add(key(spot.x, spot.y));
     log(world, 'faction', `Faction ${fid} placed flag @${spot.x},${spot.y}`, null, {
@@ -65,6 +67,7 @@ export class FactionManager {
     world.factions.delete(fid);
     const flag = world.flags.get(fid);
     if (flag) {
+      LootBagManager.dropOnFlagDestruction(world, flag);
       world.flagCells.delete(key(flag.x, flag.y));
       world.flags.delete(fid);
       log(world, 'destroy', `Flag ${fid} destroyed`, null, { factionId: fid });

@@ -75,6 +75,7 @@ export class PersistenceManager {
       waterBlocks: PersistenceManager._serializeWaterBlocks(world),
       treeBlocks: [...world.treeBlocks.values()],
       seedlings: [...world.seedlings.values()],
+      lootBags: [...world.lootBags.values()],
       agents,
       log: { limit: world.log.limit, arr: world.log.arr },
       selectedId: world.selectedId,
@@ -150,7 +151,10 @@ export class PersistenceManager {
       world.factions.set(f.id, faction);
     }
     for (const fl of d.flags || []) {
-      world.flags.set(fl.factionId, { ...fl });
+      world.flags.set(fl.factionId, {
+        ...fl,
+        storage: fl.storage ?? { food: 0, water: 0, wood: 0 },
+      });
       world.flagCells.add(key(fl.x, fl.y));
     }
     for (const w of d.walls || [])
@@ -198,12 +202,24 @@ export class PersistenceManager {
         growthElapsedMs: s.growthElapsedMs ?? 0,
       });
     }
+    // Restore loot bags
+    for (const lb of d.lootBags || []) {
+      world.lootBags.set(key(lb.x, lb.y), {
+        id: lb.id,
+        x: lb.x,
+        y: lb.y,
+        inventory: lb.inventory ?? { food: 0, water: 0, wood: 0 },
+        decayMs: lb.decayMs ?? 30000,
+      });
+    }
     // Reset ephemeral cloud state
     world.clouds = [];
     world._nextCloudSpawnMs = 0;
 
     for (const a of d.agents || []) {
       let action = a.action ? { ...a.action } : null;
+      // Backward compat: rename 'help' → 'share'
+      if (action && (action as any).type === 'help') action.type = 'share';
       if (
         action?.payload?.targetId &&
         !(d.agents || []).some((x: Record<string, unknown>) => x.id === action!.payload!.targetId)

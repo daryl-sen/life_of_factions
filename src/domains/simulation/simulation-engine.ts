@@ -1,8 +1,9 @@
 import { GRID, BASE_TICK_MS, TUNE, FOOD_EMOJIS, TREE_EMOJIS, WORLD_EMOJIS } from '../../shared/constants';
-import { key, rndi, log, uuid } from '../../shared/utils';
+import { key, manhattan, rndi, log, uuid } from '../../shared/utils';
 import { Pathfinder } from '../../shared/pathfinding';
 import { FoodField } from '../world/food-field';
 import { WaterField } from '../world/water-field';
+import { LootBagManager } from '../world/loot-bag-manager';
 import type { World } from '../world';
 import type { Agent } from '../agent';
 import { ActionFactory, ActionProcessor, InteractionEngine } from '../action';
@@ -490,6 +491,7 @@ export class SimulationEngine {
     const removedIds: string[] = [];
     world.agents = world.agents.filter((a) => {
       if (a.health <= 0) {
+        LootBagManager.dropOnDeath(world, a);
         world.agentsByCell.delete(key(a.cellX, a.cellY));
         world.agentsById.delete(a.id);
         removedIds.push(a.id);
@@ -586,14 +588,17 @@ export class SimulationEngine {
       if (agent.poopTimerMs > 0) agent.poopTimerMs -= BASE_TICK_MS;
       agent.lockMsRemaining = Math.max(0, (agent.lockMsRemaining || 0) - BASE_TICK_MS);
 
-      // Don't cancel sleep, attack, harvest, eat, or drink on low energy
+      // Don't cancel sleep, attack, harvest, eat, drink, or short utility actions on low energy
       if (agent.energy < TUNE.energyLowThreshold) {
         if (agent.action &&
           agent.action.type !== 'attack' &&
           agent.action.type !== 'sleep' &&
           agent.action.type !== 'harvest' &&
           agent.action.type !== 'eat' &&
-          agent.action.type !== 'drink'
+          agent.action.type !== 'drink' &&
+          agent.action.type !== 'deposit' &&
+          agent.action.type !== 'withdraw' &&
+          agent.action.type !== 'pickup'
         ) {
           agent.action = null;
         }
@@ -631,17 +636,62 @@ export class SimulationEngine {
 
             // If InteractionEngine returned without action/path, handle seeking
             if (!agent.path && !agent.action) {
-              if (agent.fullness < TUNE.fullness.seekThreshold) {
-                SimulationEngine.seekFoodWhenHungry(world, agent);
-              } else if (agent.hygiene < TUNE.hygiene.seekThreshold) {
-                SimulationEngine.seekWaterWhenThirsty(world, agent);
-              } else {
-                // Opportunistic wood harvest when passing near trees
-                if (!agent.inventoryFull() && Math.random() < 0.3) {
-                  SimulationEngine.tryHarvestAdjacentWood(world, agent);
+              // Withdraw from flag if needing resources and near own flag
+              if (!agent.action && agent.factionId && (agent.fullness < TUNE.fullness.seekThreshold || agent.hygiene < TUNE.hygiene.seekThreshold)) {
+                const flag = world.flags.get(agent.factionId);
+                if (flag && manhattan(agent.cellX, agent.cellY, flag.x, flag.y) <= 1) {
+                  const rt = agent.fullness < TUNE.fullness.seekThreshold && agent.inventory.food <= 0 && flag.storage.food > 0 ? 'food'
+                    : agent.hygiene < TUNE.hygiene.seekThreshold && agent.inventory.water <= 0 && flag.storage.water > 0 ? 'water'
+                    : null;
+                  if (rt) ActionFactory.tryStart(agent, 'withdraw', { resourceType: rt });
                 }
+              }
+
+              if (!agent.action && agent.fullness < TUNE.fullness.seekThreshold) {
+                SimulationEngine.seekFoodWhenHungry(world, agent);
+              } else if (!agent.action && agent.hygiene < TUNE.hygiene.seekThreshold) {
+                SimulationEngine.seekWaterWhenThirsty(world, agent);
+              } else if (!agent.action) {
+                // Opportunistic loot bag pickup
+                if (!agent.inventoryFull()) {
+                  const bagKey = key(agent.cellX, agent.cellY);
+                  if (world.lootBags.has(bagKey)) {
+                    ActionFactory.tryStart(agent, 'pickup', { targetPos: { x: agent.cellX, y: agent.cellY } });
+                  } else {
+                    // Check adjacent cells for loot bags
+                    const adjCells: [number, number][] = [
+                      [agent.cellX + 1, agent.cellY], [agent.cellX - 1, agent.cellY],
+                      [agent.cellX, agent.cellY + 1], [agent.cellX, agent.cellY - 1],
+                    ];
+                    for (const [nx, ny] of adjCells) {
+                      const ak = key(nx, ny);
+                      if (world.lootBags.has(ak)) {
+                        ActionFactory.tryStart(agent, 'pickup', { targetPos: { x: nx, y: ny } });
+                        break;
+                      }
+                    }
+                  }
+                }
+
+                // Deposit at own flag if nearby and has surplus inventory
+                if (!agent.action && agent.factionId && agent.inventoryTotal() >= 3) {
+                  const flag = world.flags.get(agent.factionId);
+                  if (flag && manhattan(agent.cellX, agent.cellY, flag.x, flag.y) <= 1) {
+                    const { food, water, wood } = agent.inventory;
+                    const rt = food >= water && food >= wood ? 'food'
+                      : water >= wood ? 'water' : 'wood';
+                    ActionFactory.tryStart(agent, 'deposit', { resourceType: rt });
+                  }
+                }
+
                 if (!agent.action) {
-                  RoamingStrategy.biasedRoam(world, agent);
+                  // Opportunistic wood harvest when passing near trees
+                  if (!agent.inventoryFull() && Math.random() < 0.3) {
+                    SimulationEngine.tryHarvestAdjacentWood(world, agent);
+                  }
+                  if (!agent.action) {
+                    RoamingStrategy.biasedRoam(world, agent);
+                  }
                 }
               }
             }
@@ -668,5 +718,6 @@ export class SimulationEngine {
     if (world.tick % 4 === 0) FactionManager.reconcile(world);
     SimulationEngine._applyFlagHealing(world);
     SimulationEngine._cleanDead(world);
+    LootBagManager.tickDecay(world, BASE_TICK_MS);
   }
 }

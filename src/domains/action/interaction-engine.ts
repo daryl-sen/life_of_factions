@@ -25,7 +25,7 @@ export class InteractionEngine {
    *    b. Hygiene < 40      → proactive water seeking
    *    c. Reproduction
    *    d. Attack
-   *    e. Help/Heal/Talk
+   *    e. Share/Heal/Talk
    */
   static consider(world: World, agent: Agent): void {
     // 1. Mandatory sleep
@@ -124,8 +124,8 @@ export class InteractionEngine {
     // 7d. Attack
     if (InteractionEngine.chooseAttack(world, agent)) return;
 
-    // 7e. Help/Heal/Talk
-    if (InteractionEngine._chooseHelpHealTalk(world, agent)) return;
+    // 7e. Share/Heal/Talk
+    if (InteractionEngine._chooseShareHealTalk(world, agent)) return;
   }
 
   private static _trySleep(agent: Agent): boolean {
@@ -192,7 +192,7 @@ export class InteractionEngine {
     return false;
   }
 
-  private static _chooseHelpHealTalk(world: World, agent: Agent): boolean {
+  private static _chooseShareHealTalk(world: World, agent: Agent): boolean {
     const adj: [number, number][] = [
       [agent.cellX + 1, agent.cellY],
       [agent.cellX - 1, agent.cellY],
@@ -211,9 +211,9 @@ export class InteractionEngine {
     const sameFactionNearby = neighbors.some(
       (b) => agent.factionId && b.factionId && agent.factionId === b.factionId
     );
-    const pHelp = clamp(agent.cooperation + (sameFactionNearby ? 0.25 : 0), 0, 1);
+    const pShare = clamp(agent.cooperation + (sameFactionNearby ? 0.25 : 0), 0, 1);
 
-    if (Math.random() < pHelp) {
+    if (Math.random() < pShare) {
       const sorted = neighbors.slice().sort((b1, b2) => {
         const same1 =
           agent.factionId && b1.factionId && agent.factionId === b1.factionId ? -0.3 : 0;
@@ -228,11 +228,24 @@ export class InteractionEngine {
       });
       const targ = sorted[0];
       const doHeal = targ.health < targ.maxHealth * 0.85;
-      const type = doHeal ? 'heal' as const : 'help' as const;
-      if (ActionFactory.tryStart(agent, type, { targetId: targ.id })) {
-        lockAgent(world, agent.id, agent.action!.remainingMs);
-        lockAgent(world, targ.id, agent.action!.remainingMs);
-        return true;
+      if (doHeal) {
+        if (ActionFactory.tryStart(agent, 'heal', { targetId: targ.id })) {
+          lockAgent(world, agent.id, agent.action!.remainingMs);
+          lockAgent(world, targ.id, agent.action!.remainingMs);
+          return true;
+        }
+      } else if (agent.inventoryTotal() > 0) {
+        // Choose resource type based on target's needs
+        const rt = targ.fullness < 40 && agent.inventory.food > 0 ? 'food'
+          : targ.hygiene < 40 && agent.inventory.water > 0 ? 'water'
+          : agent.inventory.food >= agent.inventory.water && agent.inventory.food >= agent.inventory.wood && agent.inventory.food > 0 ? 'food'
+          : agent.inventory.water >= agent.inventory.wood && agent.inventory.water > 0 ? 'water'
+          : agent.inventory.wood > 0 ? 'wood' : null;
+        if (rt && ActionFactory.tryStart(agent, 'share', { targetId: targ.id, resourceType: rt })) {
+          lockAgent(world, agent.id, agent.action!.remainingMs);
+          lockAgent(world, targ.id, agent.action!.remainingMs);
+          return true;
+        }
       }
     }
 

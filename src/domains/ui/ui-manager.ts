@@ -15,7 +15,8 @@ const CAT_ICONS: Record<string, string> = {
   quarrel: '\u{1F4A2}',
   attack: '\u2694\uFE0F',
   heal: '\u{1F49A}',
-  help: '\u{1F91D}',
+  share: '\u{1F91D}',
+  loot: '\uD83D\uDC5D',
   reproduce: '\u{1F495}',
   build: '\u{1F528}',
   destroy: '\u{1F4A5}',
@@ -28,8 +29,8 @@ const CAT_ICONS: Record<string, string> = {
 
 function catClass(cat: string): string {
   if (cat === 'attack' || cat === 'quarrel' || cat === 'destroy' || cat === 'death') return 'cat-bad';
-  if (cat === 'heal' || cat === 'help' || cat === 'faction' || cat === 'level') return 'cat-good';
-  if (cat === 'reproduce' || cat === 'spawn' || cat === 'build') return 'cat-warn';
+  if (cat === 'heal' || cat === 'share' || cat === 'faction' || cat === 'level') return 'cat-good';
+  if (cat === 'reproduce' || cat === 'spawn' || cat === 'build' || cat === 'loot') return 'cat-warn';
   return 'cat-info';
 }
 
@@ -337,12 +338,16 @@ export class UIManager {
 
       for (const { fid, f, members, avgLvl } of entries) {
         const color = f.color;
+        const flag = world.flags.get(fid);
+        const storageStr = flag?.storage
+          ? ` &middot; 🍖${flag.storage.food} 💧${flag.storage.water} 🪵${flag.storage.wood}`
+          : '';
         const div = document.createElement('div');
         div.className = 'faction-item';
         div.innerHTML = `
           <div class="faction-color" style="background:${color}"></div>
           <span class="faction-name">${fid.slice(0, 8)}</span>
-          <span class="faction-detail">${members.length} members &middot; Lv ${avgLvl.toFixed(1)}</span>
+          <span class="faction-detail">${members.length} members &middot; Lv ${avgLvl.toFixed(1)}${storageStr}</span>
         `;
         factionsList.appendChild(div);
       }

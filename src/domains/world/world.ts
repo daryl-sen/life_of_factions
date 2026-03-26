@@ -60,4 +60,5 @@ export class World {
   get waterBlocks() { return this.grid.waterBlocks; }
   get treeBlocks() { return this.grid.treeBlocks; }
   get seedlings() { return this.grid.seedlings; }
+  get lootBags() { return this.grid.lootBags; }
 }

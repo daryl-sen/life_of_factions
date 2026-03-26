@@ -10,7 +10,7 @@ Actions are discrete behaviors agents perform. Each action has a duration, energ
 | `quarrel` | 0.9-1.8s | 0.4 | 1 | Yes | |
 | `attack` | 0.45-0.9s | 1.1 | ≤2 | No | |
 | `heal` | 0.9-1.8s | 1.5 | 1 | Yes | |
-| `help` | 0.9-1.8s | 0.8 | 1 | Yes | |
+| `share` | 300-500ms | 0.4 | 1 | Yes | |
 | `reproduce` | 2.0-3.2s | 1.5 | 1 | Yes | |
 | `sleep` | 8-12s | 0 (restores) | self | Yes | 😴 |
 | `harvest` | 600-1200ms | 0.25 | 1 (adjacent food block) | Yes | 🫨 |
@@ -18,8 +18,11 @@ Actions are discrete behaviors agents perform. Each action has a duration, energ
 | `harvest_wood` | 1500ms | 0.25 | 1 (adjacent tree block) | Yes | 🫨 |
 | `eat` | 300-500ms | 0 | self (from inventory) | Yes | 🤔 |
 | `drink` | 300-500ms | 0 | self (from inventory) | Yes | 🤔 |
+| `deposit` | 300-500ms | 0 | 1 (adjacent own flag) | Yes | |
+| `withdraw` | 300-500ms | 0 | 1 (adjacent own flag) | Yes | |
+| `pickup` | 300-500ms | 0 | on cell or adjacent loot bag | Yes | |
 
-> **Note:** All action energy costs were halved in Phase 1 to account for the new sleep-based energy economy. Harvest, eat, and drink actions were added in Phase 2. Water harvest, wood harvest, and hygiene-driven water seeking were added in Phase 3.
+> **Note:** All action energy costs were halved in Phase 1 to account for the new sleep-based energy economy. Harvest, eat, and drink actions were added in Phase 2. Water harvest, wood harvest, and hygiene-driven water seeking were added in Phase 3. Share (renamed from help), deposit, withdraw, and pickup actions were added in Phase 4.
 
 ## Social Actions
 
@@ -62,20 +65,26 @@ setRelationship(both agents, current + delta)
 target.health = min(target.maxHealth, target.health + 2)
 ```
 
-### Help
+### Share (formerly Help)
 
-**Purpose:** Share energy with another agent.
+**Purpose:** Transfer inventory resources (food, water, wood) from sharer to target.
+
+**Duration:** 300–500ms
+
+**Energy cost:** 0.4/sec
 
 **Effect (on completion):**
 ```javascript
-ratio = donor.energy > ENERGY_CAP * 0.7 ? 0.2 : 0.1
-transfer = max(0, donor.energy * ratio)
-donor.energy -= transfer
-target.energy = min(ENERGY_CAP, target.energy + transfer)
+// Transfer inventory resources from sharer to target
+// Resources transferred: food, water, wood (up to target's inventory cap)
+sharer.social += 8
+target.social += 5
+setRelationship(both agents, current + 0.14)
+sharer.xp += 5
 ```
 
-**Faction recruitment:** After helping, there's a 50% chance to recruit the target if:
-- Target is not in donor's faction
+**Faction recruitment:** After sharing, there's a 50% chance to recruit the target if:
+- Target is not in sharer's faction
 - Relationship ≥ 0.4
 
 ## Combat Actions
@@ -304,6 +313,102 @@ agent.hygiene = min(100, agent.hygiene + 30)
 - Emoji: 🤔
 - Water is obtained by harvesting water blocks (added in Phase 3)
 
+## Faction Storage Actions (Phase 4)
+
+### Deposit
+
+**Purpose:** Transfer resources from agent inventory to faction flag storage.
+
+**Requirements:**
+- Adjacent to own faction flag (Manhattan distance = 1)
+- Agent has inventory >= 3 total items
+
+**Duration:** 300–500ms
+
+**Effect (on completion):**
+```javascript
+// Transfer resources from agent inventory to flag storage
+// Flag storage capacity: 30 per resource type (food, water, wood)
+// Transfers as much as flag can hold
+```
+
+**Properties:**
+- No energy cost
+- Opportunistic: agents deposit when passing near their own flag with sufficient inventory
+- Agent is locked in place during deposit
+
+### Withdraw
+
+**Purpose:** Take resources from faction flag storage into agent inventory.
+
+**Requirements:**
+- Adjacent to own faction flag (Manhattan distance = 1)
+- Agent needs resources (food or water) and flag has stored resources
+- Agent has inventory space
+
+**Duration:** 300–500ms
+
+**Effect (on completion):**
+```javascript
+// Transfer resources from flag storage to agent inventory
+// Takes what the agent needs, up to inventory cap
+```
+
+**Properties:**
+- No energy cost
+- Triggered when agent needs food/water and is near own flag with stored resources
+- Agent is locked in place during withdraw
+
+### Pickup
+
+**Purpose:** Collect resources from a loot bag on the ground.
+
+**Requirements:**
+- Loot bag on agent's cell or adjacent cell
+- Agent has inventory space
+
+**Duration:** 300–500ms
+
+**Effect (on completion):**
+```javascript
+// Takes all contents from loot bag up to agent's inventory cap (20 total)
+// If bag is emptied, it is removed
+// If bag still has contents (agent was full), bag remains with reduced contents
+```
+
+**Properties:**
+- No energy cost
+- Checked before roaming in decision priority
+- Agent is locked in place during pickup
+
+## Loot Bags (Phase 4)
+
+Loot bags (👝) are temporary resource containers that appear on the grid when agents die or faction flags are destroyed.
+
+### Loot Bag Properties
+
+| Property | Value |
+|----------|-------|
+| Emoji | 👝 |
+| Passable | Yes |
+| Decay timer | 30 seconds |
+| Fade effect | Visual fade as decay timer counts down |
+
+### Spawn Triggers
+
+1. **Agent death:** A loot bag spawns at the agent's death location containing the agent's full inventory (food, water, wood).
+2. **Flag destruction:** A loot bag spawns at the flag's location containing all resources stored in the flag.
+
+### Merging
+
+When multiple loot bags exist on the same cell, they merge into a single bag:
+- All contents are combined
+- The decay timer is reset to 30 seconds
+
+### Pickup
+
+Any agent can pick up a loot bag via the pickup action (300–500ms, no energy cost). The agent takes all contents up to their inventory cap.
+
 ---
 
 ## Action Mechanics
@@ -365,7 +470,7 @@ Locks are applied to both agents for social actions. Locks are decremented each 
 | quarrel | 0.36 | 0.72 | 0.54 |
 | attack | 0.50 | 0.99 | 0.74 |
 | heal | 1.35 | 2.70 | 2.03 |
-| help | 0.72 | 1.44 | 1.08 |
+| share | 0.12 | 0.20 | 0.16 |
 | reproduce | 3.0 | 4.8 | 3.9 (+16 upfront) |
 | sleep | 0 (restores 128–192) | -- | -- |
 | harvest (HQ) | 0.15 | 0.15 | 0.15 |
@@ -374,8 +479,11 @@ Locks are applied to both agents for social actions. Locks are decremented each 
 | harvest (wood) | 0.375 | 0.375 | 0.375 |
 | eat | 0 | 0 | 0 |
 | drink | 0 | 0 | 0 |
+| deposit | 0 | 0 | 0 |
+| withdraw | 0 | 0 | 0 |
+| pickup | 0 | 0 | 0 |
 
-> **Note:** Costs halved from previous version to balance with sleep-only energy recovery. Eat and drink have zero energy cost.
+> **Note:** Costs halved from previous version to balance with sleep-only energy recovery. Eat, drink, deposit, withdraw, and pickup have zero energy cost.
 
 ## Action Completion Effects
 
@@ -386,7 +494,7 @@ Locks are applied to both agents for social actions. Locks are decremented each 
 | Kill (attack) | +50 |
 | Eat (from inventory) | +5 |
 | Heal complete | +10 |
-| Share/help complete | +5 |
+| Share complete | +5 |
 | Build farm | +15 |
 | Harvest (per unit) | +2 |
 
@@ -404,19 +512,21 @@ Agents select actions based on the following priority order. Higher-priority nee
 | 6 | Energy < 40 | Voluntary sleep |
 | 7a | Fullness < 40 | Proactive food seeking (same priority as #4) |
 | 7b | Hygiene < 40 | Proactive water seeking (same priority as #5) |
-| 7c | Adjacent resource block & inventory not full | Harvest nearby resources (wood harvesting is opportunistic) |
-| 7d | Normal social/combat | Reproduction, attack, help/heal/talk |
-| 7e | Nothing else to do | Roam |
+| 7c | Near own flag with inventory >= 3 | Deposit resources to faction flag (opportunistic) |
+| 7d | Adjacent resource block & inventory not full | Harvest nearby resources (wood harvesting is opportunistic) |
+| 7e | Loot bag nearby | Pickup loot bag |
+| 7f | Normal social/combat | Reproduction, attack, share/heal/talk |
+| 7g | Nothing else to do | Roam |
 
 ### Faction Formation
 
-After `talk`, `help`, or `heal`:
+After `talk`, `share`, or `heal`:
 - If both agents are factionless
 - And relationship ≥ 0.6
 - Create new faction with both agents
 
 ### Faction Recruitment
 
-After `help`:
+After `share`:
 - 50% chance if relationship ≥ 0.4
-- Target joins helper's faction (if different)
+- Target joins sharer's faction (if different)
