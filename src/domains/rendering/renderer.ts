@@ -200,7 +200,7 @@ export class Renderer {
       for (const wb of world.waterBlocks.values()) {
         if (Math.abs(tree.x - wb.x) + Math.abs(tree.y - wb.y) <= 5) { nearWater = true; break; }
       }
-      if (!nearWater) ctx.filter = 'saturate(0.2)';
+      if (!nearWater) ctx.filter = 'saturate(0.3) sepia(0.6) brightness(0.9)';
       this._drawCellEmoji(ctx, tree.x, tree.y, tree.emoji);
       ctx.filter = 'none';
       ctx.globalAlpha = 1;
