@@ -49,6 +49,7 @@ export class World {
   pauseOnBlur = false;
   drawGrid = false;
   factionSort: 'members' | 'created' | 'name' | 'level' = 'members';
+  starredStats: string[] = ['agents', 'factions', 'crops']; // max 3, shown in top nav bar
 
   pathBudgetMax: number = Number.isFinite(TUNE.pathBudgetPerTick)
     ? TUNE.pathBudgetPerTick

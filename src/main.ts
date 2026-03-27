@@ -39,11 +39,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const camera = new Camera();
   const renderer = new Renderer();
 
+  let cameraInitialized = false;
   function refreshCanvasSize() {
     const { cw, ch } = Camera.setCanvasSize(canvas);
     camera.viewW = cw;
     camera.viewH = ch;
-    camera.fitToCanvas(canvas);
+    if (!cameraInitialized) {
+      camera.fitToCanvas(canvas);
+      cameraInitialized = true;
+    } else {
+      // Preserve zoom/pan — just clamp to valid bounds
+      camera.panBy(0, 0);
+    }
   }
   refreshCanvasSize();
   window.addEventListener('resize', refreshCanvasSize);

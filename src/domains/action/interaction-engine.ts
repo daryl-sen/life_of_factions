@@ -222,7 +222,10 @@ export class InteractionEngine {
         ...candidates.map((b) => agent.relationships.get(b.id))
       );
       const relPenalty = Math.max(0, bestRel) * 0.6;
-      p = clamp(agent.aggression + (hasEnemyNearby ? 0.25 : 0) - relPenalty, 0, 1);
+      // Low health makes agents much less willing to fight (flee preference)
+      const hpRatio = agent.maxHealth > 0 ? agent.health / agent.maxHealth : 1;
+      const healthPenalty = hpRatio < 0.5 ? (1 - hpRatio) * 0.8 : 0; // up to 0.8 penalty at very low HP
+      p = clamp(agent.aggression + (hasEnemyNearby ? 0.25 : 0) - relPenalty - healthPenalty, 0, 1);
     }
     if (Math.random() >= p) return false;
 

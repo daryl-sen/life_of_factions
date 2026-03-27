@@ -528,6 +528,30 @@
         letter-spacing: 1px;
         font-weight: 600;
       }
+      .telemetry-star {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        background: none;
+        border: none;
+        color: var(--muted);
+        font-size: 12px;
+        cursor: pointer;
+        padding: 0 2px;
+        line-height: 1;
+        opacity: 0.4;
+        transition: opacity 0.15s, color 0.15s;
+      }
+      .telemetry-star:hover {
+        opacity: 1;
+      }
+      .telemetry-star.starred {
+        color: var(--warn);
+        opacity: 1;
+      }
+      .telemetry-item {
+        position: relative;
+      }
 
       /* ── Factions List ─────────────────────── */
       .factions-wrap {
@@ -876,25 +900,7 @@
     <!-- ── Top Navigation ──────────────────── -->
     <nav id="topNav">
       <div class="nav-brand">Emoji Life</div>
-      <div class="nav-stats">
-        <div class="nav-stat-item">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-          <span class="nav-stat-value" id="barAgents">00</span>
-          <span class="nav-stat-label">AGENTS</span>
-        </div>
-        <div class="nav-stat-divider"></div>
-        <div class="nav-stat-item">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
-          <span class="nav-stat-value" id="barFactions">00</span>
-          <span class="nav-stat-label">FACTIONS</span>
-        </div>
-        <div class="nav-stat-divider"></div>
-        <div class="nav-stat-item">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm-4-8v-3c0-2.08 1.12-3.82 3-4.29V6c0-.55.45-1 1-1s1 .45 1 1v.71c1.88.47 3 2.21 3 4.29v3l2 2v1H6v-1l2-2z"/></svg>
-          <span class="nav-stat-value" id="barCrops">00</span>
-          <span class="nav-stat-label">CROPS</span>
-        </div>
-      </div>
+      <div class="nav-stats" id="navStatsBar"></div>
     </nav>
 
     <!-- ── Left Sidebar ────────────────────── -->
@@ -1007,18 +1013,18 @@
           <button class="panel-close btn-close-panel" title="Close">&times;</button>
         </div>
         <div class="panel-body">
-          <div class="telemetry-section-label">WORLD</div>
+          <div class="telemetry-section-label">WORLD <span style="font-size:10px;color:var(--muted);font-weight:400">— click ★ to pin (max 3)</span></div>
           <div class="telemetry-grid">
-            <div class="telemetry-item"><span class="telemetry-value" id="stAgents">0</span><span class="telemetry-label">AGENTS</span></div>
-            <div class="telemetry-item"><span class="telemetry-value" id="stFactions">0</span><span class="telemetry-label">FACTIONS</span></div>
-            <div class="telemetry-item"><span class="telemetry-value" id="stCrops">0</span><span class="telemetry-label">CROPS</span></div>
-            <div class="telemetry-item"><span class="telemetry-value" id="stFarms">0</span><span class="telemetry-label">FARMS</span></div>
-            <div class="telemetry-item"><span class="telemetry-value" id="stObstacles">0</span><span class="telemetry-label">OBSTACLES</span></div>
-            <div class="telemetry-item"><span class="telemetry-value" id="stFlags">0</span><span class="telemetry-label">FLAGS</span></div>
-            <div class="telemetry-item"><span class="telemetry-value" id="stWater">0</span><span class="telemetry-label">WATER</span></div>
-            <div class="telemetry-item"><span class="telemetry-value" id="stTrees">0</span><span class="telemetry-label">TREES</span></div>
-            <div class="telemetry-item"><span class="telemetry-value" id="stBirths">0</span><span class="telemetry-label">BIRTHS</span></div>
-            <div class="telemetry-item"><span class="telemetry-value" id="stDeaths">0</span><span class="telemetry-label">DEATHS</span></div>
+            <div class="telemetry-item"><button class="telemetry-star starred" data-stat="agents">★</button><span class="telemetry-value" id="stAgents">0</span><span class="telemetry-label">AGENTS</span></div>
+            <div class="telemetry-item"><button class="telemetry-star starred" data-stat="factions">★</button><span class="telemetry-value" id="stFactions">0</span><span class="telemetry-label">FACTIONS</span></div>
+            <div class="telemetry-item"><button class="telemetry-star starred" data-stat="crops">★</button><span class="telemetry-value" id="stCrops">0</span><span class="telemetry-label">CROPS</span></div>
+            <div class="telemetry-item"><button class="telemetry-star" data-stat="farms">★</button><span class="telemetry-value" id="stFarms">0</span><span class="telemetry-label">FARMS</span></div>
+            <div class="telemetry-item"><button class="telemetry-star" data-stat="obstacles">★</button><span class="telemetry-value" id="stObstacles">0</span><span class="telemetry-label">OBSTACLES</span></div>
+            <div class="telemetry-item"><button class="telemetry-star" data-stat="flags">★</button><span class="telemetry-value" id="stFlags">0</span><span class="telemetry-label">FLAGS</span></div>
+            <div class="telemetry-item"><button class="telemetry-star" data-stat="water">★</button><span class="telemetry-value" id="stWater">0</span><span class="telemetry-label">WATER</span></div>
+            <div class="telemetry-item"><button class="telemetry-star" data-stat="trees">★</button><span class="telemetry-value" id="stTrees">0</span><span class="telemetry-label">TREES</span></div>
+            <div class="telemetry-item"><button class="telemetry-star" data-stat="births">★</button><span class="telemetry-value" id="stBirths">0</span><span class="telemetry-label">BIRTHS</span></div>
+            <div class="telemetry-item"><button class="telemetry-star" data-stat="deaths">★</button><span class="telemetry-value" id="stDeaths">0</span><span class="telemetry-label">DEATHS</span></div>
           </div>
           <div class="telemetry-section-label">PERFORMANCE</div>
           <div class="telemetry-grid">
@@ -1158,6 +1164,85 @@
       });
 
       closeAllPanels();
+
+      /* ── Starred stats for nav bar ── */
+      const NAV_STAT_ICONS = {
+        agents: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>',
+        factions: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>',
+        crops: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm-4-8v-3c0-2.08 1.12-3.82 3-4.29V6c0-.55.45-1 1-1s1 .45 1 1v.71c1.88.47 3 2.21 3 4.29v3l2 2v1H6v-1l2-2z"/></svg>',
+        farms: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>',
+        obstacles: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 6l-1-2H5v17h2v-7h5l1 2h7V6h-6z"/></svg>',
+        flags: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/></svg>',
+        water: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2C20 10.48 17.33 6.55 12 2z"/></svg>',
+        trees: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h2L12 2 5 12h2l-3 6h7v4h2v-4h7z"/></svg>',
+        births: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 7.5c.73 0 1.41-.2 2-.55V9h2V6c0-1.66-1.34-3-3-3h-2C9.34 3 8 4.34 8 6v3h2V6.45c.59.35 1.27.55 2 .55zM12 2c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm1 15h-2v5h2v-5zm5-3H6c-1.1 0-2 .9-2 2v2h16v-2c0-1.1-.9-2-2-2z"/></svg>',
+        deaths: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm-4-7.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5S10.33 11 9.5 11 8 11.67 8 12.5zm5 0c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5-.67-1.5-1.5-1.5-1.5.67-1.5 1.5z"/></svg>',
+      };
+      const NAV_STAT_LABELS = {
+        agents: 'AGENTS', factions: 'FACTIONS', crops: 'CROPS', farms: 'FARMS',
+        obstacles: 'OBSTACLES', flags: 'FLAGS', water: 'WATER', trees: 'TREES',
+        births: 'BIRTHS', deaths: 'DEATHS',
+      };
+      // Map stat key to the telemetry element ID
+      const STAT_EL_MAP = {
+        agents: 'stAgents', factions: 'stFactions', crops: 'stCrops', farms: 'stFarms',
+        obstacles: 'stObstacles', flags: 'stFlags', water: 'stWater', trees: 'stTrees',
+        births: 'stBirths', deaths: 'stDeaths',
+      };
+
+      const navStatsBar = document.getElementById('navStatsBar');
+      function rebuildNavBar() {
+        if (!navStatsBar || !window.world) return;
+        const starred = window.world.starredStats || ['agents', 'factions', 'crops'];
+        navStatsBar.innerHTML = '';
+        starred.forEach(function(statKey, i) {
+          if (i > 0) {
+            const div = document.createElement('div');
+            div.className = 'nav-stat-divider';
+            navStatsBar.appendChild(div);
+          }
+          const item = document.createElement('div');
+          item.className = 'nav-stat-item';
+          const icon = NAV_STAT_ICONS[statKey] || '';
+          const label = NAV_STAT_LABELS[statKey] || statKey.toUpperCase();
+          const elId = STAT_EL_MAP[statKey];
+          const val = elId ? (document.getElementById(elId)?.textContent || '0') : '0';
+          item.innerHTML = icon +
+            '<span class="nav-stat-value" data-bar-stat="' + statKey + '">' + val + '</span>' +
+            '<span class="nav-stat-label">' + label + '</span>';
+          navStatsBar.appendChild(item);
+        });
+      }
+      rebuildNavBar();
+      // Periodically sync bar values from telemetry elements
+      setInterval(function() {
+        if (!window.world) return;
+        var starred = window.world.starredStats || [];
+        starred.forEach(function(statKey) {
+          var elId = STAT_EL_MAP[statKey];
+          var src = elId ? document.getElementById(elId) : null;
+          var barEl = document.querySelector('[data-bar-stat="' + statKey + '"]');
+          if (src && barEl) barEl.textContent = src.textContent;
+        });
+      }, 500);
+
+      // Star toggle logic
+      document.querySelectorAll('.telemetry-star').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          if (!window.world) return;
+          var stat = btn.dataset.stat;
+          var starred = window.world.starredStats;
+          var idx = starred.indexOf(stat);
+          if (idx >= 0) {
+            starred.splice(idx, 1);
+            btn.classList.remove('starred');
+          } else if (starred.length < 3) {
+            starred.push(stat);
+            btn.classList.add('starred');
+          }
+          rebuildNavBar();
+        });
+      });
     </script>
   </body>
 </html>
