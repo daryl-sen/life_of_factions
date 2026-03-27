@@ -1030,9 +1030,12 @@
           <div class="telemetry-grid">
             <div class="telemetry-item"><span class="telemetry-value" id="stTick">0</span><span class="telemetry-label">TICK</span></div>
             <div class="telemetry-item"><span class="telemetry-value" id="stFps">0</span><span class="telemetry-label">FPS</span></div>
-            <div class="telemetry-item"><span class="telemetry-value" id="stTickAvg">0.0</span><span class="telemetry-label">AVG MS</span></div>
-            <div class="telemetry-item"><span class="telemetry-value" id="stTickMin">0.0</span><span class="telemetry-label">MIN MS</span></div>
-            <div class="telemetry-item"><span class="telemetry-value" id="stTickMax">0.0</span><span class="telemetry-label">MAX MS</span></div>
+            <div class="telemetry-item"><span class="telemetry-value" id="stTickAvg">0.0</span><span class="telemetry-label">TICK AVG</span></div>
+            <div class="telemetry-item"><span class="telemetry-value" id="stTickMin">0.0</span><span class="telemetry-label">TICK MIN</span></div>
+            <div class="telemetry-item"><span class="telemetry-value" id="stTickMax">0.0</span><span class="telemetry-label">TICK MAX</span></div>
+            <div class="telemetry-item"><span class="telemetry-value" id="stRenderAvg">0.0</span><span class="telemetry-label">DRAW AVG</span></div>
+            <div class="telemetry-item"><span class="telemetry-value" id="stRenderMin">0.0</span><span class="telemetry-label">DRAW MIN</span></div>
+            <div class="telemetry-item"><span class="telemetry-value" id="stRenderMax">0.0</span><span class="telemetry-label">DRAW MAX</span></div>
           </div>
         </div>
       </div>
@@ -1192,8 +1195,8 @@
 
       const navStatsBar = document.getElementById('navStatsBar');
       function rebuildNavBar() {
-        if (!navStatsBar || !window.world) return;
-        const starred = window.world.starredStats || ['agents', 'factions', 'crops'];
+        if (!navStatsBar) return;
+        const starred = (window.world && window.world.starredStats) || ['agents', 'factions', 'crops'];
         navStatsBar.innerHTML = '';
         starred.forEach(function(statKey, i) {
           if (i > 0) {

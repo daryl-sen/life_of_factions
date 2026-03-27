@@ -28,8 +28,13 @@ export class Camera implements ICameraState {
     const slack = 40;
     const vw = this.viewW || window.innerWidth;
     const vh = this.viewH || window.innerHeight;
-    this.x = clamp(this.x, -slack, WORLD_PX + slack - vw / this.scale);
-    this.y = clamp(this.y, -slack, WORLD_PX + slack - vh / this.scale);
+    const xMin = -slack;
+    const xMax = WORLD_PX + slack - vw / this.scale;
+    const yMin = -slack;
+    const yMax = WORLD_PX + slack - vh / this.scale;
+    // If viewport exceeds world, center the camera; otherwise clamp normally
+    this.x = xMin < xMax ? clamp(this.x, xMin, xMax) : (WORLD_PX - vw / this.scale) / 2;
+    this.y = yMin < yMax ? clamp(this.y, yMin, yMax) : (WORLD_PX - vh / this.scale) / 2;
   }
 
   fitToCanvas(canvas: HTMLCanvasElement): void {

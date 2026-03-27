@@ -7,6 +7,7 @@ interface EmojiEntry {
 export class EmojiCache {
   private readonly _cache = new Map<string, EmojiEntry>();
   private readonly _tintCache = new Map<string, EmojiEntry>();
+  private readonly _filterCache = new Map<string, EmojiEntry>();
 
   get(emoji: string): EmojiEntry {
     if (this._cache.has(emoji)) return this._cache.get(emoji)!;
@@ -60,6 +61,21 @@ export class EmojiCache {
     cx.fillRect(0, 0, c.width, c.height);
     const entry: EmojiEntry = { canvas: c, w: src.w, h: src.h };
     this._tintCache.set(cacheKey, entry);
+    return entry;
+  }
+
+  getFiltered(emoji: string, filter: string): EmojiEntry {
+    const cacheKey = emoji + '|' + filter;
+    if (this._filterCache.has(cacheKey)) return this._filterCache.get(cacheKey)!;
+    const src = this.get(emoji);
+    const c = document.createElement('canvas');
+    c.width = src.w;
+    c.height = src.h;
+    const cx = c.getContext('2d')!;
+    cx.filter = filter;
+    cx.drawImage(src.canvas, 0, 0);
+    const entry: EmojiEntry = { canvas: c, w: src.w, h: src.h };
+    this._filterCache.set(cacheKey, entry);
     return entry;
   }
 }

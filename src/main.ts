@@ -88,43 +88,49 @@ document.addEventListener('DOMContentLoaded', () => {
   let fpsAcc = 0;
   let fpsCount = 0;
 
-  // Tick profiler — rolling window of samples from the last 60s
+  // Profiler — rolling window of samples from the last 60s
   const PROFILE_WINDOW_MS = 60_000;
-  const tickSamples: { ts: number; dur: number }[] = [];
-  let tickAvg = 0;
-  let tickMin = 0;
-  let tickMax = 0;
 
-  function recordTickSample(dur: number) {
-    const now = performance.now();
-    tickSamples.push({ ts: now, dur });
-    // Evict samples older than 60s
-    const cutoff = now - PROFILE_WINDOW_MS;
-    while (tickSamples.length > 0 && tickSamples[0].ts < cutoff) {
-      tickSamples.shift();
-    }
-    // Recompute stats
-    let sum = 0;
-    let min = Infinity;
-    let max = -Infinity;
-    for (const s of tickSamples) {
-      sum += s.dur;
-      if (s.dur < min) min = s.dur;
-      if (s.dur > max) max = s.dur;
-    }
-    tickAvg = sum / tickSamples.length;
-    tickMin = min === Infinity ? 0 : min;
-    tickMax = max === -Infinity ? 0 : max;
+  interface ProfileSample { ts: number; dur: number }
+  interface ProfileStats { avg: number; min: number; max: number }
+
+  function makeProfiler() {
+    const samples: ProfileSample[] = [];
+    const stats: ProfileStats = { avg: 0, min: 0, max: 0 };
+    return {
+      record(dur: number) {
+        const now = performance.now();
+        samples.push({ ts: now, dur });
+        const cutoff = now - PROFILE_WINDOW_MS;
+        while (samples.length > 0 && samples[0].ts < cutoff) samples.shift();
+        let sum = 0, min = Infinity, max = -Infinity;
+        for (const s of samples) {
+          sum += s.dur;
+          if (s.dur < min) min = s.dur;
+          if (s.dur > max) max = s.dur;
+        }
+        stats.avg = sum / samples.length;
+        stats.min = min === Infinity ? 0 : min;
+        stats.max = max === -Infinity ? 0 : max;
+      },
+      stats,
+    };
   }
+
+  const tickProfiler = makeProfiler();
+  const renderProfiler = makeProfiler();
 
   const statsWithFps = new Proxy(
     { ...dom.statsEls, ...dom.barEls } as Record<string, unknown>,
     {
       get(target, prop) {
         if (prop === 'fps') return fps;
-        if (prop === 'tickAvg') return tickAvg;
-        if (prop === 'tickMin') return tickMin;
-        if (prop === 'tickMax') return tickMax;
+        if (prop === 'tickAvg') return tickProfiler.stats.avg;
+        if (prop === 'tickMin') return tickProfiler.stats.min;
+        if (prop === 'tickMax') return tickProfiler.stats.max;
+        if (prop === 'renderAvg') return renderProfiler.stats.avg;
+        if (prop === 'renderMin') return renderProfiler.stats.min;
+        if (prop === 'renderMax') return renderProfiler.stats.max;
         return target[prop as string];
       },
     }
@@ -201,7 +207,7 @@ document.addEventListener('DOMContentLoaded', () => {
       while (acc >= effTick && steps < MAX_STEPS) {
         const t0 = performance.now();
         SimulationEngine.tick(world);
-        recordTickSample(performance.now() - t0);
+        tickProfiler.record(performance.now() - t0);
         acc -= effTick;
         steps++;
       }
@@ -221,7 +227,9 @@ document.addEventListener('DOMContentLoaded', () => {
         world.deadMarkers.splice(i, 1);
       }
     }
+    const rt0 = performance.now();
     renderer.render(world, ctx, canvas, camera);
+    renderProfiler.record(performance.now() - rt0);
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
