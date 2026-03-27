@@ -60,6 +60,8 @@ export interface DomRefs {
     btnSpawnTree: HTMLButtonElement | null;
     btnSpawnCloud: HTMLButtonElement | null;
     btnReplenish: HTMLButtonElement | null;
+    btnPaintSaltWater: HTMLButtonElement | null;
+    btnPaintLand: HTMLButtonElement | null;
   };
   fileLoad: HTMLInputElement | null;
   ranges: {
@@ -128,6 +130,8 @@ export class UIManager {
         btnSpawnTree: qs('#btnSpawnTree') as HTMLButtonElement | null,
         btnSpawnCloud: qs('#btnSpawnCloud') as HTMLButtonElement | null,
         btnReplenish: qs('#btnReplenish') as HTMLButtonElement | null,
+        btnPaintSaltWater: qs('#btnPaintSaltWater') as HTMLButtonElement | null,
+        btnPaintLand: qs('#btnPaintLand') as HTMLButtonElement | null,
       },
       fileLoad: qs('#fileLoad') as HTMLInputElement | null,
       ranges: {

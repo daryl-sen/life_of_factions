@@ -102,6 +102,8 @@ Agent {
 * **Tree block**: 1-cell, impassable, 3–6 units; random emoji from 🌲🌳🌴🎄; harvest 1 unit (wood) per 1500ms
 * **Seedling**: 🌱, 1-cell, passable, protected from other block spawns; grows into a tree in 45–90 seconds
 * **Poop block**: 💩, 1-cell, passable, −5 hygiene per step through it, decays after 30 seconds; will not spawn on interactable blocks
+* **Salt water block**: 1-cell, impassable, not drinkable, not harvestable, does not hydrate terrain or seedlings. Rendered as a solid blue-teal color. Spawned in large continuous bodies during world-gen (30–80 cells per body, 1–3 bodies). Players can paint/erase salt water using terrain tools.
+* **Terrain (visual)**: Each cell has a moisture value (0–255) computed from proximity to fresh water blocks (radius 5, Manhattan distance). Rendering interpolates: yellow (dry, 0) → brown (mud, 128) → muted green (grass, 255). Terrain updates are staggered across 40 bands (~10 seconds for a full refresh).
 
 ---
 

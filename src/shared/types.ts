@@ -43,7 +43,7 @@ export type LogCategory =
   | 'loot'
   | 'hygiene';
 
-export type PaintMode = 'none' | 'draw' | 'erase' | 'replenish';
+export type PaintMode = 'none' | 'draw' | 'erase' | 'replenish' | 'paintSaltWater' | 'paintLand';
 
 export interface IActionState {
   type: ActionType;
@@ -183,6 +183,12 @@ export interface IEgg {
   x: number;
   y: number;
   hatchTimerMs: number;
+}
+
+export interface ISaltWaterBlock {
+  id: string;
+  x: number;
+  y: number;
 }
 
 export type ResourceMemoryType = 'food' | 'water' | 'wood';
