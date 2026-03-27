@@ -513,17 +513,18 @@ export class Renderer {
       const xF = cloud.x + xDisp;
 
       const maxAlpha = cloud.decorative ? 0.25 : 0.45;
+      const emoji = cloud.decorative ? '\u2601\uFE0F' : WORLD_EMOJIS.cloud; // ☁️ vs 🌧️
       ctx.globalAlpha = Math.max(0, alpha) * maxAlpha;
-      this._drawCloudAt(ctx, xF, cloud.y, CELL * 2);
+      this._drawCloudAt(ctx, xF, cloud.y, CELL * 2, emoji);
       ctx.globalAlpha = Math.max(0, alpha) * maxAlpha * 0.6;
-      this._drawCloudAt(ctx, xF - 1, cloud.y, CELL * 1.6);
-      this._drawCloudAt(ctx, xF + 1, cloud.y - 1, CELL * 1.6);
+      this._drawCloudAt(ctx, xF - 1, cloud.y, CELL * 1.6, emoji);
+      this._drawCloudAt(ctx, xF + 1, cloud.y - 1, CELL * 1.6, emoji);
       ctx.globalAlpha = 1;
     }
   }
 
-  private _drawCloudAt(ctx: CanvasRenderingContext2D, xF: number, y: number, size: number): void {
-    const { canvas: ec, w, h } = this._emojiCache.get(WORLD_EMOJIS.cloud);
+  private _drawCloudAt(ctx: CanvasRenderingContext2D, xF: number, y: number, size: number, emoji: string = WORLD_EMOJIS.cloud): void {
+    const { canvas: ec, w, h } = this._emojiCache.get(emoji);
     const scale = Math.min(size / w, size / h);
     const dw = w * scale;
     const dh = h * scale;
