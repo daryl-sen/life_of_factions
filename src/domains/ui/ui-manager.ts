@@ -94,6 +94,9 @@ export interface DomRefs {
     stTickAvg: HTMLElement | null;
     stTickMin: HTMLElement | null;
     stTickMax: HTMLElement | null;
+    stRenderAvg: HTMLElement | null;
+    stRenderMin: HTMLElement | null;
+    stRenderMax: HTMLElement | null;
     stBirths: HTMLElement | null;
     stDeaths: HTMLElement | null;
     stWater: HTMLElement | null;
@@ -164,6 +167,9 @@ export class UIManager {
         stTickAvg: qs('#stTickAvg'),
         stTickMin: qs('#stTickMin'),
         stTickMax: qs('#stTickMax'),
+        stRenderAvg: qs('#stRenderAvg'),
+        stRenderMin: qs('#stRenderMin'),
+        stRenderMax: qs('#stRenderMax'),
         stBirths: qs('#stBirths'),
         stDeaths: qs('#stDeaths'),
         stWater: qs('#stWater'),
@@ -297,6 +303,9 @@ export class UIManager {
     const tAvg = (stats.tickAvg as number) || 0;
     const tMin = (stats.tickMin as number) || 0;
     const tMax = (stats.tickMax as number) || 0;
+    const rAvg = (stats.renderAvg as number) || 0;
+    const rMin = (stats.renderMin as number) || 0;
+    const rMax = (stats.renderMax as number) || 0;
 
     const s = stats as Record<string, HTMLElement | null>;
     if (s.stAgents) s.stAgents.textContent = String(world.agents.length);
@@ -320,6 +329,9 @@ export class UIManager {
     if (s.stTickAvg) s.stTickAvg.textContent = tAvg.toFixed(1);
     if (s.stTickMin) s.stTickMin.textContent = tMin.toFixed(1);
     if (s.stTickMax) s.stTickMax.textContent = tMax.toFixed(1);
+    if (s.stRenderAvg) s.stRenderAvg.textContent = rAvg.toFixed(1);
+    if (s.stRenderMin) s.stRenderMin.textContent = rMin.toFixed(1);
+    if (s.stRenderMax) s.stRenderMax.textContent = rMax.toFixed(1);
     // Nav bar stats are now dynamically synced from telemetry elements via inline script
   }
 

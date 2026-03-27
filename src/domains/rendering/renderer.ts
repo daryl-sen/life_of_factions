@@ -6,6 +6,13 @@ import type { Agent } from '../agent';
 import { Camera } from './camera';
 import { EmojiCache } from './emoji-cache';
 
+interface ViewBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
 const DEATH_CAUSE_EMOJI: Record<DeathCause, string> = {
   hunger: '\u{1F9B4}',   // 🦴
   killed: '\u{1FA78}',   // 🩸
@@ -14,8 +21,36 @@ const DEATH_CAUSE_EMOJI: Record<DeathCause, string> = {
   tree: '\u{1FABE}',     // 🪾
 };
 
+/** Below this camera scale, world entities render as colored rectangles instead of emojis. */
+const LOD_SCALE = 0.55;
+
+const DRY_TREE_FILTER = 'saturate(0.3) sepia(0.6) brightness(0.9)';
+
+// LOD fallback colors
+const LOD_WATER   = '#4488cc';
+const LOD_TREE_WET = '#3d6b2e';
+const LOD_TREE_DRY = '#8B7355';
+const LOD_SEEDLING = '#7ab648';
+const LOD_EGG     = '#f5e6c8';
+const LOD_POOP    = '#6b4226';
+const LOD_FOOD    = '#c88040';
+const LOD_LOOT    = '#c9a83f';
+const LOD_FARM    = '#b8860b';
+const LOD_OBSTACLE = '#888888';
+
 export class Renderer {
   private readonly _emojiCache = new EmojiCache();
+
+  // --- Terrain cache ---
+  private _terrainCanvas: HTMLCanvasElement | null = null;
+  private _terrainCtx: CanvasRenderingContext2D | null = null;
+  private _cachedTerrainVersion = -1;
+  private _cachedSaltCount = -1;
+
+  // --- Tree near-water cache ---
+  private _treeNearWater = new Set<string>();
+  private _cachedTreeCount = -1;
+  private _cachedWaterCount = -1;
 
   render(world: World, ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, camera: Camera): void {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -26,51 +61,182 @@ export class Renderer {
       -camera.y * camera.scale
     );
 
-    this._drawTerrain(ctx, world.terrainField);
-    this._drawSaltWater(ctx, world);
-    if (world.drawGrid) this._drawGrid(ctx, camera);
-    this._drawWaterBlocks(ctx, world);
-    this._drawTreeBlocks(ctx, world);
-    this._drawSeedlings(ctx, world);
-    this._drawEggs(ctx, world);
-    this._drawPoopBlocks(ctx, world);
-    this._drawFoodBlocks(ctx, world);
-    this._drawLootBags(ctx, world);
-    this._drawFarms(ctx, world);
-    this._drawObstacles(ctx, world);
-    this._drawFlags(ctx, world);
+    const vb = this._viewBounds(camera, canvas);
+    const lod = camera.scale < LOD_SCALE;
+
+    // Step display moisture toward target (cheap: one pass over 3844 bytes, only while transitioning)
+    world.terrainField.stepDisplay();
+
+    // Terrain + salt water: drawn from cached offscreen canvas
+    const terrainDirty =
+      !this._terrainCanvas ||
+      this._cachedTerrainVersion !== world.terrainField.version ||
+      this._cachedSaltCount !== world.saltWaterBlocks.size;
+
+    if (terrainDirty) {
+      this._rebuildTerrainCache(world);
+      this._cachedTerrainVersion = world.terrainField.version;
+      this._cachedSaltCount = world.saltWaterBlocks.size;
+    }
+
+    // Blit only the visible portion of the cached terrain
+    const sx = Math.max(0, vb.minX * CELL);
+    const sy = Math.max(0, vb.minY * CELL);
+    const sw = (vb.maxX - vb.minX + 1) * CELL;
+    const sh = (vb.maxY - vb.minY + 1) * CELL;
+    ctx.drawImage(this._terrainCanvas!, sx, sy, sw, sh, sx, sy, sw, sh);
+
+    if (world.drawGrid) this._drawGrid(ctx, camera, vb);
+    this._drawWaterBlocks(ctx, world, vb, lod);
+    this._drawTreeBlocks(ctx, world, vb, lod);
+    this._drawSeedlings(ctx, world, vb, lod);
+    this._drawEggs(ctx, world, vb, lod);
+    this._drawPoopBlocks(ctx, world, vb, lod);
+    this._drawFoodBlocks(ctx, world, vb, lod);
+    this._drawLootBags(ctx, world, vb, lod);
+    this._drawFarms(ctx, world, vb, lod);
+    this._drawObstacles(ctx, world, vb, lod);
+    this._drawFlags(ctx, world, vb, lod);
 
     const pendingAttackLines: [Agent, Agent][] = [];
-    this._drawAgents(ctx, world, pendingAttackLines);
-    this._drawDeadMarkers(ctx, world);
+    this._drawAgents(ctx, world, pendingAttackLines, vb);
+    this._drawDeadMarkers(ctx, world, vb, lod);
     this._drawAttackLines(ctx, camera, pendingAttackLines);
     this._drawSelectedAgentPath(ctx, world);
 
-    this._drawClouds(ctx, world, camera);
+    this._drawClouds(ctx, world, camera, vb, lod);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
-  private _drawGrid(ctx: CanvasRenderingContext2D, camera: Camera): void {
+  // --- Helpers ---
+
+  private _viewBounds(camera: Camera, canvas: HTMLCanvasElement): ViewBounds {
+    const minX = Math.max(0, Math.floor(camera.x / CELL) - 1);
+    const minY = Math.max(0, Math.floor(camera.y / CELL) - 1);
+    const maxX = Math.min(GRID - 1, Math.ceil((camera.x + canvas.width / camera.scale) / CELL));
+    const maxY = Math.min(GRID - 1, Math.ceil((camera.y + canvas.height / camera.scale) / CELL));
+    return { minX, minY, maxX, maxY };
+  }
+
+  private _inView(x: number, y: number, vb: ViewBounds): boolean {
+    return x >= vb.minX && x <= vb.maxX && y >= vb.minY && y <= vb.maxY;
+  }
+
+  private _fillCell(ctx: CanvasRenderingContext2D, cellX: number, cellY: number, color: string, pad = 2): void {
+    ctx.fillStyle = color;
+    ctx.fillRect(cellX * CELL + pad, cellY * CELL + pad, CELL - pad * 2, CELL - pad * 2);
+  }
+
+  // --- Terrain cache ---
+
+  private _rebuildTerrainCache(world: World): void {
+    const size = GRID * CELL;
+    if (!this._terrainCanvas) {
+      this._terrainCanvas = document.createElement('canvas');
+      this._terrainCanvas.width = size;
+      this._terrainCanvas.height = size;
+      this._terrainCtx = this._terrainCanvas.getContext('2d')!;
+    }
+    const tc = this._terrainCtx!;
+    this._drawTerrainToCtx(tc, world.terrainField);
+    this._drawSaltWaterToCtx(tc, world);
+  }
+
+  private _drawTerrainToCtx(ctx: CanvasRenderingContext2D, terrainField: TerrainField): void {
+    for (let y = 0; y < GRID; y++) {
+      for (let x = 0; x < GRID; x++) {
+        const m = terrainField.moistureAt(x, y);
+        let base: [number, number, number];
+        if (m <= 128) {
+          base = Renderer._lerpRGB(Renderer._DRY, Renderer._MUD, m / 128);
+        } else {
+          base = Renderer._lerpRGB(Renderer._MUD, Renderer._GRASS, (m - 128) / 127);
+        }
+
+        const h0 = Renderer._cellHash(x, y, 0);
+        const variation = ((h0 & 0xff) / 255 - 0.5) * 20;
+        const r = Math.max(0, Math.min(255, Math.round(base[0] + variation)));
+        const g = Math.max(0, Math.min(255, Math.round(base[1] + variation)));
+        const b = Math.max(0, Math.min(255, Math.round(base[2] + variation)));
+
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        const px = x * CELL;
+        const py = y * CELL;
+        ctx.fillRect(px, py, CELL, CELL);
+
+        const h1 = Renderer._cellHash(x, y, 1);
+        const h2 = Renderer._cellHash(x, y, 2);
+        const h3 = Renderer._cellHash(x, y, 3);
+        const speckAlpha = 0.12 + (h1 & 0xf) / 100;
+        const darker = ((h1 >> 8) & 1) === 0;
+        ctx.fillStyle = darker
+          ? `rgba(0,0,0,${speckAlpha})`
+          : `rgba(255,255,255,${speckAlpha})`;
+
+        const sx1 = px + ((h1 >> 16) & 0xf) % CELL;
+        const sy1 = py + ((h1 >> 20) & 0xf) % CELL;
+        ctx.fillRect(sx1, sy1, 2, 1);
+
+        const sx2 = px + ((h2 >> 4) & 0xf) % CELL;
+        const sy2 = py + ((h2 >> 8) & 0xf) % CELL;
+        ctx.fillRect(sx2, sy2, 1, 2);
+
+        if ((h3 & 3) === 0) {
+          const sx3 = px + ((h3 >> 12) & 0xf) % CELL;
+          const sy3 = py + ((h3 >> 16) & 0xf) % CELL;
+          ctx.fillRect(sx3, sy3, 1, 1);
+        }
+      }
+    }
+  }
+
+  private _drawSaltWaterToCtx(ctx: CanvasRenderingContext2D, world: World): void {
+    if (world.saltWaterBlocks.size === 0) return;
+    for (const sw of world.saltWaterBlocks.values()) {
+      const h0 = Renderer._cellHash(sw.x, sw.y, 7);
+      const variation = ((h0 & 0xff) / 255 - 0.5) * 16;
+      const r = Math.max(0, Math.min(255, Math.round(Renderer._SALT[0] + variation)));
+      const g = Math.max(0, Math.min(255, Math.round(Renderer._SALT[1] + variation)));
+      const b = Math.max(0, Math.min(255, Math.round(Renderer._SALT[2] + variation)));
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      const px = sw.x * CELL;
+      const py = sw.y * CELL;
+      ctx.fillRect(px, py, CELL, CELL);
+
+      const h1 = Renderer._cellHash(sw.x, sw.y, 8);
+      if ((h1 & 3) < 2) {
+        ctx.fillStyle = `rgba(255,255,255,0.1)`;
+        const wx = px + ((h1 >> 4) & 0xf) % (CELL - 3);
+        const wy = py + ((h1 >> 12) & 0xf) % CELL;
+        ctx.fillRect(wx, wy, 3, 1);
+      }
+    }
+  }
+
+  // --- Grid ---
+
+  private _drawGrid(ctx: CanvasRenderingContext2D, camera: Camera, vb: ViewBounds): void {
     ctx.save();
     ctx.strokeStyle = COLORS.grid;
     ctx.lineWidth = 1 / camera.scale;
     ctx.beginPath();
-    for (let i = 0; i <= GRID; i++) {
+    for (let i = vb.minY; i <= vb.maxY + 1; i++) {
       const y = i * CELL + 0.5;
-      ctx.moveTo(0, y);
-      ctx.lineTo(GRID * CELL, y);
+      ctx.moveTo(vb.minX * CELL, y);
+      ctx.lineTo((vb.maxX + 1) * CELL, y);
     }
-    for (let i = 0; i <= GRID; i++) {
+    for (let i = vb.minX; i <= vb.maxX + 1; i++) {
       const x = i * CELL + 0.5;
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, GRID * CELL);
+      ctx.moveTo(x, vb.minY * CELL);
+      ctx.lineTo(x, (vb.maxY + 1) * CELL);
     }
     ctx.stroke();
     ctx.restore();
   }
 
-  /** Deterministic hash for consistent per-cell texture */
+  // --- Static helpers ---
+
   private static _cellHash(x: number, y: number, seed: number): number {
     let h = (x * 374761393 + y * 668265263 + seed * 1274126177) | 0;
     h = ((h ^ (h >> 13)) * 1103515245) | 0;
@@ -85,88 +251,12 @@ export class Renderer {
     ];
   }
 
-  // Pre-parsed terrain color RGB values
   private static readonly _DRY: [number, number, number] = [0xC4, 0xA9, 0x46];
   private static readonly _MUD: [number, number, number] = [0x8B, 0x73, 0x55];
   private static readonly _GRASS: [number, number, number] = [0x5C, 0x7A, 0x3A];
   private static readonly _SALT: [number, number, number] = [0x2B, 0x5A, 0x7B];
 
-  private _drawTerrain(ctx: CanvasRenderingContext2D, terrainField: TerrainField): void {
-    for (let y = 0; y < GRID; y++) {
-      for (let x = 0; x < GRID; x++) {
-        const m = terrainField.moistureAt(x, y);
-        let base: [number, number, number];
-        if (m <= 128) {
-          base = Renderer._lerpRGB(Renderer._DRY, Renderer._MUD, m / 128);
-        } else {
-          base = Renderer._lerpRGB(Renderer._MUD, Renderer._GRASS, (m - 128) / 127);
-        }
-
-        // Per-cell brightness variation from hash
-        const h0 = Renderer._cellHash(x, y, 0);
-        const variation = ((h0 & 0xff) / 255 - 0.5) * 20; // ±10 brightness
-        const r = Math.max(0, Math.min(255, Math.round(base[0] + variation)));
-        const g = Math.max(0, Math.min(255, Math.round(base[1] + variation)));
-        const b = Math.max(0, Math.min(255, Math.round(base[2] + variation)));
-
-        ctx.fillStyle = `rgb(${r},${g},${b})`;
-        const px = x * CELL;
-        const py = y * CELL;
-        ctx.fillRect(px, py, CELL, CELL);
-
-        // Texture details: 2-3 small specks per cell for grain
-        const h1 = Renderer._cellHash(x, y, 1);
-        const h2 = Renderer._cellHash(x, y, 2);
-        const h3 = Renderer._cellHash(x, y, 3);
-        const speckAlpha = 0.12 + (h1 & 0xf) / 100; // 0.12-0.27
-        const darker = ((h1 >> 8) & 1) === 0;
-        ctx.fillStyle = darker
-          ? `rgba(0,0,0,${speckAlpha})`
-          : `rgba(255,255,255,${speckAlpha})`;
-
-        // Speck 1
-        const sx1 = px + ((h1 >> 16) & 0xf) % CELL;
-        const sy1 = py + ((h1 >> 20) & 0xf) % CELL;
-        ctx.fillRect(sx1, sy1, 2, 1);
-
-        // Speck 2
-        const sx2 = px + ((h2 >> 4) & 0xf) % CELL;
-        const sy2 = py + ((h2 >> 8) & 0xf) % CELL;
-        ctx.fillRect(sx2, sy2, 1, 2);
-
-        // Speck 3 (only on some cells)
-        if ((h3 & 3) === 0) {
-          const sx3 = px + ((h3 >> 12) & 0xf) % CELL;
-          const sy3 = py + ((h3 >> 16) & 0xf) % CELL;
-          ctx.fillRect(sx3, sy3, 1, 1);
-        }
-      }
-    }
-  }
-
-  private _drawSaltWater(ctx: CanvasRenderingContext2D, world: World): void {
-    if (world.saltWaterBlocks.size === 0) return;
-    for (const sw of world.saltWaterBlocks.values()) {
-      const h0 = Renderer._cellHash(sw.x, sw.y, 7);
-      const variation = ((h0 & 0xff) / 255 - 0.5) * 16; // ±8 brightness
-      const r = Math.max(0, Math.min(255, Math.round(Renderer._SALT[0] + variation)));
-      const g = Math.max(0, Math.min(255, Math.round(Renderer._SALT[1] + variation)));
-      const b = Math.max(0, Math.min(255, Math.round(Renderer._SALT[2] + variation)));
-      ctx.fillStyle = `rgb(${r},${g},${b})`;
-      const px = sw.x * CELL;
-      const py = sw.y * CELL;
-      ctx.fillRect(px, py, CELL, CELL);
-
-      // Subtle wave-like highlights
-      const h1 = Renderer._cellHash(sw.x, sw.y, 8);
-      if ((h1 & 3) < 2) {
-        ctx.fillStyle = `rgba(255,255,255,0.1)`;
-        const wx = px + ((h1 >> 4) & 0xf) % (CELL - 3);
-        const wy = py + ((h1 >> 12) & 0xf) % CELL;
-        ctx.fillRect(wx, wy, 3, 1);
-      }
-    }
-  }
+  // --- Entity drawing (with viewport culling + LOD) ---
 
   private _drawCellEmoji(ctx: CanvasRenderingContext2D, cellX: number, cellY: number, emoji: string, size = CELL - 2): void {
     const { canvas: ec, w, h } = this._emojiCache.get(emoji);
@@ -178,88 +268,167 @@ export class Renderer {
     ctx.drawImage(ec, x + (CELL - dw) / 2, y + (CELL - dh) / 2, dw, dh);
   }
 
-  private _drawWaterBlocks(ctx: CanvasRenderingContext2D, world: World): void {
+  private _drawWaterBlocks(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
     const drawn = new Set<string>();
     for (const wb of world.waterBlocks.values()) {
       if (drawn.has(wb.id)) continue;
       drawn.add(wb.id);
+      let visible = false;
+      for (const c of wb.cells) {
+        if (this._inView(c.x, c.y, vb)) { visible = true; break; }
+      }
+      if (!visible) continue;
       const pct = wb.units / wb.maxUnits;
       ctx.globalAlpha = 0.4 + 0.6 * pct;
       for (const c of wb.cells) {
-        this._drawCellEmoji(ctx, c.x, c.y, WORLD_EMOJIS.water);
+        if (lod) {
+          this._fillCell(ctx, c.x, c.y, LOD_WATER, 0);
+        } else {
+          this._drawCellEmoji(ctx, c.x, c.y, WORLD_EMOJIS.water);
+        }
       }
       ctx.globalAlpha = 1;
     }
   }
 
-  private _drawTreeBlocks(ctx: CanvasRenderingContext2D, world: World): void {
+  private _drawTreeBlocks(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
+    // Rebuild near-water lookup when tree or water counts change
+    const treeCount = world.treeBlocks.size;
+    const waterCount = world.waterBlocks.size;
+    if (treeCount !== this._cachedTreeCount || waterCount !== this._cachedWaterCount) {
+      this._cachedTreeCount = treeCount;
+      this._cachedWaterCount = waterCount;
+      this._treeNearWater.clear();
+      for (const tree of world.treeBlocks.values()) {
+        for (const wb of world.waterBlocks.values()) {
+          if (Math.abs(tree.x - wb.x) + Math.abs(tree.y - wb.y) <= 5) {
+            this._treeNearWater.add(`${tree.x},${tree.y}`);
+            break;
+          }
+        }
+      }
+    }
+
     for (const tree of world.treeBlocks.values()) {
+      if (!this._inView(tree.x, tree.y, vb)) continue;
       const pct = tree.units / tree.maxUnits;
       ctx.globalAlpha = 0.4 + 0.6 * pct;
-      let nearWater = false;
-      for (const wb of world.waterBlocks.values()) {
-        if (Math.abs(tree.x - wb.x) + Math.abs(tree.y - wb.y) <= 5) { nearWater = true; break; }
+      const nearWater = this._treeNearWater.has(`${tree.x},${tree.y}`);
+      if (lod) {
+        this._fillCell(ctx, tree.x, tree.y, nearWater ? LOD_TREE_WET : LOD_TREE_DRY, 1);
+      } else if (nearWater) {
+        this._drawCellEmoji(ctx, tree.x, tree.y, tree.emoji);
+      } else {
+        // Pre-cached filtered emoji — no per-frame ctx.filter
+        const { canvas: ec, w, h } = this._emojiCache.getFiltered(tree.emoji, DRY_TREE_FILTER);
+        const size = CELL - 2;
+        const scale = Math.min(size / w, size / h);
+        const dw = w * scale;
+        const dh = h * scale;
+        const x = tree.x * CELL;
+        const y = tree.y * CELL;
+        ctx.drawImage(ec, x + (CELL - dw) / 2, y + (CELL - dh) / 2, dw, dh);
       }
-      if (!nearWater) ctx.filter = 'saturate(0.3) sepia(0.6) brightness(0.9)';
-      this._drawCellEmoji(ctx, tree.x, tree.y, tree.emoji);
-      ctx.filter = 'none';
       ctx.globalAlpha = 1;
     }
   }
 
-  private _drawSeedlings(ctx: CanvasRenderingContext2D, world: World): void {
+  private _drawSeedlings(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
     for (const s of world.seedlings.values()) {
-      this._drawCellEmoji(ctx, s.x, s.y, WORLD_EMOJIS.seedling, CELL / 2);
+      if (!this._inView(s.x, s.y, vb)) continue;
+      if (lod) {
+        this._fillCell(ctx, s.x, s.y, LOD_SEEDLING, 4);
+      } else {
+        this._drawCellEmoji(ctx, s.x, s.y, WORLD_EMOJIS.seedling, CELL / 2);
+      }
     }
   }
 
-  private _drawEggs(ctx: CanvasRenderingContext2D, world: World): void {
+  private _drawEggs(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
     for (const egg of world.eggs.values()) {
-      this._drawCellEmoji(ctx, egg.x, egg.y, WORLD_EMOJIS.egg);
+      if (!this._inView(egg.x, egg.y, vb)) continue;
+      if (lod) {
+        this._fillCell(ctx, egg.x, egg.y, LOD_EGG, 3);
+      } else {
+        this._drawCellEmoji(ctx, egg.x, egg.y, WORLD_EMOJIS.egg);
+      }
     }
   }
 
-  private _drawPoopBlocks(ctx: CanvasRenderingContext2D, world: World): void {
+  private _drawPoopBlocks(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
     for (const poop of world.poopBlocks.values()) {
+      if (!this._inView(poop.x, poop.y, vb)) continue;
       const fadeRatio = Math.max(0.3, poop.decayMs / TUNE.poop.decayMs);
       ctx.globalAlpha = fadeRatio;
-      this._drawCellEmoji(ctx, poop.x, poop.y, WORLD_EMOJIS.poop, CELL / 2);
+      if (lod) {
+        this._fillCell(ctx, poop.x, poop.y, LOD_POOP, 4);
+      } else {
+        this._drawCellEmoji(ctx, poop.x, poop.y, WORLD_EMOJIS.poop, CELL / 2);
+      }
       ctx.globalAlpha = 1;
     }
   }
 
-  private _drawFoodBlocks(ctx: CanvasRenderingContext2D, world: World): void {
+  private _drawFoodBlocks(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
     for (const fb of world.foodBlocks.values()) {
+      if (!this._inView(fb.x, fb.y, vb)) continue;
       const pct = fb.units / fb.maxUnits;
       ctx.globalAlpha = 0.4 + 0.6 * pct;
-      this._drawCellEmoji(ctx, fb.x, fb.y, fb.emoji || FOOD_EMOJIS.lq[0], CELL / 2);
+      if (lod) {
+        this._fillCell(ctx, fb.x, fb.y, LOD_FOOD, 4);
+      } else {
+        this._drawCellEmoji(ctx, fb.x, fb.y, fb.emoji || FOOD_EMOJIS.lq[0], CELL / 2);
+      }
       ctx.globalAlpha = 1;
     }
   }
 
-  private _drawLootBags(ctx: CanvasRenderingContext2D, world: World): void {
+  private _drawLootBags(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
     for (const bag of world.lootBags.values()) {
+      if (!this._inView(bag.x, bag.y, vb)) continue;
       const fadeRatio = Math.max(0.3, bag.decayMs / TUNE.lootBag.decayMs);
       ctx.globalAlpha = fadeRatio;
-      this._drawCellEmoji(ctx, bag.x, bag.y, WORLD_EMOJIS.lootBag);
+      if (lod) {
+        this._fillCell(ctx, bag.x, bag.y, LOD_LOOT, 3);
+      } else {
+        this._drawCellEmoji(ctx, bag.x, bag.y, WORLD_EMOJIS.lootBag);
+      }
       ctx.globalAlpha = 1;
     }
   }
 
-  private _drawFarms(ctx: CanvasRenderingContext2D, world: World): void {
-    for (const f of world.farms.values())
-      this._drawCellEmoji(ctx, f.x, f.y, WORLD_EMOJIS.farm);
+  private _drawFarms(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
+    for (const f of world.farms.values()) {
+      if (!this._inView(f.x, f.y, vb)) continue;
+      if (lod) {
+        this._fillCell(ctx, f.x, f.y, LOD_FARM, 1);
+      } else {
+        this._drawCellEmoji(ctx, f.x, f.y, WORLD_EMOJIS.farm);
+      }
+    }
   }
 
-  private _drawObstacles(ctx: CanvasRenderingContext2D, world: World): void {
+  private _drawObstacles(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
     const drawn = new Set<string>();
     for (const o of world.obstacles.values()) {
       if (drawn.has(o.id)) continue;
       drawn.add(o.id);
+      if (o.size === '2x2') {
+        if (!this._inView(o.x, o.y, vb) && !this._inView(o.x + 1, o.y, vb) &&
+            !this._inView(o.x, o.y + 1, vb) && !this._inView(o.x + 1, o.y + 1, vb)) continue;
+      } else {
+        if (!this._inView(o.x, o.y, vb)) continue;
+      }
       const dmg = 1 - o.hp / o.maxHp;
       ctx.globalAlpha = dmg > 0 ? 1 - Math.min(0.7, dmg) : 1;
-      if (o.size === '2x2') {
-        // Draw one large emoji centered on the 2x2 block
+      if (lod) {
+        this._fillCell(ctx, o.x, o.y, LOD_OBSTACLE, 0);
+        if (o.size === '2x2') {
+          this._fillCell(ctx, o.x + 1, o.y, LOD_OBSTACLE, 0);
+          this._fillCell(ctx, o.x, o.y + 1, LOD_OBSTACLE, 0);
+          this._fillCell(ctx, o.x + 1, o.y + 1, LOD_OBSTACLE, 0);
+        }
+      } else if (o.size === '2x2') {
         const { canvas: ec, w, h } = this._emojiCache.get(o.emoji);
         const drawSize = CELL * 2 - 2;
         const scale = Math.min(drawSize / w, drawSize / h);
@@ -275,29 +444,38 @@ export class Renderer {
     }
   }
 
-  private _drawFlags(ctx: CanvasRenderingContext2D, world: World): void {
+  private _drawFlags(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
     for (const f of world.flags.values()) {
+      if (!this._inView(f.x, f.y, vb)) continue;
       const faction = world.factions.get(f.factionId);
       const col = faction?.color || '#cccccc';
-      const { canvas: ec, w, h } = this._emojiCache.getTinted(WORLD_EMOJIS.flag, col);
-      const scale = Math.min((CELL - 2) / w, (CELL - 2) / h);
-      const dw = w * scale;
-      const dh = h * scale;
-      const x = f.x * CELL;
-      const y = f.y * CELL;
-      ctx.drawImage(ec, x + (CELL - dw) / 2, y + (CELL - dh) / 2, dw, dh);
+      if (lod) {
+        this._fillCell(ctx, f.x, f.y, col, 2);
+      } else {
+        const { canvas: ec, w, h } = this._emojiCache.getTinted(WORLD_EMOJIS.flag, col);
+        const scale = Math.min((CELL - 2) / w, (CELL - 2) / h);
+        const dw = w * scale;
+        const dh = h * scale;
+        const x = f.x * CELL;
+        const y = f.y * CELL;
+        ctx.drawImage(ec, x + (CELL - dw) / 2, y + (CELL - dh) / 2, dw, dh);
+      }
     }
   }
 
+  // --- Agents (always full detail — they're the star of the show) ---
+
   private _hpToColor(ratio: number): string {
-    // Green (120°) at full HP → Red (0°) at zero HP
     const hue = Math.round(ratio * 120);
     return `hsl(${hue}, 85%, 50%)`;
   }
 
-  private _drawAgents(ctx: CanvasRenderingContext2D, world: World, attackLines: [Agent, Agent][]): void {
+  private _drawAgents(ctx: CanvasRenderingContext2D, world: World, attackLines: [Agent, Agent][], vb: ViewBounds): void {
     const now = performance.now();
     for (const agent of world.agents) {
+      if (!this._inView(agent.cellX, agent.cellY, vb) &&
+          !this._inView(agent.prevCellX ?? agent.cellX, agent.prevCellY ?? agent.cellY, vb)) continue;
+
       const t = agent.lerpT != null ? agent.lerpT : 1;
       const px = agent.prevCellX != null ? agent.prevCellX : agent.cellX;
       const py = agent.prevCellY != null ? agent.prevCellY : agent.cellY;
@@ -318,9 +496,7 @@ export class Renderer {
         emoji = AGENT_EMOJIS[actionType as string] || getIdleEmoji(agent);
       }
 
-      // Compute action animation transform
       let offX = 0, offY = 0, angle = 0, sx = 1, sy = 1;
-      const rem = agent.action?.remainingMs ?? 0;
 
       if (actionType === 'attack') {
         offX = Math.sin(now * 0.038) * 2.5;
@@ -336,17 +512,16 @@ export class Renderer {
           const eased = Math.sin(((progress - 0.7) / 0.3) * Math.PI / 2);
           sy = 0.62 + 0.38 * eased;
         }
-        offY = (1 - sy) * (CELL / 2); // anchor to bottom
+        offY = (1 - sy) * (CELL / 2);
       } else if (actionType === 'share') {
         offX = Math.sin(now * 0.005) * 2;
       }
 
-      // Rotation while moving between cells
       const isMoving = t < 1 && (agent.prevCellX !== agent.cellX || agent.prevCellY !== agent.cellY);
       if (isMoving) {
         const ddx = agent.cellX - (agent.prevCellX ?? agent.cellX);
         const ddy = agent.cellY - (agent.prevCellY ?? agent.cellY);
-        const tilt = 0.25; // ~14° max lean
+        const tilt = 0.25;
         angle = Math.atan2(ddy, ddx) + Math.PI / 2 + Math.sin(now * 0.015) * tilt;
       }
 
@@ -358,7 +533,6 @@ export class Renderer {
       this._drawAgentEmoji(ctx, x, y, CELL / 2 - 3, ringColor, emoji);
       ctx.restore();
 
-      // Faction flag and other overlays drawn without transform
       if (agent.factionId) {
         const faction = world.factions.get(agent.factionId);
         if (faction) {
@@ -371,13 +545,11 @@ export class Renderer {
         }
       }
 
-      // Collect attack lines
       if (agent.action?.type === 'attack' && agent.action.payload?.targetId) {
         const t2 = world.agentsById.get(agent.action.payload.targetId);
         if (t2) attackLines.push([agent, t2]);
       }
 
-      // Selection star
       if (world.selectedId === agent.id) this._drawStar(ctx, x + CELL / 2, y - 16);
     }
   }
@@ -423,29 +595,32 @@ export class Renderer {
     ctx.restore();
   }
 
-  private _drawDeadMarkers(ctx: CanvasRenderingContext2D, world: World): void {
+  // --- Death markers ---
+
+  private _drawDeadMarkers(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
     for (const marker of world.deadMarkers) {
+      if (!this._inView(marker.cellX, marker.cellY, vb)) continue;
       const x = marker.cellX * CELL;
       const y = marker.cellY * CELL;
       const fade = Math.min(1, marker.msRemaining / 3000);
       ctx.globalAlpha = fade;
 
-      if (marker.cause === 'tree') {
-        // Tree death: show stump emoji at full cell size
+      if (lod) {
+        ctx.fillStyle = '#cc2222';
+        ctx.fillRect(x + 4, y + 4, CELL - 8, CELL - 8);
+      } else if (marker.cause === 'tree') {
         const stumpEmoji = DEATH_CAUSE_EMOJI.tree;
         const { canvas: sc, w: sw, h: sh } = this._emojiCache.get(stumpEmoji);
         const drawSize = CELL - 2;
         const scale = Math.min(drawSize / sw, drawSize / sh);
         ctx.drawImage(sc, x + (CELL - sw * scale) / 2, y + (CELL - sh * scale) / 2, sw * scale, sh * scale);
       } else {
-        // Agent death: draw 😵 at full agent size
         const deadEmoji = '\u{1F635}'; // 😵
         const { canvas: ec, w, h } = this._emojiCache.get(deadEmoji);
         const drawSize = CELL - 4;
         const scale = Math.min(drawSize / w, drawSize / h);
         ctx.drawImage(ec, x + (CELL - w * scale) / 2, y + (CELL - h * scale) / 2, w * scale, h * scale);
 
-        // Draw cause icon at 1/4 size, offset to top-right
         const causeEmoji = DEATH_CAUSE_EMOJI[marker.cause];
         const { canvas: cc, w: cw, h: ch } = this._emojiCache.get(causeEmoji);
         const causeSize = CELL / 4;
@@ -456,6 +631,8 @@ export class Renderer {
       ctx.globalAlpha = 1;
     }
   }
+
+  // --- Attack lines ---
 
   private _drawAttackLines(ctx: CanvasRenderingContext2D, _camera: Camera, lines: [Agent, Agent][]): void {
     const daggerEmoji = '\uD83D\uDDE1\uFE0F'; // 🗡️
@@ -475,7 +652,6 @@ export class Renderer {
 
       const mx = (ax + tx) / 2;
       const my = (ay + ty) / 2;
-      // Angle from attacker toward target; 🗡️ naturally points up-right (~-45°), offset accordingly
       const angle = Math.atan2(ty - ay, tx - ax) + Math.PI * 1.25;
 
       ctx.save();
@@ -487,20 +663,14 @@ export class Renderer {
     }
   }
 
-  private _drawClouds(ctx: CanvasRenderingContext2D, world: World, _camera: Camera): void {
+  // --- Clouds ---
+
+  private _drawClouds(ctx: CanvasRenderingContext2D, world: World, _camera: Camera, vb: ViewBounds, lod: boolean): void {
     const now = performance.now();
     for (const cloud of world.clouds) {
       const total = cloud.totalLifetimeMs || 7500;
       const progress = Math.min(1, (now - cloud.spawnedAtMs) / total);
 
-      // Fade in during first 25%, full opacity in middle, fade out during last 25%
-      let alpha: number;
-      if (progress < 0.25) alpha = progress / 0.25;
-      else if (progress < 0.75) alpha = 1;
-      else alpha = (1 - progress) / 0.25;
-
-      // Analytically compute x displacement: fast → slow (rain) → fast
-      // Phase 1 (0–0.35): 40% of drift, Phase 2 (0.35–0.65): 20%, Phase 3 (0.65–1): 40%
       const totalDrift = cloud.decorative ? 4 : 3;
       let xDisp: number;
       if (progress <= 0.35) {
@@ -512,10 +682,30 @@ export class Renderer {
       }
       const xF = cloud.x + xDisp;
 
+      const cloudCellX = Math.round(xF);
+      const cloudCellY = Math.round(cloud.y);
+      if (cloudCellX < vb.minX - 3 || cloudCellX > vb.maxX + 3 ||
+          cloudCellY < vb.minY - 3 || cloudCellY > vb.maxY + 3) continue;
+
+      let alpha: number;
+      if (progress < 0.25) alpha = progress / 0.25;
+      else if (progress < 0.75) alpha = 1;
+      else alpha = (1 - progress) / 0.25;
+
       const maxAlpha = cloud.decorative ? 0.55 : 0.65;
       const emoji = cloud.decorative ? '\u2601\uFE0F' : WORLD_EMOJIS.cloud; // ☁️ vs 🌧️
 
-      // Ground shadow beneath cloud
+      if (lod) {
+        // Simplified cloud: single semi-transparent rectangle
+        ctx.globalAlpha = Math.max(0, alpha) * maxAlpha * 0.5;
+        ctx.fillStyle = cloud.decorative ? '#dddddd' : '#aabbcc';
+        const px = xF * CELL;
+        const py = cloud.y * CELL;
+        ctx.fillRect(px - CELL, py - CELL * 0.5, CELL * 3, CELL * 1.5);
+        ctx.globalAlpha = 1;
+        continue;
+      }
+
       const shadowAlpha = Math.max(0, alpha) * (cloud.decorative ? 0.08 : 0.12);
       ctx.fillStyle = `rgba(0,0,0,${shadowAlpha})`;
       const sx = xF * CELL - CELL * 0.5;
@@ -542,6 +732,8 @@ export class Renderer {
     const py = y * CELL;
     ctx.drawImage(ec, px + (CELL - dw) / 2, py + (CELL - dh) / 2, dw, dh);
   }
+
+  // --- Selected agent path ---
 
   private _drawSelectedAgentPath(ctx: CanvasRenderingContext2D, world: World): void {
     if (!world.selectedId) return;

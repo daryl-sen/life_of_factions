@@ -51,6 +51,7 @@ function seedEnvironment(world: World): void {
   SimulationEngine.seedInitialWater(world, rndi(3, 6));
   SimulationEngine.seedInitialFood(world, rndi(5, 10));
   world.terrainField.recomputeAll(world.grid);
+  world.terrainField.snapDisplay();
 }
 
 export class Controls {

@@ -4,79 +4,26 @@ import type { Grid } from './grid';
 
 const tfIdx = (x: number, y: number): number => y * GRID + x;
 
+/** Per-frame step size for display moisture lerp (higher = faster transition). */
+const LERP_STEP = 3;
+
 export class TerrainField {
-  /** Moisture per cell: 0 = dry (yellow), 127 = neutral (brown), 255 = wet (green) */
+  /** Target moisture per cell: 0 = dry, 127 = neutral, 255 = wet. Set by recomputeAll(). */
   readonly moisture: Uint8Array;
-  /** Next tick at which each cell should update */
-  private readonly _nextUpdate: Uint32Array;
-  private _allocSize = 0;
+  /** Display moisture — what the renderer actually draws. Lerps toward `moisture` each frame. */
+  readonly displayMoisture: Uint8Array;
+  /** Incremented whenever display values change — used by the renderer to invalidate its terrain cache. */
+  version = 0;
+  /** True while displayMoisture is still converging toward moisture. */
+  transitioning = false;
 
   constructor() {
     const N = GRID * GRID;
-    this._allocSize = N;
     this.moisture = new Uint8Array(N);
-    this._nextUpdate = new Uint32Array(N);
-    // Stagger initial updates: each cell gets a random offset so they don't all fire together
-    for (let i = 0; i < N; i++) {
-      this._nextUpdate[i] = Math.floor(Math.random() * 40);
-    }
+    this.displayMoisture = new Uint8Array(N);
   }
 
-  /**
-   * Called every tick. Updates only the cells whose scheduled tick has arrived.
-   * Each cell reschedules itself with a random interval of 16-40 ticks (4-10 seconds).
-   */
-  tick(grid: Grid, currentTick: number): void {
-    const radius = TUNE.terrain.waterRadius;
-
-    // Collect water block positions once (deduplicated by id)
-    const waterPositions: Array<{ x: number; y: number }> = [];
-    const seen = new Set<string>();
-    for (const wb of grid.waterBlocks.values()) {
-      if (seen.has(wb.id)) continue;
-      seen.add(wb.id);
-      for (const c of wb.cells) {
-        waterPositions.push(c);
-      }
-    }
-
-    for (let y = 0; y < GRID; y++) {
-      for (let x = 0; x < GRID; x++) {
-        const i = tfIdx(x, y);
-        if (currentTick < this._nextUpdate[i]) continue;
-
-        // Reschedule with random interval: 16-40 ticks (4-10 seconds)
-        this._nextUpdate[i] = currentTick + 16 + Math.floor(Math.random() * 25);
-
-        // Skip saltwater cells — they keep moisture 0
-        if (grid.saltWaterBlocks.has(`${x},${y}`)) {
-          this.moisture[i] = 0;
-          continue;
-        }
-
-        let minDist = radius + 1;
-        for (const wp of waterPositions) {
-          const d = manhattan(x, y, wp.x, wp.y);
-          if (d < minDist) {
-            minDist = d;
-            if (d === 0) break;
-          }
-        }
-
-        let m: number;
-        if (minDist <= radius) {
-          // Scale: distance 0 → 255 (max wet), distance=radius → 128 (barely above neutral)
-          m = Math.round(128 + 127 * (1 - minDist / radius));
-        } else {
-          // No water nearby — dry
-          m = 0;
-        }
-        this.moisture[i] = m;
-      }
-    }
-  }
-
-  /** Full recompute — used at world init */
+  /** Full recompute of all cell moisture values based on water proximity. */
   recomputeAll(grid: Grid): void {
     const radius = TUNE.terrain.waterRadius;
 
@@ -117,10 +64,51 @@ export class TerrainField {
         this.moisture[i] = m;
       }
     }
+    this.transitioning = true;
+  }
+
+  /**
+   * Snap display moisture to target immediately (used on first init / load).
+   */
+  snapDisplay(): void {
+    this.displayMoisture.set(this.moisture);
+    this.transitioning = false;
+    this.version++;
+  }
+
+  /**
+   * Step display moisture toward target. Call once per render frame.
+   * Returns true if any values changed (terrain cache needs rebuild).
+   */
+  stepDisplay(): boolean {
+    if (!this.transitioning) return false;
+
+    let changed = false;
+    const N = this.moisture.length;
+    for (let i = 0; i < N; i++) {
+      const cur = this.displayMoisture[i];
+      const tgt = this.moisture[i];
+      if (cur === tgt) continue;
+
+      let next: number;
+      if (cur < tgt) {
+        next = Math.min(tgt, cur + LERP_STEP);
+      } else {
+        next = Math.max(tgt, cur - LERP_STEP);
+      }
+      this.displayMoisture[i] = next;
+      changed = true;
+    }
+
+    if (changed) {
+      this.version++;
+    }
+    this.transitioning = changed;
+    return changed;
   }
 
   moistureAt(x: number, y: number): number {
     if (x < 0 || y < 0 || x >= GRID || y >= GRID) return 0;
-    return this.moisture[tfIdx(x, y)];
+    return this.displayMoisture[tfIdx(x, y)];
   }
 }

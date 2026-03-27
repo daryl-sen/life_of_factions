@@ -344,7 +344,10 @@ export class SimulationEngine {
   // ── Terrain ──
 
   private static _tickTerrain(world: World): void {
-    world.terrainField.tick(world.grid, world.tick);
+    // Recompute terrain moisture every ~10 seconds (40 ticks) instead of per-tick scanning
+    if (world.tick % 40 === 0) {
+      world.terrainField.recomputeAll(world.grid);
+    }
   }
 
   // ── Saltwater spawning ──

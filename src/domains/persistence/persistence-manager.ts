@@ -242,6 +242,7 @@ export class PersistenceManager {
     }
     // Recompute terrain moisture from restored water/saltwater state
     world.terrainField.recomputeAll(world.grid);
+    world.terrainField.snapDisplay();
     // Reset ephemeral cloud state
     world.clouds = [];
     world._nextCloudSpawnMs = 0;
