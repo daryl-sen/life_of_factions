@@ -646,7 +646,7 @@ export class SimulationEngine {
       const near = Pathfinder.findNearest(agent, filtered);
       if (near) {
         Pathfinder.planPathTo(world, agent, near.target.x, near.target.y);
-        return;
+        if (agent.path && agent.path.length > 0) return;
       }
     }
 
@@ -773,7 +773,7 @@ export class SimulationEngine {
       const near = Pathfinder.findNearest(agent, waterPositions);
       if (near) {
         Pathfinder.planPathTo(world, agent, near.target.x, near.target.y);
-        return;
+        if (agent.path && agent.path.length > 0) return;
       }
     }
 
