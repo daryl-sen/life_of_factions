@@ -512,8 +512,18 @@ export class Renderer {
       }
       const xF = cloud.x + xDisp;
 
-      const maxAlpha = cloud.decorative ? 0.25 : 0.45;
+      const maxAlpha = cloud.decorative ? 0.55 : 0.65;
       const emoji = cloud.decorative ? '\u2601\uFE0F' : WORLD_EMOJIS.cloud; // ☁️ vs 🌧️
+
+      // Ground shadow beneath cloud
+      const shadowAlpha = Math.max(0, alpha) * (cloud.decorative ? 0.08 : 0.12);
+      ctx.fillStyle = `rgba(0,0,0,${shadowAlpha})`;
+      const sx = xF * CELL - CELL * 0.5;
+      const sy = (cloud.y + 2) * CELL;
+      ctx.beginPath();
+      ctx.ellipse(sx + CELL * 1.5, sy + CELL * 0.4, CELL * 1.8, CELL * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+
       ctx.globalAlpha = Math.max(0, alpha) * maxAlpha;
       this._drawCloudAt(ctx, xF, cloud.y, CELL * 2, emoji);
       ctx.globalAlpha = Math.max(0, alpha) * maxAlpha * 0.6;

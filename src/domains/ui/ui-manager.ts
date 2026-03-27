@@ -320,9 +320,7 @@ export class UIManager {
     if (s.stTickAvg) s.stTickAvg.textContent = tAvg.toFixed(1);
     if (s.stTickMin) s.stTickMin.textContent = tMin.toFixed(1);
     if (s.stTickMax) s.stTickMax.textContent = tMax.toFixed(1);
-    if (s.barAgents) s.barAgents.textContent = String(world.agents.length).padStart(2, '0');
-    if (s.barFactions) s.barFactions.textContent = String(world.factions.size).padStart(2, '0');
-    if (s.barCrops) s.barCrops.textContent = String(world.foodBlocks.size).padStart(2, '0');
+    // Nav bar stats are now dynamically synced from telemetry elements via inline script
   }
 
   static rebuildFactionsListIfNeeded(world: World, factionsList: HTMLElement | null): void {

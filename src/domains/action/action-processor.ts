@@ -134,6 +134,7 @@ export class ActionProcessor {
       }
     } else if (act.type === 'heal' && targ) {
       targ.healBy(2);
+      agent.drainFullness(0.5); // Healing costs extra fullness
       log(world, 'heal', `${agent.name} healed ${targ.name}`, agent.id, { to: targ.id });
     } else if (act.type === 'share' && targ) {
       // Transfer 1 resource unit per tick from sharer to target
