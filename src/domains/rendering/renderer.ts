@@ -70,46 +70,101 @@ export class Renderer {
     ctx.restore();
   }
 
-  private _lerpColor(c1: [number, number, number], c2: [number, number, number], t: number): string {
-    const r = Math.round(c1[0] + (c2[0] - c1[0]) * t);
-    const g = Math.round(c1[1] + (c2[1] - c1[1]) * t);
-    const b = Math.round(c1[2] + (c2[2] - c1[2]) * t);
-    return `rgb(${r},${g},${b})`;
+  /** Deterministic hash for consistent per-cell texture */
+  private static _cellHash(x: number, y: number, seed: number): number {
+    let h = (x * 374761393 + y * 668265263 + seed * 1274126177) | 0;
+    h = ((h ^ (h >> 13)) * 1103515245) | 0;
+    return (h ^ (h >> 16)) >>> 0;
+  }
+
+  private static _lerpRGB(c1: [number, number, number], c2: [number, number, number], t: number): [number, number, number] {
+    return [
+      c1[0] + (c2[0] - c1[0]) * t,
+      c1[1] + (c2[1] - c1[1]) * t,
+      c1[2] + (c2[2] - c1[2]) * t,
+    ];
   }
 
   // Pre-parsed terrain color RGB values
   private static readonly _DRY: [number, number, number] = [0xC4, 0xA9, 0x46];
   private static readonly _MUD: [number, number, number] = [0x8B, 0x73, 0x55];
   private static readonly _GRASS: [number, number, number] = [0x5C, 0x7A, 0x3A];
+  private static readonly _SALT: [number, number, number] = [0x2B, 0x5A, 0x7B];
 
   private _drawTerrain(ctx: CanvasRenderingContext2D, terrainField: TerrainField): void {
-    // Fill entire grid with default dry color to prevent sub-pixel gaps between cells
-    ctx.fillStyle = COLORS.terrainDry;
-    ctx.fillRect(0, 0, GRID * CELL, GRID * CELL);
-
     for (let y = 0; y < GRID; y++) {
       for (let x = 0; x < GRID; x++) {
         const m = terrainField.moistureAt(x, y);
-        if (m === 0) continue; // already filled with dry color
-        let color: string;
+        let base: [number, number, number];
         if (m <= 128) {
-          const t = m / 128;
-          color = this._lerpColor(Renderer._DRY, Renderer._MUD, t);
+          base = Renderer._lerpRGB(Renderer._DRY, Renderer._MUD, m / 128);
         } else {
-          const t = (m - 128) / 127;
-          color = this._lerpColor(Renderer._MUD, Renderer._GRASS, t);
+          base = Renderer._lerpRGB(Renderer._MUD, Renderer._GRASS, (m - 128) / 127);
         }
-        ctx.fillStyle = color;
-        ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+
+        // Per-cell brightness variation from hash
+        const h0 = Renderer._cellHash(x, y, 0);
+        const variation = ((h0 & 0xff) / 255 - 0.5) * 20; // ±10 brightness
+        const r = Math.max(0, Math.min(255, Math.round(base[0] + variation)));
+        const g = Math.max(0, Math.min(255, Math.round(base[1] + variation)));
+        const b = Math.max(0, Math.min(255, Math.round(base[2] + variation)));
+
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        const px = x * CELL;
+        const py = y * CELL;
+        ctx.fillRect(px, py, CELL, CELL);
+
+        // Texture details: 2-3 small specks per cell for grain
+        const h1 = Renderer._cellHash(x, y, 1);
+        const h2 = Renderer._cellHash(x, y, 2);
+        const h3 = Renderer._cellHash(x, y, 3);
+        const speckAlpha = 0.12 + (h1 & 0xf) / 100; // 0.12-0.27
+        const darker = ((h1 >> 8) & 1) === 0;
+        ctx.fillStyle = darker
+          ? `rgba(0,0,0,${speckAlpha})`
+          : `rgba(255,255,255,${speckAlpha})`;
+
+        // Speck 1
+        const sx1 = px + ((h1 >> 16) & 0xf) % CELL;
+        const sy1 = py + ((h1 >> 20) & 0xf) % CELL;
+        ctx.fillRect(sx1, sy1, 2, 1);
+
+        // Speck 2
+        const sx2 = px + ((h2 >> 4) & 0xf) % CELL;
+        const sy2 = py + ((h2 >> 8) & 0xf) % CELL;
+        ctx.fillRect(sx2, sy2, 1, 2);
+
+        // Speck 3 (only on some cells)
+        if ((h3 & 3) === 0) {
+          const sx3 = px + ((h3 >> 12) & 0xf) % CELL;
+          const sy3 = py + ((h3 >> 16) & 0xf) % CELL;
+          ctx.fillRect(sx3, sy3, 1, 1);
+        }
       }
     }
   }
 
   private _drawSaltWater(ctx: CanvasRenderingContext2D, world: World): void {
     if (world.saltWaterBlocks.size === 0) return;
-    ctx.fillStyle = COLORS.terrainSaltWater;
     for (const sw of world.saltWaterBlocks.values()) {
-      ctx.fillRect(sw.x * CELL, sw.y * CELL, CELL, CELL);
+      const h0 = Renderer._cellHash(sw.x, sw.y, 7);
+      const variation = ((h0 & 0xff) / 255 - 0.5) * 16; // ±8 brightness
+      const r = Math.max(0, Math.min(255, Math.round(Renderer._SALT[0] + variation)));
+      const g = Math.max(0, Math.min(255, Math.round(Renderer._SALT[1] + variation)));
+      const b = Math.max(0, Math.min(255, Math.round(Renderer._SALT[2] + variation)));
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      const px = sw.x * CELL;
+      const py = sw.y * CELL;
+      ctx.fillRect(px, py, CELL, CELL);
+
+      // Subtle wave-like highlights
+      const h1 = Renderer._cellHash(sw.x, sw.y, 8);
+      if ((h1 & 3) < 2) {
+        ctx.fillStyle = `rgba(255,255,255,0.1)`;
+        const wx = px + ((h1 >> 4) & 0xf) % (CELL - 3);
+        const wy = py + ((h1 >> 12) & 0xf) % CELL;
+        ctx.fillRect(wx, wy, 3, 1);
+      }
     }
   }
 
