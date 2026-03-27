@@ -1,4 +1,5 @@
 import { CELL, GRID, COLORS, AGENT_EMOJIS, IDLE_EMOJIS, WORLD_EMOJIS, FOOD_EMOJIS, TUNE } from '../../shared/constants';
+import type { TerrainField } from '../world/terrain-field';
 import { getIdleEmoji } from '../../shared/utils';
 import type { World, DeathCause } from '../world';
 import type { Agent } from '../agent';
@@ -25,6 +26,8 @@ export class Renderer {
       -camera.y * camera.scale
     );
 
+    this._drawTerrain(ctx, world.terrainField);
+    this._drawSaltWater(ctx, world);
     if (world.drawGrid) this._drawGrid(ctx, camera);
     this._drawWaterBlocks(ctx, world);
     this._drawTreeBlocks(ctx, world);
@@ -65,6 +68,49 @@ export class Renderer {
     }
     ctx.stroke();
     ctx.restore();
+  }
+
+  private _lerpColor(c1: [number, number, number], c2: [number, number, number], t: number): string {
+    const r = Math.round(c1[0] + (c2[0] - c1[0]) * t);
+    const g = Math.round(c1[1] + (c2[1] - c1[1]) * t);
+    const b = Math.round(c1[2] + (c2[2] - c1[2]) * t);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  // Pre-parsed terrain color RGB values
+  private static readonly _DRY: [number, number, number] = [0xC4, 0xA9, 0x46];
+  private static readonly _MUD: [number, number, number] = [0x8B, 0x73, 0x55];
+  private static readonly _GRASS: [number, number, number] = [0x5C, 0x7A, 0x3A];
+
+  private _drawTerrain(ctx: CanvasRenderingContext2D, terrainField: TerrainField): void {
+    // Fill entire grid with default dry color to prevent sub-pixel gaps between cells
+    ctx.fillStyle = COLORS.terrainDry;
+    ctx.fillRect(0, 0, GRID * CELL, GRID * CELL);
+
+    for (let y = 0; y < GRID; y++) {
+      for (let x = 0; x < GRID; x++) {
+        const m = terrainField.moistureAt(x, y);
+        if (m === 0) continue; // already filled with dry color
+        let color: string;
+        if (m <= 128) {
+          const t = m / 128;
+          color = this._lerpColor(Renderer._DRY, Renderer._MUD, t);
+        } else {
+          const t = (m - 128) / 127;
+          color = this._lerpColor(Renderer._MUD, Renderer._GRASS, t);
+        }
+        ctx.fillStyle = color;
+        ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+      }
+    }
+  }
+
+  private _drawSaltWater(ctx: CanvasRenderingContext2D, world: World): void {
+    if (world.saltWaterBlocks.size === 0) return;
+    ctx.fillStyle = COLORS.terrainSaltWater;
+    for (const sw of world.saltWaterBlocks.values()) {
+      ctx.fillRect(sw.x * CELL, sw.y * CELL, CELL, CELL);
+    }
   }
 
   private _drawCellEmoji(ctx: CanvasRenderingContext2D, cellX: number, cellY: number, emoji: string, size = CELL - 2): void {
@@ -411,7 +457,7 @@ export class Renderer {
       }
       const xF = cloud.x + xDisp;
 
-      const maxAlpha = cloud.decorative ? 0.4 : 0.7;
+      const maxAlpha = cloud.decorative ? 0.25 : 0.45;
       ctx.globalAlpha = Math.max(0, alpha) * maxAlpha;
       this._drawCloudAt(ctx, xF, cloud.y, CELL * 2);
       ctx.globalAlpha = Math.max(0, alpha) * maxAlpha * 0.6;

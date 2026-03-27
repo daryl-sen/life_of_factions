@@ -6,6 +6,7 @@ import type { Faction } from '../faction/faction';
 import { Grid } from './grid';
 import { FoodField } from './food-field';
 import { WaterField } from './water-field';
+import { TerrainField } from './terrain-field';
 
 export type DeathCause = 'hunger' | 'killed' | 'disease' | 'old_age' | 'tree';
 
@@ -20,6 +21,7 @@ export class World {
   readonly grid: Grid = new Grid();
   readonly foodField: FoodField = new FoodField();
   readonly waterField: WaterField = new WaterField();
+  readonly terrainField: TerrainField = new TerrainField();
 
   agents: Agent[] = [];
   readonly agentsById: Map<string, Agent> = new Map();
@@ -79,4 +81,5 @@ export class World {
   get lootBags() { return this.grid.lootBags; }
   get poopBlocks() { return this.grid.poopBlocks; }
   get eggs() { return this.grid.eggs; }
+  get saltWaterBlocks() { return this.grid.saltWaterBlocks; }
 }

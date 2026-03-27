@@ -210,6 +210,15 @@ export const TUNE = {
   play: {
     hygienePoopPenalty: 3,
   },
+  terrain: {
+    waterRadius: 5,
+    updateBands: 40,
+    moistureMax: 255,
+  },
+  saltWater: {
+    spawnRange: [2, 4] as [number, number],
+    bodySize: [60, 150] as [number, number],
+  },
 } as const;
 
 export const ACTION_DURATIONS: Record<ActionType, [number, number]> = {
@@ -245,6 +254,10 @@ export const COLORS = {
   energy: '#7bdcff',
   grid: '#1a1e3f',
   attackLine: '#ff6d7a',
+  terrainDry: '#C4A946',
+  terrainMud: '#8B7355',
+  terrainGrass: '#5C7A3A',
+  terrainSaltWater: '#2B5A7B',
 } as const;
 
 export const FACTION_COLORS: readonly string[] = [

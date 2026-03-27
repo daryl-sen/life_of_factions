@@ -46,9 +46,11 @@ function seedEnvironment(world: World): void {
       world.obstacles.set(key(x, y), { id: uuid(), x, y, emoji, hp: 12, maxHp: 12 });
     }
   }
+  SimulationEngine.seedInitialSaltWater(world, rndi(TUNE.saltWater.spawnRange[0], TUNE.saltWater.spawnRange[1]));
   SimulationEngine.seedInitialTrees(world, rndi(8, 15));
   SimulationEngine.seedInitialWater(world, rndi(3, 6));
   SimulationEngine.seedInitialFood(world, rndi(5, 10));
+  world.terrainField.recomputeAll(world.grid);
 }
 
 export class Controls {
@@ -187,6 +189,8 @@ export class Controls {
       if (next === 'replenish') {
         if (dom.buttons.btnDrawObstacles) dom.buttons.btnDrawObstacles.classList.remove('toggled');
         if (dom.buttons.btnEraseObstacles) dom.buttons.btnEraseObstacles.classList.remove('toggled');
+        if (dom.buttons.btnPaintSaltWater) dom.buttons.btnPaintSaltWater.classList.remove('toggled');
+        if (dom.buttons.btnPaintLand) dom.buttons.btnPaintLand.classList.remove('toggled');
       }
     });
 

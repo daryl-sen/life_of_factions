@@ -7,19 +7,25 @@ import { UIManager } from './ui-manager';
 
 export class InputHandler {
   static setup(canvas: HTMLCanvasElement, camera: Camera, world: World, dom: DomRefs): void {
-    const { btnDrawObstacles, btnEraseObstacles } = dom.buttons;
+    const { btnDrawObstacles, btnEraseObstacles, btnPaintSaltWater, btnPaintLand } = dom.buttons;
 
-    function setPaintMode(mode: 'draw' | 'erase') {
+    const allPaintBtns = [btnDrawObstacles, btnEraseObstacles, btnPaintSaltWater, btnPaintLand, dom.buttons.btnReplenish];
+
+    function setPaintMode(mode: 'draw' | 'erase' | 'paintSaltWater' | 'paintLand') {
       const next = world.paintMode === mode ? 'none' as const : mode;
       world.paintMode = next;
+      // Clear all toggle states then set the active one
       if (btnDrawObstacles) btnDrawObstacles.classList.toggle('toggled', next === 'draw');
       if (btnEraseObstacles) btnEraseObstacles.classList.toggle('toggled', next === 'erase');
-      // Deactivate replenish when switching to draw/erase
+      if (btnPaintSaltWater) btnPaintSaltWater.classList.toggle('toggled', next === 'paintSaltWater');
+      if (btnPaintLand) btnPaintLand.classList.toggle('toggled', next === 'paintLand');
       const btnReplenish = dom.buttons.btnReplenish;
       if (btnReplenish) btnReplenish.classList.remove('toggled');
     }
     btnDrawObstacles?.addEventListener('click', () => setPaintMode('draw'));
     btnEraseObstacles?.addEventListener('click', () => setPaintMode('erase'));
+    btnPaintSaltWater?.addEventListener('click', () => setPaintMode('paintSaltWater'));
+    btnPaintLand?.addEventListener('click', () => setPaintMode('paintLand'));
 
     let dragging = false;
     let lastX = 0;
@@ -58,6 +64,22 @@ export class InputHandler {
         if (world.obstacles.has(k)) {
           world.obstacles.delete(k);
           log(world, 'destroy', `Obstacle @${x},${y} removed (user)`, null, { x, y });
+        }
+      } else if (world.paintMode === 'paintSaltWater') {
+        if (!world.saltWaterBlocks.has(k) && !world.waterBlocks.has(k) && !world.agentsByCell.has(k)) {
+          // Remove anything else occupying this cell
+          world.obstacles.delete(k);
+          world.foodBlocks.delete(k);
+          world.treeBlocks.delete(k);
+          world.seedlings.delete(k);
+          world.farms.delete(k);
+          world.poopBlocks.delete(k);
+          world.lootBags.delete(k);
+          world.saltWaterBlocks.set(k, { id: uuid(), x, y });
+        }
+      } else if (world.paintMode === 'paintLand') {
+        if (world.saltWaterBlocks.has(k)) {
+          world.saltWaterBlocks.delete(k);
         }
       }
     }

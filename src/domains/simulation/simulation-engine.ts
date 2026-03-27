@@ -341,6 +341,47 @@ export class SimulationEngine {
     }
   }
 
+  // ── Terrain ──
+
+  private static _tickTerrain(world: World): void {
+    world.terrainField.tick(world.grid, world.tick);
+  }
+
+  // ── Saltwater spawning ──
+
+  static seedInitialSaltWater(world: World, count: number): void {
+    const dirs: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (let i = 0; i < count; i++) {
+      const bodySize = rndi(TUNE.saltWater.bodySize[0], TUNE.saltWater.bodySize[1]);
+      const startX = rndi(3, GRID - 4);
+      const startY = rndi(3, GRID - 4);
+      // BFS-style flood growth from the seed for a continuous body
+      const frontier: Array<{ x: number; y: number }> = [{ x: startX, y: startY }];
+      let placed = 0;
+      while (frontier.length > 0 && placed < bodySize) {
+        // Pick a random cell from the frontier for organic shapes
+        const idx = Math.floor(Math.random() * frontier.length);
+        const cell = frontier[idx];
+        frontier[idx] = frontier[frontier.length - 1];
+        frontier.pop();
+        const k = key(cell.x, cell.y);
+        if (world.saltWaterBlocks.has(k)) continue;
+        if (world.grid.isCellOccupied(cell.x, cell.y)) continue;
+        world.saltWaterBlocks.set(k, { id: uuid(), x: cell.x, y: cell.y });
+        placed++;
+        // Add neighbors to frontier
+        for (const [dx, dy] of dirs) {
+          const nx = cell.x + dx;
+          const ny = cell.y + dy;
+          if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) continue;
+          if (!world.saltWaterBlocks.has(key(nx, ny))) {
+            frontier.push({ x: nx, y: ny });
+          }
+        }
+      }
+    }
+  }
+
   // ── Cloud / rain ──
 
   private static _tickClouds(world: World): void {
@@ -379,7 +420,7 @@ export class SimulationEngine {
     }
 
     // Randomly spawn decorative (non-raining) clouds
-    if (Math.random() < 0.004) {
+    if (Math.random() < 0.025) {
       const x = rndi(-2, GRID - 1);
       const y = rndi(0, GRID - 1);
       const lifetime = rndi(15000, 28000);
@@ -920,6 +961,7 @@ export class SimulationEngine {
     SimulationEngine._tickClouds(world);
     SimulationEngine._tickWaterDecay(world);
     SimulationEngine._tickSeedlingNearWater(world);
+    SimulationEngine._tickTerrain(world);
 
     for (const b of world.agents) b._underAttack = false;
     for (const b of world.agents) {
