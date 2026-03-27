@@ -79,6 +79,7 @@ export class PersistenceManager {
       seedlings: [...world.seedlings.values()],
       lootBags: [...world.lootBags.values()],
       poopBlocks: [...world.poopBlocks.values()],
+      saltWaterBlocks: [...world.saltWaterBlocks.values()],
       agents,
       log: { limit: world.log.limit, arr: world.log.arr },
       selectedId: world.selectedId,
@@ -231,6 +232,16 @@ export class PersistenceManager {
         decayMs: pb.decayMs ?? 30000,
       });
     }
+    // Restore salt water blocks
+    for (const sw of d.saltWaterBlocks || []) {
+      world.saltWaterBlocks.set(key(sw.x, sw.y), {
+        id: sw.id,
+        x: sw.x,
+        y: sw.y,
+      });
+    }
+    // Recompute terrain moisture from restored water/saltwater state
+    world.terrainField.recomputeAll(world.grid);
     // Reset ephemeral cloud state
     world.clouds = [];
     world._nextCloudSpawnMs = 0;
