@@ -67,6 +67,14 @@ document.addEventListener('DOMContentLoaded', () => {
   if (autosaveData) {
     try {
       PersistenceManager.restore(world, autosaveData, { doRenderLog, dom });
+      // Set button states so user can resume the restored session
+      if (dom.buttons.btnStart) dom.buttons.btnStart.disabled = true;
+      if (dom.buttons.btnPause) dom.buttons.btnPause.disabled = true;
+      if (dom.buttons.btnResume) dom.buttons.btnResume.disabled = false;
+      if (dom.ranges.rngAgents) dom.ranges.rngAgents.disabled = true;
+      if (dom.nums.numAgents) dom.nums.numAgents.disabled = true;
+      if (dom.ranges.rngWorldSize) dom.ranges.rngWorldSize.disabled = true;
+      if (dom.nums.numWorldSize) dom.nums.numWorldSize.disabled = true;
     } catch {
       PersistenceManager.clearAutosave();
     }
