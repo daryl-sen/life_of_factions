@@ -583,6 +583,15 @@ export class AgentUpdater {
       }
     }
 
+    // ── Courage-based flee interrupt ──
+    // If under attack and HP drops below courage threshold, cancel current action to flee
+    if (agent._underAttack && agent.action) {
+      const hpRatio = agent.maxHealth > 0 ? agent.health / agent.maxHealth : 1;
+      if (hpRatio < agent.traits.courage.fleeHpRatio) {
+        agent.action = null;
+      }
+    }
+
     // ── Action processing or movement/decision ──
 
     if (agent.action) {
