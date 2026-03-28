@@ -139,7 +139,7 @@ export class Renderer {
 
   private _rebuildTerrainCache(world: World): void {
     const size = GRID_SIZE * CELL_PX;
-    if (!this._terrainCanvas) {
+    if (!this._terrainCanvas || this._terrainCanvas.width !== size) {
       this._terrainCanvas = document.createElement('canvas');
       this._terrainCanvas.width = size;
       this._terrainCanvas.height = size;

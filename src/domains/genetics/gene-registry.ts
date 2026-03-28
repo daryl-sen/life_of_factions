@@ -18,7 +18,7 @@ export const GENE_REGISTRY: ReadonlyMap<string, TraitDef> = new Map<string, Trai
   ['BB', {
     code: 'BB', name: 'Longevity', essential: true,
     components: [
-      { key: 'maxAgeMs', min: 120000, default: 300000, max: 600000, scale: 0.5, inverted: false },
+      { key: 'maxAgeMs', min: 120000, default: 300000, max: 600000, scale: 0.005, inverted: false },
     ],
   }],
   ['CC', {
@@ -133,6 +133,12 @@ export const GENE_REGISTRY: ReadonlyMap<string, TraitDef> = new Map<string, Trai
     components: [
       // Special: expressed as boolean (rawValue > 0 = true)
       { key: 'canSelfReproduce', min: 0, default: 0, max: 1, scale: 1, inverted: false },
+    ],
+  }],
+  ['UU', {
+    code: 'UU', name: 'Greed', essential: false,
+    components: [
+      { key: 'hoardProbability', min: 0.0, default: 0.4, max: 1.0, scale: 500, inverted: false },
     ],
   }],
 ]);

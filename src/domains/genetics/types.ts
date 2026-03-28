@@ -35,6 +35,7 @@ export interface TraitSet {
   readonly maturity: { readonly babyDurationMs: number };
   readonly endurance: { readonly inventoryCapacity: number };
   readonly fidelity: { readonly leaveProbability: number };
+  readonly greed: { readonly hoardProbability: number };
 }
 
 /** Definition of a single trait component's scaling */

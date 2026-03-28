@@ -525,7 +525,7 @@ export class UIManager {
         <div class="agent-avatar">${emoji}</div>
         <div class="agent-info">
           <div class="agent-name-row">
-            <span class="agent-name">${a.name} ${a.familyName !== a.name ? a.familyName : ''}</span>
+            <span class="agent-name" data-action="center-agent" title="Click to pan to agent" style="cursor:pointer;text-decoration:underline dotted">${a.name} ${a.familyName !== a.name ? a.familyName : ''}</span>
             <span class="agent-level">LV. ${String(a.level).padStart(2, '0')}</span>
           </div>
           <div class="agent-badges">
@@ -643,6 +643,7 @@ export class UIManager {
           ${traitCell('CHR', a.traits.charisma.relationshipSlots.toFixed(0), a.traits.charisma.relationshipSlots, 'NN', 'Charisma — Max relationship slots')}
           ${traitCell('END', a.traits.endurance.inventoryCapacity.toFixed(0), a.traits.endurance.inventoryCapacity, 'RR', 'Endurance — Inventory capacity')}
           ${traitCell('MAT', (a.traits.maturity.babyDurationMs / 1000).toFixed(0) + 's', a.traits.maturity.babyDurationMs, 'QQ', 'Maturity — Baby stage duration (lower = matures faster)')}
+          ${traitCell('GRD', a.traits.greed.hoardProbability.toFixed(2), a.traits.greed.hoardProbability, 'UU', 'Greed — Probability of opportunistic resource hoarding')}
           ${a.traits.parthenogenesis.canSelfReproduce ? '<div title="Parthenogenesis — Can reproduce without a partner" style="color:#f9a8d4;cursor:help">ASEXUAL</div>' : ''}
         </div>
       </div>

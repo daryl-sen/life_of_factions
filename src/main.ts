@@ -1,6 +1,6 @@
-import { TICK_MS } from './core/constants';
+import { TICK_MS, CELL_PX } from './core/constants';
 
-const VERSION = '4.0.0';
+const VERSION = '4.1.0';
 import { World } from './domains/world';
 import { Camera } from './domains/rendering/camera';
 import { Renderer } from './domains/rendering/renderer';
@@ -74,6 +74,17 @@ document.addEventListener('DOMContentLoaded', () => {
     dom.familySortEl.addEventListener('change', () => {
       world.familySort = dom.familySortEl!.value as 'alive' | 'total' | 'name' | 'lifespan' | 'generation';
       UIManager._lastFamiliesSig = ''; // force rebuild
+    });
+  }
+
+  // Click agent name in inspector → center camera
+  if (dom.inspector) {
+    dom.inspector.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.dataset['action'] === 'center-agent' && world.selectedId) {
+        const agent = world.agentsById.get(world.selectedId);
+        if (agent) camera.centerOn(agent.cellX, agent.cellY, CELL_PX);
+      }
     });
   }
 

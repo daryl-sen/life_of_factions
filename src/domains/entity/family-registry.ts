@@ -33,6 +33,7 @@ export class FamilyRegistry {
 
   getAllFamilies(): FamilyStats[] {
     return Array.from(this.families.values())
+      .filter(f => f.currentlyAlive > 0)
       .sort((a, b) => b.currentlyAlive - a.currentlyAlive);
   }
 

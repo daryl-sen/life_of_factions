@@ -28,7 +28,7 @@ const HYGIENE_STEP_ON_POOP_DECAY = 5;
 
 const FULLNESS_SEEK_THRESHOLD = 40;
 const FULLNESS_CRITICAL_THRESHOLD = 20;
-const FULLNESS_REGEN_THRESHOLD = 70;
+const FULLNESS_REGEN_THRESHOLD = 60;
 const HYGIENE_SEEK_THRESHOLD = 40;
 const INSPIRATION_SEEK_THRESHOLD = 40;
 
@@ -43,6 +43,7 @@ const DISEASE_CONTRACTION_THRESHOLD = 20;
 const DISEASE_CONTRACTION_CHANCE = 0.05;
 
 const VISION_RANGE = 10;
+const PATH_GIVE_UP_ATTEMPTS = 4;
 
 const FARM_WOOD_COST = 3;
 const FARM_ENERGY_COST = 6;
@@ -79,6 +80,12 @@ function agentPlanPath(world: World, agent: Agent, gx: number, gy: number): void
     world._pathWhitelist
   );
   world.pathBudget = budget.remaining;
+
+  if (!agent.path || agent.path.length === 0) {
+    agent.pathFailCount++;
+  } else {
+    agent.pathFailCount = 0;
+  }
 }
 
 // ── Inline ActionFactory.tryStart (old API compat) ──
@@ -351,7 +358,16 @@ function seekFoodWhenHungry(world: World, agent: Agent): void {
   }
 
   // 4. Resource memory
-  if (seekFromMemory(world, agent, 'food')) return;
+  if (seekFromMemory(world, agent, 'food')) {
+    if (agent.pathFailCount >= PATH_GIVE_UP_ATTEMPTS) {
+      // Can't reach any remembered food — clear food memory and wander
+      agent.resourceMemory.set('food', []);
+      agent.pathFailCount = 0;
+      biasedRoam(world, agent);
+      return;
+    }
+    return;
+  }
 
   // 5. Full pathfind (global)
   if (world.tick - world.foodField.lastTick >= 5) {
@@ -439,7 +455,15 @@ function seekWaterWhenThirsty(world: World, agent: Agent): void {
   }
 
   // 4. Resource memory
-  if (seekFromMemory(world, agent, 'water')) return;
+  if (seekFromMemory(world, agent, 'water')) {
+    if (agent.pathFailCount >= PATH_GIVE_UP_ATTEMPTS) {
+      agent.resourceMemory.set('water', []);
+      agent.pathFailCount = 0;
+      biasedRoam(world, agent);
+      return;
+    }
+    return;
+  }
 
   // 5. Full pathfind (global)
   if (world.tick - world.waterField.lastTick >= 5) {
@@ -553,6 +577,10 @@ export class AgentUpdater {
     // Baby timer
     if (agent.babyMsRemaining > 0) {
       agent.babyMsRemaining = Math.max(0, agent.babyMsRemaining - TICK_MS);
+      if (agent.babyMsRemaining === 0 && agent.entityClass === 'baby') {
+        agent.entityClass = 'adult';
+        log(world, 'spawn', `${agent.name} grew up`, agent.id, {});
+      }
     }
 
     // Pregnancy timer
@@ -688,7 +716,7 @@ export class AgentUpdater {
               tryStartAction(agent,candidate.actionType, { targetId: candidate.targetId });
             } else if (candidate.targetPos) {
               if (candidate.actionType === 'harvest') {
-                const resourceType = (candidate as { resourceType?: string }).resourceType ?? 'food_lq';
+                const resourceType = candidate.resourceType ?? 'food_lq';
                 createHarvestAction(agent, resourceType, candidate.targetPos);
               } else {
                 tryStartAction(agent,candidate.actionType, { targetPos: candidate.targetPos });
@@ -804,11 +832,12 @@ export class AgentUpdater {
                 }
 
                 if (!agent.action) {
-                  // Opportunistic food/wood harvest
-                  if (!agent.inventoryFull() && Math.random() < 0.4) {
+                  // Opportunistic food/wood harvest (scaled by Greed trait)
+                  const greedP = agent.traits.greed.hoardProbability;
+                  if (!agent.inventoryFull() && Math.random() < greedP) {
                     tryHarvestAdjacentFood(world, agent);
                   }
-                  if (!agent.action && !agent.inventoryFull() && Math.random() < 0.3) {
+                  if (!agent.action && !agent.inventoryFull() && Math.random() < greedP * 0.75) {
                     tryHarvestAdjacentWood(world, agent);
                   }
                   if (!agent.action) {
