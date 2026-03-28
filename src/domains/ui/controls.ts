@@ -68,6 +68,7 @@ export class Controls {
         world.agents.push(agent);
         world.agentsById.set(agent.id, agent);
         world.agentsByCell.set(key(x, y), agent.id);
+        world.familyRegistry.registerBirth(agent.familyName);
       }
     }
 

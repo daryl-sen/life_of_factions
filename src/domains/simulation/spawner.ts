@@ -506,6 +506,7 @@ export class Spawner {
       world.agentsByCell.set(key(egg.x, egg.y), agent.id);
       world.totalBirths++;
       world.birthTimestamps.push(performance.now());
+      world.familyRegistry.registerBirth(agent.familyName);
       log(world, 'spawn', `Egg hatched into ${agent.name} @${egg.x},${egg.y}`, agent.id, {});
     }
   }

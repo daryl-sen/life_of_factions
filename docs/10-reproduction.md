@@ -1,329 +1,118 @@
 # Reproduction
 
-Reproduction is how agents create offspring, passing down traits and potentially forming new factions.
+Reproduction creates offspring through genetic crossover and mutation. The genetics system (v4.0+) replaces the old trait-averaging inheritance with DNA-based recombination.
 
 ## Requirements
 
-For reproduction to occur, all conditions must be met:
-
 | Requirement | Value |
 |-------------|-------|
-| Adjacency | Distance = 1 |
-| Relationship | ≥ 0.1 |
-| Energy (each parent) | ≥ 85 |
-| Empty adjacent cell | For child placement |
+| Adjacency | Distance = 1 (or none for parthenogenesis) |
+| Relationship | >= 0.4 (sexual) |
+| Energy | >= `traits.fertility.energyThreshold` (per-agent, genetic) |
+| Entity class | Adult only (babies and elders cannot reproduce) |
+| Not pregnant | Agent must not already be pregnant |
+| Free adjacent cell | For child placement (checked at birth, not at mating) |
 
-## Reproduction Process
+## Reproduction Modes
 
-### Step 1: Consideration
+### Sexual Reproduction
+Requires an adjacent partner meeting relationship and energy thresholds. The **initiator** becomes the carrier (pregnant) and lineage holder. The recipient contributes DNA but is otherwise unaffected.
 
-Reproduction is checked first among all interactions:
+### Asexual Reproduction (Parthenogenesis)
+Agents with the `TT` gene expressed (`traits.parthenogenesis.canSelfReproduce = true`) can reproduce without a partner. No crossover occurs; genetic diversity comes solely from mutation.
 
-```javascript
-function considerInteract(world, agent) {
-  // Check all 4 adjacent cells
-  for [nx, ny] in adjacent:
-    partner = agent at (nx, ny)
-    if (!partner) continue
+## Process
 
-    relationship = getRelationship(agent, partner)
+### Step 1: Decision
+The `DecisionEngine` scores the `reproduce` action using:
+- **Fertility trait**: Lower energy threshold = higher eagerness
+- **Age urgency**: Score boost when age exceeds `traits.fertility.urgencyAge`
+- **Adjacent partner availability**: Large score boost if a valid partner is next to the agent
 
-    if (relationship >= 0.1 &&
-        agent.energy >= 85 &&
-        partner.energy >= 85) {
+### Step 2: Action Execution
+The reproduce action has duration range `[5200, 8320]` ms, scaled by `traits.metabolism.actionDurationMult`.
 
-      startReproduction(agent, partner)
-      return
-    }
-}
-```
+### Step 3: Completion (reproduce-effects.ts)
+1. **Energy/fullness costs**: Both parents lose 12 energy and 15-25 fullness
+2. **DNA crossover**: Child DNA starts as initiator's DNA; each gene position has 50% chance of swapping with recipient's gene at the same position
+3. **Mutation**: Per-character 0.5% substitution rate; 1% chance gene duplication; 1% chance gene deletion
+4. **Viability check**: Child must have at least one coding gene per essential trait (Strength, Longevity, Vigor, Metabolism, Resilience) and no essential trait at absolute minimum. Failure = stillborn.
+5. **Pregnancy begins** on the initiator
 
-### Step 2: Commitment
+## Pregnancy
 
-When reproduction starts, both agents are locked:
-
-```javascript
-function startReproduction(agent, partner) {
-  reserve = 4  // Upfront energy cost
-
-  agent.energy -= reserve
-  partner.energy -= reserve
-
-  lockAgent(agent.id, duration)
-  lockAgent(partner.id, duration)
-
-  agent.action = {
-    type: "reproduce",
-    remainingMs: random(2000, 3200),  // 2-3.2 seconds
-    tickCounterMs: 0,
-    payload: { targetId: partner.id }
-  }
-}
-```
-
-### Step 3: Completion
-
-After the duration elapses:
-
-```javascript
-function completeReproduction(world, agent, partner) {
-  // Verify still adjacent
-  if (manhattan(agent, partner) !== 1) return
-
-  // Find empty adjacent cell
-  spots = adjacent cells to agent
-  freeSpot = first spot where !isBlocked(spot)
-
-  if (!freeSpot) return  // No room for child
-
-  // Final energy cost
-  agent.energy -= 12
-  partner.energy -= 12
-
-  // Create child
-  child = createChild(agent, partner, freeSpot)
-}
-```
-
-## Child Properties
-
-### Stats
+After successful reproduction, the initiator enters a pregnancy state:
 
 | Property | Value |
 |----------|-------|
-| Energy | 60 |
-| Health | 80 |
-| Level | 1 |
-| Attack | 8 (base) |
-| Fullness | Transferred from parents (see below) |
+| Visual | Egg emoji (🥚) floating above the agent |
+| Duration | `childGenome.traits.maturity.babyDurationMs * 0.5` |
+| Attack | Reduced by 40% (`agent.effectiveAttack`) |
+| Fullness decay | Increased by 50% (`agent.fullnessDecayMult`) |
+| Speed | Reduced by 30% (`agent.speedMult`) |
+| Can reproduce again | No (blocked until birth) |
+| On death while pregnant | Child is lost |
 
-### Fullness Transfer
+### Birth
+When pregnancy timer reaches 0:
+- An adjacent free cell is found for the child
+- `AgentFactory.createChild()` creates a baby agent with the child's DNA
+- Child inherits family name from initiator
+- Child inherits faction (initiator's, or 50/50 if both parents had factions)
+- Family registry records the birth
+- Events emitted: `agent:born`, `pregnancy:birth`
 
-Fullness is not materialized from nothing — it is transferred from the parents:
+If no free cell is available, birth is delayed by one tick.
 
-```
-p1Donate = random(15, 25), capped at parent1.fullness
-p2Donate = random(15, 25), capped at parent2.fullness
-child.fullness = min(100, p1Donate + p2Donate)
-parent1.fullness -= p1Donate
-parent2.fullness -= p2Donate
-```
+## Family Names
 
-### Baby Stage
+- **First-generation agents** (spawned at init or from eggs): Family name = their first name (they found a lineage)
+- **Born agents**: Inherit family name from the initiator (carrier parent)
+- **Display**: Inspector shows `FirstName FamilyName`
 
-Newborns begin in a baby stage lasting a random duration (~60s):
+## Family Registry
 
-```
-babyMs = random(50000, 70000)  // ms
-```
+`World.familyRegistry` tracks per-family statistics:
+- `totalBorn`: All members ever born
+- `currentlyAlive`: Currently living members
+- `totalAgeMs` / `deathCount`: For average longevity calculation
+- `maxGeneration`: Deepest generational depth from founder
 
-While `babyMsRemaining > 0`:
-- The agent displays the 👶 emoji
-- No actions can be taken (only movement is allowed)
-- The timer decrements each simulation tick until it reaches 0
+Registry is updated on:
+- Agent creation (initial spawn, egg hatch, birth)
+- Agent death
 
-### Inherited Traits
+## Genetic Inheritance
 
-```javascript
-child.aggression = clamp(
-  (parent1.aggression + parent2.aggression) / 2,
-  0, 1
-)
+### Crossover (crossover.ts)
+1. Start with a full copy of the initiator's DNA
+2. For each 5-char gene position present in both parents: 50% chance to swap
+3. Genes beyond the shorter parent's length are inherited unchanged from the initiator
 
-child.cooperation = clamp(
-  (parent1.cooperation + parent2.cooperation) / 2,
-  0, 1
-)
+### Mutation (mutation.ts)
+Applied after crossover to the child's DNA:
+- **Per-character**: 0.5% chance of random substitution (letter → random letter, digit → random digit)
+- **Gene duplication**: 1% chance per reproduction (random gene copied and appended)
+- **Gene deletion**: 1% chance per reproduction (random 5-char segment removed)
+- DNA length clamped to [100, 250]
 
-child.travelPref = (random() < 0.5)
-  ? parent1.travelPref
-  : parent2.travelPref
-```
+### Viability (viability.ts)
+Essential traits: Strength (AA), Longevity (BB), Vigor (CC), Metabolism (DD), Resilience (EE).
+- Must have at least one coding gene per essential trait
+- No essential trait may be at its absolute minimum value
+- Failure = stillborn (logged, `agent:stillborn` event emitted)
 
-### Faction Inheritance
+## Persistence
 
-```javascript
-pa = parent1.factionId || null
-pb = parent2.factionId || null
+Pregnancy state is serialized and restored on save/load, including:
+- `remainingMs`, `childDna`, `childFamilyName`, `childFactionId`
 
-if (pa && pb):
-  // Both in factions - child picks one randomly
-  childFaction = (random() < 0.5) ? pa : pb
-else if (pa):
-  childFaction = pa
-else if (pb):
-  childFaction = pb
-else:
-  childFaction = null
+## Faction Inheritance
 
-if (childFaction):
-  setFaction(world, child, childFaction, "birth")
-```
-
-## Energy Economics
-
-### Total Cost
-
-| Cost Type | Amount (each parent) |
-|-----------|---------------------|
-| Upfront reserve | 4 |
-| Action duration | ~2.2 (avg) |
-| Completion (energy) | 12 |
-| Completion (fullness) | 15–25 |
-| **Total energy** | **~18.2** |
-| **Total fullness** | **~15–25** |
-
-### Energy After Reproduction
-
-```
-Starting energy: 85 (minimum)
-- Reserve: 4
-- Action cost: 2.2
-- Completion: 12
-= Remaining: 66.8
-```
-
-Both parents end up with ~67 energy, which is above the critical threshold (40) but below the comfortable zone.
-
-### Recovery Time
-
-To recover from reproduction:
-
-```
-targetEnergy = 100 (comfortable)
-currentEnergy = 67
-needed = 33
-
-// Each crop gives 28 energy
-cropsNeeded = ceil(33 / 28) = 2 crops
-```
-
-Parents need to harvest approximately 2 crops each to fully recover.
-
-## Population Dynamics
-
-### Breeding Rate
-
-Assuming optimal conditions:
-
-```
-reproductionDuration = 2.6 sec (average)
-recoveryTime = 2 crops * foragingTime
-
-// If foraging takes 10 sec per crop:
-totalCycleTime = 2.6 + 20 = 22.6 sec
-
-// Maximum births per agent pair:
-maxBirthsPerHour = 3600 / 22.6 = 159
-```
-
-**Realistic rate:** Much lower due to:
-- Finding partners
-- Energy constraints
-- Competition for food
-- Other activities
-
-### Population Growth
-
-**Exponential potential:**
-```
-Generation time: ~30 seconds
-If all agents reproduce: 2x population per 30 sec
-
-// After 5 minutes: 2^10 = 1024x
-// After 10 minutes: 2^20 = 1,000,000x
-```
-
-**Limiting factors:**
-1. **Food scarcity:** More agents = more competition
-2. **Space:** Grid fills up, fewer free cells for children
-3. **Energy:** Reproduction drains parents
-4. **Death:** Combat and starvation remove agents
-
-## Faction Implications
-
-### New Faction Formation
-
-When two factionless agents reproduce with relationship ≥ 0.6:
-
-```javascript
-if (!parent1.factionId && !parent2.factionId) {
-  relationship = getRelationship(parent1, parent2)
-  if (relationship >= 0.6):
-    createFaction(world, [parent1, parent2])
-}
-```
-
-This creates a new faction with:
-- Both parents as members
-- Child inherits the faction
-- Flag placed near the family
-
-### Faction Continuation
-
-When parents are in factions:
-
-| Parent 1 | Parent 2 | Child's Faction |
-|----------|----------|-----------------|
-| None | None | None (or new if rel ≥ 0.6) |
+| Initiator | Recipient | Child's Faction |
+|-----------|-----------|-----------------|
+| None | None | None |
 | A | None | A |
 | None | B | B |
 | A | A | A |
 | A | B | A or B (50/50) |
-
-## Reproduction Challenges
-
-### Finding Space
-
-Children need an empty adjacent cell:
-
-```javascript
-spots = [
-  [agent.cellX + 1, agent.cellY],
-  [agent.cellX - 1, agent.cellY],
-  [agent.cellY, agent.cellY + 1],
-  [agent.cellY, agent.cellY - 1]
-]
-
-freeSpot = first spot where !isBlocked(spot)
-```
-
-**Failure conditions:**
-- All adjacent cells occupied
-- All adjacent cells have walls/farms/flags
-
-**Implication:** Reproduction fails in crowded areas, even with willing partners.
-
-### Energy Management
-
-**Optimal strategy:**
-1. Build energy to 100+ (above minimum 85)
-2. Reproduce (drops to ~67)
-3. Recover with 1-2 crops
-4. Repeat
-
-**Risky strategy:**
-1. Reproduce at minimum energy (85)
-2. Drop to ~67, vulnerable to interruptions
-3. May fall below critical (40) if delayed
-
-## Reproduction Statistics
-
-### Success Factors
-
-| Factor | Impact |
-|--------|--------|
-| High relationship | Enables reproduction at all |
-| Sufficient energy | Must both have 85+ |
-| Adjacent partner | Must be distance 1 |
-| Free cell | Must have space for child |
-| No interruption | Action must complete |
-
-### Average Outcomes
-
-| Metric | Estimate |
-|--------|----------|
-| Energy cost per parent | ~18 |
-| Duration | 2.6 seconds |
-| Child starting energy | 60 |
-| Child survival rate | Variable (depends on conditions) |

@@ -148,6 +148,23 @@ export class Agent {
   get inspiration(): number { return this.needs.inspiration; }
   set inspiration(v: number) { this.needs.inspiration = v; }
 
+  // ── Pregnancy debuffs ──
+
+  /** Effective attack, reduced by 40% during pregnancy */
+  get effectiveAttack(): number {
+    return this.pregnancy.active ? this.attack * 0.6 : this.attack;
+  }
+
+  /** Fullness decay multiplier: 1.5x during pregnancy (eating for two) */
+  get fullnessDecayMult(): number {
+    return this.pregnancy.active ? 1.5 : 1.0;
+  }
+
+  /** Speed multiplier: 0.7x during pregnancy */
+  get speedMult(): number {
+    return this.pregnancy.active ? 0.7 : 1.0;
+  }
+
   // ── Backward-compatible trait accessors ──
 
   get aggression(): number { return this.traits.aggression.baseProbability; }

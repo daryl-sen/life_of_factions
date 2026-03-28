@@ -5,9 +5,11 @@ import type { World } from '../../world/world';
 const XP_PER_KILL = 50;
 
 export function onAttackTick(world: World, agent: Agent, target: Agent): void {
+  // effectiveAttack already includes pregnancy debuff (-40%);
+  // elder class gets an additional 0.7x multiplier
   const effectiveAttack = agent.entityClass === 'elder'
-    ? agent.attack * 0.7
-    : agent.attack;
+    ? agent.effectiveAttack * 0.7
+    : agent.effectiveAttack;
 
   target.takeDamage(effectiveAttack * 0.4);
 

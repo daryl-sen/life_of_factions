@@ -538,6 +538,18 @@ export class Renderer {
       this._drawAgentEmoji(ctx, x, y, CELL_PX / 2 - 3, ringColor, emoji);
       ctx.restore();
 
+      // Pregnancy visual: egg above head
+      if (agent.pregnancy.active) {
+        const { canvas: eggC, w: ew, h: eh } = this._emojiCache.get('\u{1F95A}'); // 🥚
+        const eggSize = CELL_PX / 2.5;
+        const eScale = Math.min(eggSize / ew, eggSize / eh);
+        const edw = ew * eScale;
+        const edh = eh * eScale;
+        // Bob gently up and down
+        const bob = Math.sin(performance.now() * 0.004) * 1.5;
+        ctx.drawImage(eggC, x + (CELL_PX - edw) / 2, y - edh + bob, edw, edh);
+      }
+
       if (agent.factionId) {
         const faction = world.factions.get(agent.factionId);
         if (faction) {

@@ -423,16 +423,24 @@ export class UIManager {
         <div class="agent-avatar">${emoji}</div>
         <div class="agent-info">
           <div class="agent-name-row">
-            <span class="agent-name">${a.name}</span>
+            <span class="agent-name">${a.name} ${a.familyName !== a.name ? a.familyName : ''}</span>
             <span class="agent-level">LV. ${String(a.level).padStart(2, '0')}</span>
           </div>
           <div class="agent-badges">
+            ${a.entityClass !== 'adult'
+              ? `<span class="badge-action" style="background:#fbbf2422;color:#fbbf24;border-color:#fbbf2455">${a.entityClass.toUpperCase()}</span>`
+              : ''
+            }
             ${a.factionId
               ? `<span class="badge-faction" style="background:${factionColor}22;color:${factionColor};border-color:${factionColor}55">${a.factionId.slice(0, 8).toUpperCase()}</span>`
               : ''
             }
+            ${a.pregnancy.active
+              ? `<span class="badge-action" style="background:#f9a8d422;color:#f9a8d4;border-color:#f9a8d455">\u{1F95A} PREGNANT</span>`
+              : ''
+            }
             ${a.diseased
-              ? `<span class="badge-action" style="background:#4ade8022;color:#4ade80;border-color:#4ade8055">🤢 DISEASED</span>`
+              ? `<span class="badge-action" style="background:#4ade8022;color:#4ade80;border-color:#4ade8055">\u{1F922} DISEASED</span>`
               : ''
             }
             ${actionType
@@ -509,9 +517,29 @@ export class UIManager {
       </div>
       <div class="agent-details" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border)">
         <div style="color:var(--muted)">POSITION</div><div>${a.cellX}, ${a.cellY}</div>
-        <div style="color:var(--muted)">ATTACK</div><div>${a.attack.toFixed(1)}</div>
+        <div style="color:var(--muted)">ATTACK</div><div>${a.effectiveAttack.toFixed(1)}${a.pregnancy.active ? ' (debuffed)' : ''}</div>
         <div style="color:var(--muted)">XP</div><div>${a.xp} / ${a.xpToNextLevel()}</div>
         <div style="color:var(--muted)">AGE</div><div>${a.ageTicks} ticks</div>
+        <div style="color:var(--muted)">FAMILY</div><div>${a.familyName}</div>
+        <div style="color:var(--muted)">DNA</div><div>${a.genome.genes.length} genes (${a.genome.dna.length} chars)</div>
+      </div>
+      <div style="font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border)">
+        <div style="color:var(--muted);margin-bottom:4px;font-weight:600">TRAITS</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;font-size:10px">
+          <div>STR ${a.traits.strength.baseAttack.toFixed(1)}</div>
+          <div>RES ${a.traits.resilience.baseMaxHp.toFixed(0)}</div>
+          <div>VIG ${a.traits.vigor.baseMaxEnergy.toFixed(0)}</div>
+          <div>LON ${(a.traits.longevity.maxAgeMs / 1000).toFixed(0)}s</div>
+          <div>AGI ${a.traits.agility.speedMult.toFixed(2)}x</div>
+          <div>MET ${a.traits.metabolism.fullnessDecay.toFixed(3)}</div>
+          <div>AGG ${a.traits.aggression.baseProbability.toFixed(2)}</div>
+          <div>COP ${a.traits.cooperation.baseProbability.toFixed(2)}</div>
+          <div>CRG ${a.traits.courage.fleeHpRatio.toFixed(2)}</div>
+          <div>FER ${a.traits.fertility.energyThreshold.toFixed(0)}</div>
+          <div>APT ${a.traits.aptitude.xpPerLevel.toFixed(0)}</div>
+          <div>FID ${a.traits.fidelity.leaveProbability.toFixed(2)}</div>
+          ${a.traits.parthenogenesis.canSelfReproduce ? '<div style="color:#f9a8d4">ASEXUAL</div>' : ''}
+        </div>
       </div>
       <div style="font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border)">
         <div style="color:var(--muted);margin-bottom:4px;font-weight:600">MEMORY</div>
