@@ -140,7 +140,7 @@ function expressGene(rawValue: number, min: number, default: number, max: number
 | Courage (flee HP%) | 0.1 | 0.5 | 0.9 | 500 | HP ratio | High courage = flees at lower HP |
 | Fertility (energy threshold) | 50 | 90 | 130 | 1 | energy | Inverted: high raw = lower threshold |
 | Recall | 1 | 2 | 8 | 200 | entries | Resource memory slots |
-| Charisma | 20 | 80 | 200 | 1 | relationships | Max relationship slots |
+| Charisma | 5 | 20 | 40 | 1 | relationships | Max relationship slots |
 | Gregariousness (social decay) | 0.002 | 0.01 | 0.025 | 10000 | /tick | |
 | Appetite (seek threshold) | 20 | 40 | 70 | 10 | fullness | When to start seeking food |
 | Maturity (baby duration) | 20k | 60k | 120k | 1 | ms | Lower = matures faster |
