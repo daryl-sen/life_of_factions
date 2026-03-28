@@ -869,12 +869,6 @@ export class AgentUpdater {
       }
     }
 
-    // ── Age-based death ──
-    if (agent.ageTicks >= agent.maxAgeTicks) {
-      agent.health = 0;
-      log(world, 'death', `${agent.name} died of old age`, agent.id, {});
-    }
-
     agent.clampStats();
 
     // ── Disease effects ──
@@ -898,6 +892,12 @@ export class AgentUpdater {
     }
     if (agent.fullness > FULLNESS_REGEN_THRESHOLD) {
       agent.healBy((REGEN_HP_PER_SEC * TICK_MS) / 1000);
+    }
+
+    // ── Age-based death (must be last — regen must not resurrect) ──
+    if (agent.ageTicks >= agent.maxAgeTicks) {
+      agent.health = 0;
+      log(world, 'death', `${agent.name} died of old age`, agent.id, {});
     }
   }
 
