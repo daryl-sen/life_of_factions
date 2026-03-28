@@ -63,6 +63,7 @@ export function expressGenome(genes: ReadonlyArray<RawGeneEntry>): TraitSet {
   const maturity = s('QQ');
   const endurance = s('RR');
   const fidelity = s('SS');
+  const greed = s('UU');
 
   // Parthenogenesis is special: boolean based on raw > 0
   const partRaw = rawSums.get('TT') ?? 0;
@@ -133,6 +134,9 @@ export function expressGenome(genes: ReadonlyArray<RawGeneEntry>): TraitSet {
     },
     fidelity: {
       leaveProbability: fidelity['leaveProbability'] ?? 0.5,
+    },
+    greed: {
+      hoardProbability: greed['hoardProbability'] ?? 0.4,
     },
   };
 }

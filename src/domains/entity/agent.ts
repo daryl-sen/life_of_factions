@@ -54,6 +54,9 @@ export class Agent {
   // Lineage
   generation: number;
 
+  // Navigation
+  pathFailCount: number;
+
   // Legacy fields
   poopTimerMs: number;
   babyMsRemaining: number;
@@ -129,6 +132,9 @@ export class Agent {
 
     // Lineage
     this.generation = opts.generation ?? 1;
+
+    // Navigation
+    this.pathFailCount = 0;
 
     // Legacy
     this.poopTimerMs = opts.poopTimerMs ?? 0;

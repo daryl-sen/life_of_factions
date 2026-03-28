@@ -37,6 +37,16 @@ export class Camera implements ICameraState {
     this.y = yMin < yMax ? clamp(this.y, yMin, yMax) : (WORLD_PX - vh / this.scale) / 2;
   }
 
+  centerOn(cellX: number, cellY: number, cellPx: number): void {
+    const wx = cellX * cellPx;
+    const wy = cellY * cellPx;
+    const vw = this.viewW || window.innerWidth;
+    const vh = this.viewH || window.innerHeight;
+    this.x = wx - vw / (2 * this.scale);
+    this.y = wy - vh / (2 * this.scale);
+    this.panBy(0, 0); // clamp to valid bounds
+  }
+
   fitToCanvas(canvas: HTMLCanvasElement): void {
     this.scale = clamp(
       Math.min(canvas.width / WORLD_PX, canvas.height / WORLD_PX),

@@ -138,6 +138,7 @@ export class Controls {
       const worldSize = Number(ranges.rngWorldSize?.value || 62);
       setGridSize(worldSize);
       world.grid.size = worldSize;
+      world.terrainField.resize(worldSize);
 
       world.speedPct = Number(ranges.rngSpeed?.value || 100);
       world.cloudSpawnRate = Number(ranges.rngCloudRate?.value || 1);

@@ -1,11 +1,12 @@
 import { log } from '../../../core/utils';
-import type { IInventory } from '../../../core/types';
+import type { IInventory, ResourceMemoryType } from '../../../core/types';
 import type { Agent } from '../../entity/agent';
 import type { World } from '../../world/world';
 import { FactionManager } from '../../faction/faction-manager';
 
 // ── Constants (was TUNE) ──
 const HYGIENE_SOCIAL_DECAY = 0.5;
+const MEMORY_SHARE_REL_THRESHOLD = 0.5;
 const XP_PER_HEAL = 10;
 const XP_PER_SHARE = 5;
 const SHARE_SOCIAL_SHARER = 8;
@@ -29,6 +30,7 @@ export function onTalkTick(world: World, agent: Agent, target: Agent): void {
 export function onTalkComplete(world: World, agent: Agent, target: Agent): void {
   applySocialHygieneDecay(agent, target);
   maybeFormFaction(world, agent, target);
+  shareResourceMemories(agent, target, world.tick);
 }
 
 // ── Quarrel ──
@@ -85,6 +87,7 @@ export function onShareComplete(world: World, agent: Agent, target: Agent): void
   applySocialHygieneDecay(agent, target);
   checkLevelUp(world, agent);
   maybeFormFaction(world, agent, target);
+  shareResourceMemories(agent, target, world.tick);
 
   // Faction recruitment via share
   if (agent.factionId) {
@@ -123,6 +126,30 @@ function pickShareResource(agent: Agent, target: Agent): keyof IInventory | null
   if (water >= food && water >= wood && water > 0) return 'water';
   if (wood > 0) return 'wood';
   return null;
+}
+
+/**
+ * If the two agents have a strong enough relationship, exchange resource memories.
+ * Snapshots are taken before writing so neither agent's entries are mutated mid-iteration.
+ * Shared entries use the current tick so they are treated as freshly discovered —
+ * rememberResource will evict the oldest entry when a slot limit is reached.
+ */
+function shareResourceMemories(agent: Agent, target: Agent, currentTick: number): void {
+  const rel = agent.relationships.get(target.id);
+  if (rel < MEMORY_SHARE_REL_THRESHOLD) return;
+
+  const types: ResourceMemoryType[] = ['food', 'water', 'wood'];
+  for (const type of types) {
+    const agentEntries = [...agent.resourceMemory.get(type)!];
+    const targetEntries = [...target.resourceMemory.get(type)!];
+
+    for (const e of agentEntries) {
+      target.rememberResource(type, e.x, e.y, currentTick);
+    }
+    for (const e of targetEntries) {
+      agent.rememberResource(type, e.x, e.y, currentTick);
+    }
+  }
 }
 
 function checkLevelUp(world: World, agent: Agent): void {
