@@ -40,5 +40,6 @@ export interface ActionCandidate {
   readonly actionType: ActionType;
   readonly targetId?: string;
   readonly targetPos?: IPosition;
+  readonly resourceType?: string;
   readonly score: number;
 }

@@ -716,7 +716,7 @@ export class AgentUpdater {
               tryStartAction(agent,candidate.actionType, { targetId: candidate.targetId });
             } else if (candidate.targetPos) {
               if (candidate.actionType === 'harvest') {
-                const resourceType = (candidate as { resourceType?: string }).resourceType ?? 'food_lq';
+                const resourceType = candidate.resourceType ?? 'food_lq';
                 createHarvestAction(agent, resourceType, candidate.targetPos);
               } else {
                 tryStartAction(agent,candidate.actionType, { targetPos: candidate.targetPos });

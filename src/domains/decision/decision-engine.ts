@@ -41,6 +41,7 @@ export class DecisionEngine {
         actionType,
         targetId: target?.targetId,
         targetPos: target?.targetPos,
+        resourceType: (target as { resourceType?: string } | null)?.resourceType,
         score,
       });
     }
