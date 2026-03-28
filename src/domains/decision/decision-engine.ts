@@ -204,6 +204,17 @@ function resolveTarget(
       if (!trees.length) return null;
       return { targetPos: { x: trees[0].pos.x, y: trees[0].pos.y } };
     }
+    case 'deposit': {
+      const { food, water, wood } = agent.inventory;
+      if (food + water + wood <= 0) return null;
+      const rt = food >= water && food >= wood ? 'food'
+        : water >= wood ? 'water' : 'wood';
+      return { resourceType: rt } as { resourceType: string } & { targetId?: string; targetPos?: { x: number; y: number } };
+    }
+    case 'withdraw': {
+      const rt = agent.fullness <= agent.hygiene ? 'food' : 'water';
+      return { resourceType: rt } as { resourceType: string } & { targetId?: string; targetPos?: { x: number; y: number } };
+    }
     default:
       return {};
   }

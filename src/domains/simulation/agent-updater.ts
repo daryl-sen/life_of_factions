@@ -196,6 +196,22 @@ function scanVision(world: World, agent: Agent): void {
       }
     }
   }
+
+  // Forget stale memories — if a remembered resource is within vision but gone, drop it
+  const memTypes: ResourceMemoryType[] = ['food', 'water', 'wood'];
+  for (const mt of memTypes) {
+    const entries = agent.resourceMemory.get(mt)!;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i];
+      if (manhattan(agent.cellX, agent.cellY, e.x, e.y) > range) continue;
+      const k = key(e.x, e.y);
+      const exists = mt === 'food'
+        ? (world.foodBlocks.has(k) || world.seedlings.has(k))
+        : mt === 'water' ? world.waterBlocks.has(k)
+        : world.treeBlocks.has(k);
+      if (!exists) entries.splice(i, 1);
+    }
+  }
 }
 
 // ── Seek from memory ──
@@ -722,7 +738,8 @@ export class AgentUpdater {
                 tryStartAction(agent,candidate.actionType, { targetPos: candidate.targetPos });
               }
             } else {
-              tryStartAction(agent,candidate.actionType);
+              const payload = candidate.resourceType ? { resourceType: candidate.resourceType } : undefined;
+              tryStartAction(agent,candidate.actionType, payload);
             }
           }
 
@@ -852,12 +869,6 @@ export class AgentUpdater {
       }
     }
 
-    // ── Age-based death ──
-    if (agent.ageTicks >= agent.maxAgeTicks) {
-      agent.health = 0;
-      log(world, 'death', `${agent.name} died of old age`, agent.id, {});
-    }
-
     agent.clampStats();
 
     // ── Disease effects ──
@@ -881,6 +892,12 @@ export class AgentUpdater {
     }
     if (agent.fullness > FULLNESS_REGEN_THRESHOLD) {
       agent.healBy((REGEN_HP_PER_SEC * TICK_MS) / 1000);
+    }
+
+    // ── Age-based death (must be last — regen must not resurrect) ──
+    if (agent.ageTicks >= agent.maxAgeTicks) {
+      agent.health = 0;
+      log(world, 'death', `${agent.name} died of old age`, agent.id, {});
     }
   }
 
