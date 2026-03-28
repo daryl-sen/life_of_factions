@@ -6,14 +6,55 @@ import { Agent } from '../entity/agent';
 import { Genome } from '../genetics';
 import { Faction, FactionManager } from '../faction';
 
-const VERSION = '4.1.1';
+const VERSION = '4.1.2';
 
 // Inlined TUNE constants
 const FARM_MAX_SPAWNS = 12;
 const FARM_SPAWN_INTERVAL_RANGE: [number, number] = [15000, 25000];
 const TREE_MAX_AGE_RANGE: [number, number] = [780000, 1020000];
 
+const AUTOSAVE_KEY = 'emoji_life_autosave';
+const AUTOSAVE_INTERVAL_MS = 60_000;
+
 export class PersistenceManager {
+  private static _lastAutosaveMs = 0;
+
+  static maybeAutosave(world: World): void {
+    const now = performance.now();
+    if (now - PersistenceManager._lastAutosaveMs < AUTOSAVE_INTERVAL_MS) return;
+    PersistenceManager._lastAutosaveMs = now;
+
+    const data = PersistenceManager.serialize(world);
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(() => {
+        try {
+          localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(data));
+        } catch { /* QuotaExceededError — skip silently */ }
+      });
+    } else {
+      setTimeout(() => {
+        try {
+          localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(data));
+        } catch { /* QuotaExceededError — skip silently */ }
+      }, 0);
+    }
+  }
+
+  static loadAutosave(): Record<string, unknown> | null {
+    try {
+      const raw = localStorage.getItem(AUTOSAVE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  static clearAutosave(): void {
+    try {
+      localStorage.removeItem(AUTOSAVE_KEY);
+    } catch { /* ignore */ }
+  }
   static serialize(world: World): Record<string, unknown> {
     const factions = [...world.factions.values()].map((f) => ({
       id: f.id,
