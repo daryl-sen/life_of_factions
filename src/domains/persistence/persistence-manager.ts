@@ -1,5 +1,6 @@
 import { CELL_PX, GRID_SIZE } from '../../core/constants';
-import { key, rndi } from '../../core/utils';
+import { key, rndi, RingLog } from '../../core/utils';
+import type { ResourceMemoryType, IResourceMemoryEntry } from '../../core/types';
 import type { World } from '../world';
 import type { DomRefs } from '../ui/ui-manager';
 import { Agent } from '../entity/agent';
@@ -105,6 +106,14 @@ export class PersistenceManager {
       babyMsRemaining: a.babyMsRemaining,
       maxAgeTicks: a.maxAgeTicks,
       generation: a.generation,
+      goal: a.goal,
+      replanAtTick: a.replanAtTick,
+      pathFailCount: a.pathFailCount,
+      resourceMemory: [
+        ['food', a.resourceMemory.get('food') ?? []],
+        ['water', a.resourceMemory.get('water') ?? []],
+        ['wood', a.resourceMemory.get('wood') ?? []],
+      ],
       pregnancy: a.pregnancy.active ? {
         remainingMs: a.pregnancy.remainingMs,
         childDna: a.pregnancy.childDna,
@@ -137,6 +146,7 @@ export class PersistenceManager {
       lootBags: [...world.lootBags.values()],
       poopBlocks: [...world.poopBlocks.values()],
       saltWaterBlocks: [...world.saltWaterBlocks.values()],
+      eggs: [...world.eggs.values()],
       agents,
       log: { limit: world.log.limit, arr: world.log.arr },
       selectedId: world.selectedId,
@@ -297,6 +307,15 @@ export class PersistenceManager {
         y: sw.y,
       });
     }
+    // Restore eggs
+    for (const eg of d.eggs || []) {
+      world.eggs.set(eg.id, {
+        id: eg.id,
+        x: eg.x,
+        y: eg.y,
+        hatchTimerMs: eg.hatchTimerMs ?? 0,
+      });
+    }
     // Recompute terrain moisture from restored water/saltwater state
     world.terrainField.recomputeAll(world.grid);
     world.terrainField.snapDisplay();
@@ -344,7 +363,17 @@ export class PersistenceManager {
         babyMsRemaining: a.babyMsRemaining ?? 0,
         maxAgeTicks: a.maxAgeTicks,
         generation: a.generation ?? 1,
+        goal: a.goal ?? null,
+        replanAtTick: a.replanAtTick ?? 0,
       });
+      // Restore pathFailCount (not in AgentOpts, set directly)
+      agent.pathFailCount = a.pathFailCount ?? 0;
+      // Restore resource memory
+      if (Array.isArray(a.resourceMemory)) {
+        for (const [rType, entries] of a.resourceMemory as [ResourceMemoryType, IResourceMemoryEntry[]][]) {
+          agent.resourceMemory.set(rType, entries ?? []);
+        }
+      }
       // Restore pregnancy state
       if (a.pregnancy && a.pregnancy.childDna) {
         agent.pregnancy.start(
@@ -365,6 +394,20 @@ export class PersistenceManager {
     }
 
     FactionManager.reconcile(world);
+
+    // Restore log history
+    if (d.log?.arr) {
+      world.log = new RingLog(d.log.limit ?? 200);
+      world.log.arr = d.log.arr;
+    }
+    // Restore log filter state
+    if (Array.isArray(d.activeLogCats)) {
+      world.activeLogCats = new Set(d.activeLogCats);
+    }
+    world.activeLogAgentId = d.activeLogAgentId ?? null;
+    // Restore selection
+    world.selectedId = d.selectedId ?? null;
+
     if (world._rebuildAgentOptions) world._rebuildAgentOptions();
     opts.doRenderLog();
     world.log.push({
