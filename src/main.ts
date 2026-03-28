@@ -1,6 +1,6 @@
 import { TICK_MS, CELL_PX } from './core/constants';
 
-const VERSION = '4.1.0';
+const VERSION = '4.1.1';
 import { World } from './domains/world';
 import { Camera } from './domains/rendering/camera';
 import { Renderer } from './domains/rendering/renderer';
