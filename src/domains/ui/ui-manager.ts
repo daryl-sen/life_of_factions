@@ -650,8 +650,10 @@ export class UIManager {
           const entries = a.resourceMemory.get(type) || [];
           const icon = type === 'food' ? '\u{1F356}' : type === 'water' ? '\u{1F4A7}' : '\u{1FAB5}';
           return entries.length > 0
-            ? `<div>${icon} ${type}: ${entries.map(e => `(${e.x},${e.y})`).join(' ')}</div>`
-            : `<div style="color:var(--muted)">${icon} ${type}: none</div>`;
+            ? `<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:2px 0">${icon} ${entries.map(e =>
+                `<span style="display:inline-block;padding:1px 5px;border-radius:4px;background:rgba(255,255,255,0.06);border:1px solid var(--border);font-size:9px;font-family:monospace">${e.x},${e.y}</span>`
+              ).join('')}</div>`
+            : `<div style="color:var(--muted);margin:2px 0">${icon} none</div>`;
         }).join('')}
       </div>`;
   }
