@@ -6,11 +6,14 @@ Emoji Life is a zero-player, real-time 2D sandbox simulation where autonomous ag
 
 ## Key Concepts
 
-- **Agents**: Autonomous entities with unique personalities, relationships, and goals
-- **Traits**: Personality attributes (aggression, cooperation) that influence behavior
-- **Energy System**: The core resource driving all agent decisions
+- **Agents**: Autonomous entities with unique genomes, relationships, and goals
+- **Genetics**: DNA-based trait system — each agent's stats and behaviors derive from a `Genome` parsed at birth
+- **Entity Classes**: Baby → Adult → Elder lifecycle with different capabilities
+- **Needs**: Four survival needs (fullness, hygiene, social, inspiration) that drive decision-making
+- **Energy System**: Core resource — recovered only via sleep, drained by actions and movement
 - **Relationships**: Bidirectional bonds between agents that evolve through interactions
 - **Factions**: Groups formed from strong relationships, complete with flags and healing auras
+- **Autosave**: World state is automatically saved to localStorage every 60 seconds and restored on page load
 
 ## Documentation Structure
 
@@ -33,22 +36,31 @@ Emoji Life is a zero-player, real-time 2D sandbox simulation where autonomous ag
 
 | Threshold | Value | Behavior Trigger |
 |-----------|-------|------------------|
-| Critical | 0 | Starvation damage (1 HP/sec) |
-| Low | 40 | Cancel non-attack actions, seek food |
-| Well-fed | 70+ | Stop actively seeking food |
-| High | 140+ | Level-up eligible |
-| Cap | 200 | Maximum energy |
+| Mandatory sleep | < 20 | Force sleep action |
+| Voluntary sleep | < 40 | May choose to sleep |
+| Normal | 40+ | Normal behavior |
+| Cap | genetic (maxEnergy) | Maximum energy |
 
 ### Action Types
 
-- **Social**: `talk`, `quarrel`, `heal`, `help`
+- **Social**: `talk`, `quarrel`, `heal`, `share`
 - **Combat**: `attack`
+- **Survival**: `sleep`, `eat`, `wash`
+- **Resource**: `harvest`, `deposit`, `withdraw`, `pickup`
+- **Hygiene**: `poop`, `clean`
+- **Leisure**: `play`
+- **Build**: `build_farm`
 - **Reproduction**: `reproduce`
-- **Building**: `build_farm`
 
 ### World Objects
 
-- **Crops**: Harvestable energy sources (🌿🌱🍀🌾🥕🍅🫛)
-- **Farms**: Boost crop spawning in radius 3 (🌻)
-- **Walls**: Destructible barriers (🧱)
-- **Flags**: Faction spawn/healing points (🚩)
+- **Food blocks**: Harvestable food sources — HQ (🥔🍎🍑🌽🍅) and LQ (🌿🥬🥦🍀)
+- **Water blocks**: Small (1-cell) and Large (2×2) harvestable water sources
+- **Trees**: Wood sources (🌲🌳🌴🎄), spawn seedlings and food
+- **Farms**: Produce HQ food on a timer (🌻)
+- **Obstacles**: Destructible barriers (🪨)
+- **Flags**: Faction storage/healing points (🚩)
+- **Loot bags**: Temporary resource containers from death/flag destruction (👝)
+- **Poop blocks**: Hygiene hazards (💩)
+- **Seedlings**: Growing into trees (🌱)
+- **Eggs**: Hatchable agent spawns (🥚)

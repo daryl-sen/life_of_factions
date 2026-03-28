@@ -6,27 +6,25 @@ Actions are discrete behaviors agents perform. Each action has a duration, energ
 
 | Action | Duration | Energy/sec | Distance | Locks | Emoji |
 |--------|----------|------------|----------|-------|-------|
-| `talk` | 0.9-1.8s | 0.2 | 1 | Yes | |
-| `quarrel` | 0.9-1.8s | 0.4 | 1 | Yes | |
-| `attack` | 0.45-0.9s | 1.1 | ≤2 | No | |
-| `heal` | 0.9-1.8s | 1.5 | 1 | Yes | |
-| `share` | 300-500ms | 0.4 | 1 | Yes | |
-| `reproduce` | 2.0-3.2s | 1.5 | 1 | Yes | |
-| `sleep` | 8-12s | 0 (restores) | self | Yes | 😴 |
-| `harvest` | 600-1200ms | 0.25 | 1 (adjacent food block) | Yes | 🫨 |
-| `harvest_water` | 1000ms | 0.25 | 1 (adjacent water block) | Yes | 🫨 |
-| `harvest_wood` | 1500ms | 0.25 | 1 (adjacent tree block) | Yes | 🫨 |
-| `eat` | 300-500ms | 0 | self (from inventory) | Yes | 🤔 |
-| `drink` | 300-500ms | 0 | self (from inventory) | Yes | 🤔 |
-| `deposit` | 300-500ms | 0 | 1 (adjacent own flag) | Yes | |
-| `withdraw` | 300-500ms | 0 | 1 (adjacent own flag) | Yes | |
-| `pickup` | 300-500ms | 0 | on cell or adjacent loot bag | Yes | |
-| `poop` | 500-1000ms | 0 | self | Yes | 💩 |
-| `clean` | 800-1200ms | 0.25 | 1 (adjacent poop block) | Yes | |
-| `play` | 1500-2500ms | 0.15 | 1 (adjacent interactable block) | Yes | 🤪 |
-| `build_farm` | 2000ms | 0.25 | self (spawns on adjacent free cell) | Yes | |
+| `talk` | 2.3-4.7s | 0.2 | 1 | Yes | |
+| `quarrel` | 2.3-4.7s | 0.4 | 1 | Yes | |
+| `attack` | 1.2-2.3s | 1.1 | ≤2 | No | |
+| `heal` | 2.3-4.7s | 1.5 | 1 | Yes | |
+| `share` | 0.8-1.3s | 0.4 | 1 | Yes | |
+| `reproduce` | 5.2-8.3s | 1.5 | 1 | Yes | |
+| `sleep` | 20.8-31.2s | 0 (restores) | self | Yes | 😴 |
+| `harvest` | 1.6-3.9s | 0.25 | 1 (adjacent resource block) | Yes | 🫨 |
+| `eat` | 0.8-1.3s | 0 | self (from inventory) | Yes | 🤔 |
+| `wash` | 0.8-1.3s | 0 | self (from inventory) | Yes | 🤔 |
+| `deposit` | 0.8-1.3s | 0 | 1 (adjacent own flag) | Yes | |
+| `withdraw` | 0.8-1.3s | 0 | 1 (adjacent own flag) | Yes | |
+| `pickup` | 0.8-1.3s | 0 | on cell or adjacent loot bag | Yes | |
+| `poop` | 1.3-2.6s | 0 | self | Yes | 💩 |
+| `clean` | 2.1-3.1s | 0.25 | 1 (adjacent poop block) | Yes | |
+| `play` | 3.9-6.5s | 0.15 | 1 (adjacent interactable block) | Yes | 🤪 |
+| `build_farm` | 5.2s | 0.25 | self (spawns on adjacent free cell) | Yes | |
 
-> **Note:** All action energy costs were halved in Phase 1 to account for the new sleep-based energy economy. Harvest, eat, and drink actions were added in Phase 2. Water harvest, wood harvest, and hygiene-driven water seeking were added in Phase 3. Share (renamed from help), deposit, withdraw, and pickup actions were added in Phase 4. Poop and clean actions were added in Phase 5. Play and build_farm actions were added in Phase 6.
+> **Note:** `harvest` is a single consolidated action covering food, water, and wood — the `resourceType` in the action payload determines which block type is harvested. The `wash` action (formerly `drink`) consumes water from inventory to restore hygiene.
 
 ## Social Actions
 
@@ -75,7 +73,7 @@ target.health = min(target.maxHealth, target.health + 2)
 
 **Purpose:** Transfer inventory resources (food, water, wood) from sharer to target.
 
-**Duration:** 300–500ms
+**Duration:** 0.8–1.3s
 
 **Energy cost:** 0.4/sec
 
@@ -149,14 +147,14 @@ child.factionId = random(parent.factionId) // if either has faction
 
 **Purpose:** Restore energy. This is the **only** way agents recover energy.
 
-**Duration:** 8–12 seconds
+**Duration:** 20.8–31.2 seconds
 
 **Effect (every 500ms):**
 ```javascript
 agent.energy = min(agent.maxEnergy, agent.energy + 8)
 ```
 
-**Total energy restored:** 128–192 (depending on duration)
+**Total energy restored:** ~333–499 (depending on duration)
 
 **Trigger conditions:**
 - **Mandatory:** energy < 20 (highest decision priority)
@@ -170,110 +168,43 @@ agent.energy = min(agent.maxEnergy, agent.energy + 8)
 
 **XP:** Sleep does not grant XP.
 
-## Resource Actions (Phase 2 & 3)
+## Resource Actions
 
-### Harvest (Food)
+### Harvest
 
-**Purpose:** Gather food from adjacent food blocks into agent inventory.
+**Purpose:** Gather resources (food, water, or wood) from adjacent blocks into agent inventory. This is a single consolidated action — the `resourceType` in the action payload determines which block type is harvested.
 
 **Requirements:**
-- Adjacent to a food block (Manhattan distance = 1)
-- Inventory not full (total units < 20)
-- Food block has units remaining
+- Adjacent to a resource block (Manhattan distance = 1)
+- Inventory not full (total units < genetic capacity)
+- Block has units remaining
 
-**Duration:** Depends on food quality:
-- High Quality (HQ) food: 600ms per unit
-- Low Quality (LQ) food: 1200ms per unit
+**Duration:** 1.6–3.9s (from action registry). Actual duration varies by resource type and quality.
 
 **Effect (on completion):**
 ```javascript
-foodBlock.units -= 1
-agent.inventory.food += 1
+block.units -= 1
+agent.inventory[resourceType] += 1
 agent.xp += 2  // harvest XP
 
-if (foodBlock.units <= 0) {
-  world.foodBlocks.delete(key(foodBlock.x, foodBlock.y))
+if (block.units <= 0) {
+  // Block removed from grid
 }
 ```
+
+**Resource-specific behavior:**
+
+| Resource | Block types | Notes |
+|----------|-------------|-------|
+| Food | HQ (farm-grown), LQ (wild) | Multiple agents can race for remaining units |
+| Water | Small (5 units), Large (2×2, 20 units) | Large blocks shrink to small at ≤5 units |
+| Wood | Trees (3–6 units) | 10% seedling spawn, 5% LQ food spawn per harvest. Opportunistic — agents don't actively seek wood |
 
 **Properties:**
 - Energy cost: 0.25 energy/sec
 - Agent is locked in place during harvest
 - Emoji: 🫨
 - Blocked when inventory is full
-- Food block depletes (removed from grid) when all units are harvested
-- Multiple agents can harvest the same block simultaneously; they race for remaining units
-
-### Harvest Water (Phase 3)
-
-**Purpose:** Gather water from adjacent water blocks into agent inventory for drinking.
-
-**Requirements:**
-- Adjacent to a water block (Manhattan distance = 1)
-- Inventory not full (total units < 20)
-- Water block has units remaining
-
-**Duration:** 1000ms per unit
-
-**Effect (on completion):**
-```javascript
-waterBlock.units -= 1
-agent.inventory.water += 1
-agent.xp += 2  // harvest XP
-
-// Large water block shrinks to small at 25% threshold
-if (waterBlock.type === 'large' && waterBlock.units <= 5) {
-  // Convert to small water block (1-cell)
-}
-
-if (waterBlock.units <= 0) {
-  world.waterBlocks.delete(key(waterBlock.x, waterBlock.y))
-}
-```
-
-**Properties:**
-- Energy cost: 0.25 energy/sec
-- Agent is locked in place during harvest
-- Emoji: 🫨
-- Blocked when inventory is full
-- Water block depletes (removed from grid) when all units are harvested
-- Large water blocks shrink to small (1-cell) when units drop to 25% threshold (≤5 units)
-
-### Harvest Wood (Phase 3)
-
-**Purpose:** Gather wood from adjacent tree blocks into agent inventory.
-
-**Requirements:**
-- Adjacent to a tree block (Manhattan distance = 1)
-- Inventory not full (total units < 20)
-- Tree block has units remaining
-
-**Duration:** 1500ms per unit
-
-**Effect (on completion):**
-```javascript
-treeBlock.units -= 1
-agent.inventory.wood += 1
-agent.xp += 2  // harvest XP
-
-// Side effects (mutually exclusive):
-// 10% chance: spawn seedling (🌱) on adjacent free cell
-// 5% chance: spawn LQ food within 3-cell radius
-
-if (treeBlock.units <= 0) {
-  world.treeBlocks.delete(key(treeBlock.x, treeBlock.y))
-}
-```
-
-**Properties:**
-- Energy cost: 0.25 energy/sec
-- Agent is locked in place during harvest
-- Emoji: 🫨
-- Blocked when inventory is full
-- Tree block depletes (removed from grid) when all units are harvested
-- 10% chance per harvest to spawn a seedling on an adjacent free cell
-- 5% chance per harvest (instead of seedling) to spawn LQ food within 3-cell radius
-- Wood harvesting is **opportunistic**: agents harvest when passing near trees, not as a high-priority seek action
 
 ### Eat
 
@@ -282,7 +213,7 @@ if (treeBlock.units <= 0) {
 **Requirements:**
 - Agent has food in inventory (inventory.food > 0)
 
-**Duration:** 300–500ms
+**Duration:** 0.8–1.3s
 
 **Effect (on completion):**
 ```javascript
@@ -298,14 +229,14 @@ levelCheck(world, agent)
 - Emoji: 🤔
 - Grants +5 XP
 
-### Drink
+### Wash (formerly Drink)
 
 **Purpose:** Consume water from inventory to restore hygiene.
 
 **Requirements:**
 - Agent has water in inventory (inventory.water > 0)
 
-**Duration:** 300–500ms
+**Duration:** 0.8–1.3s
 
 **Effect (on completion):**
 ```javascript
@@ -317,7 +248,7 @@ agent.hygiene = min(100, agent.hygiene + 30)
 - No energy cost
 - Solo action (no target required)
 - Emoji: 🤔
-- Water is obtained by harvesting water blocks (added in Phase 3)
+- Water is obtained by harvesting water blocks
 
 ## Faction Storage Actions (Phase 4)
 
@@ -329,7 +260,7 @@ agent.hygiene = min(100, agent.hygiene + 30)
 - Adjacent to own faction flag (Manhattan distance = 1)
 - Agent has inventory >= 3 total items
 
-**Duration:** 300–500ms
+**Duration:** 0.8–1.3s
 
 **Effect (on completion):**
 ```javascript
@@ -352,7 +283,7 @@ agent.hygiene = min(100, agent.hygiene + 30)
 - Agent needs resources (food or water) and flag has stored resources
 - Agent has inventory space
 
-**Duration:** 300–500ms
+**Duration:** 0.8–1.3s
 
 **Effect (on completion):**
 ```javascript
@@ -373,7 +304,7 @@ agent.hygiene = min(100, agent.hygiene + 30)
 - Loot bag on agent's cell or adjacent cell
 - Agent has inventory space
 
-**Duration:** 300–500ms
+**Duration:** 0.8–1.3s
 
 **Effect (on completion):**
 ```javascript
@@ -424,7 +355,7 @@ Any agent can pick up a loot bag via the pickup action (300–500ms, no energy c
 **Requirements:**
 - Adjacent to any interactable block (food, water, tree, farm, poop, seedling, or flag — Manhattan distance = 1)
 
-**Duration:** 1500–2500ms
+**Duration:** 3.9–6.5s
 
 **Energy cost:** 0.15/sec
 
@@ -453,7 +384,7 @@ if (adjacentToPoopBlock(agent)) {
 - 6 energy available
 - Adjacent free cell available for farm placement
 
-**Duration:** 2000ms (fixed)
+**Duration:** 5.2s (fixed)
 
 **Energy cost:** 0.25/sec
 
@@ -489,7 +420,7 @@ levelCheck(world, agent)
 
 **Purpose:** Involuntary action that spawns a poop block on the agent's cell.
 
-**Duration:** 500–1000ms
+**Duration:** 1.3–2.6s
 
 **Energy cost:** None
 
@@ -517,7 +448,7 @@ agent.hygiene -= 5
 
 **Purpose:** Remove an adjacent poop block and gain inspiration.
 
-**Duration:** 800–1200ms
+**Duration:** 2.1–3.1s
 
 **Energy cost:** 0.25/sec
 
@@ -602,28 +533,25 @@ Locks are applied to both agents for social actions. Locks are decremented each 
 
 | Action | Min Cost | Max Cost | Avg Cost |
 |--------|----------|----------|----------|
-| talk | 0.18 | 0.36 | 0.27 |
-| quarrel | 0.36 | 0.72 | 0.54 |
-| attack | 0.50 | 0.99 | 0.74 |
-| heal | 1.35 | 2.70 | 2.03 |
-| share | 0.12 | 0.20 | 0.16 |
-| reproduce | 3.0 | 4.8 | 3.9 (+16 upfront) |
-| sleep | 0 (restores 128–192) | -- | -- |
-| harvest (HQ) | 0.15 | 0.15 | 0.15 |
-| harvest (LQ) | 0.30 | 0.30 | 0.30 |
-| harvest (water) | 0.25 | 0.25 | 0.25 |
-| harvest (wood) | 0.375 | 0.375 | 0.375 |
+| talk | 0.47 | 0.94 | 0.70 |
+| quarrel | 0.94 | 1.87 | 1.40 |
+| attack | 1.29 | 2.57 | 1.93 |
+| heal | 3.51 | 7.02 | 5.27 |
+| share | 0.31 | 0.52 | 0.42 |
+| reproduce | 7.80 | 12.48 | 10.14 (+energy upfront) |
+| sleep | 0 (restores ~333–499) | -- | -- |
+| harvest | 0.39 | 0.98 | 0.68 |
 | eat | 0 | 0 | 0 |
-| drink | 0 | 0 | 0 |
+| wash | 0 | 0 | 0 |
 | deposit | 0 | 0 | 0 |
 | withdraw | 0 | 0 | 0 |
 | pickup | 0 | 0 | 0 |
 | poop | 0 | 0 | 0 |
-| clean | 0.20 | 0.30 | 0.25 |
-| play | 0.225 | 0.375 | 0.30 |
-| build_farm | 0.50 | 0.50 | 0.50 |
+| clean | 0.52 | 0.78 | 0.65 |
+| play | 0.59 | 0.98 | 0.78 |
+| build_farm | 1.30 | 1.30 | 1.30 |
 
-> **Note:** Costs halved from previous version to balance with sleep-only energy recovery. Eat, drink, deposit, withdraw, pickup, and poop have zero energy cost. Play and build_farm added in Phase 6.
+> **Note:** Eat, wash, deposit, withdraw, pickup, and poop have zero energy cost.
 
 ## Action Completion Effects
 
@@ -650,7 +578,7 @@ Agents select actions based on the following priority order. Higher-priority nee
 | 2 | Under attack | Flee or retaliate |
 | 3 | Health < 30% maxHP | Seek faction flag |
 | 4 | Fullness < 20 | Urgent food seeking (eat from inventory > harvest adjacent food > pathfind to food) |
-| 5 | Hygiene < 20 | Critical water seeking (drink from inventory > harvest adjacent water > pathfind to water) |
+| 5 | Hygiene < 20 | Critical water seeking (wash from inventory > harvest adjacent water > pathfind to water) |
 | 6 | Energy < 40 | Voluntary sleep |
 | 7a | Fullness < 40 | Proactive food seeking (same priority as #4) |
 | 7b | Hygiene < 40 | Proactive water seeking (same priority as #5) |

@@ -2,36 +2,66 @@
 
 ## Data Model
 
-Agents are the core autonomous entities in the simulation. Each agent has a comprehensive set of properties that define its state, behavior, and relationships.
+Agents are the core autonomous entities in the simulation. Each agent is composed of a `Genome` plus several components (`NeedSet`, `Inventory`, `RelationshipMap`, `PregnancyState`). All per-agent stats derive from genetic traits.
 
 ### Core Properties
 
-```javascript
+```typescript
 {
-  id: string,              // UUID
-  name: string,            // 6-character pronounceable string
-  cellX: number,           // Grid X coordinate (0-61)
-  cellY: number,           // Grid Y coordinate (0-61)
-  prevCellX: number,       // Previous position for interpolation
-  prevCellY: number,       // Previous position for interpolation
-  lerpT: number,           // Interpolation progress (0-1)
-  health: number,          // Current health (0 to maxHealth)
-  maxHealth: number,       // Maximum health (base 100, +8 per level)
-  energy: number,          // Current energy (0 to 200 cap)
-  attack: number,          // Attack power (base 8, +1.5 per level)
-  level: number,           // Level (1 to 20 cap)
-  ageTicks: number,        // Age in simulation ticks
-  factionId: string|null,  // Current faction or null
-  relationships: Map<string, number>, // Agent ID -> relationship value (-1 to 1)
-  path: Array<{x, y}>|null, // Current navigation path
-  pathIdx: number,         // Current index in path
-  action: Action|null,     // Current action being performed
-  lockMsRemaining: number, // Movement lock timer
-  travelPref: string,      // "near" | "far" | "wander"
-  aggression: number,      // Personality trait (0-1)
-  cooperation: number,     // Personality trait (0-1)
-  replanAtTick: number,    // Earliest tick for path replanning
-  goal: {x, y}|null,       // Current pathfinding goal
+  // Identity
+  id: string,                          // UUID
+  name: string,                        // 6-character pronounceable string
+  familyName: string,                  // Inherited from parent (or = name for founders)
+  generation: number,                  // Lineage depth (1 = founder)
+
+  // Genetics
+  genome: Genome,                      // Immutable DNA, parsed once at birth
+  traits: TraitSet,                    // Expressed trait values (derived from genome)
+
+  // Entity class
+  entityClass: 'baby' | 'adult' | 'elder', // Determines available actions and stat modifiers
+
+  // Position / movement
+  cellX: number,                       // Grid X coordinate (0-61)
+  cellY: number,                       // Grid Y coordinate (0-61)
+  prevCellX: number,                   // Previous position for interpolation
+  prevCellY: number,                   // Previous position for interpolation
+  lerpT: number,                       // Interpolation progress (0-1)
+  path: IPosition[] | null,            // Current navigation path
+  pathIdx: number,                     // Current index in path
+  goal: IPosition | null,              // Current pathfinding goal
+  replanAtTick: number,                // Earliest tick for path replanning
+  pathFailCount: number,               // Navigation failure counter (resets on success)
+
+  // Stats (base values from genetics, scaled by level)
+  health: number,                      // Current health (0 to maxHealth)
+  maxHealth: number,                   // From traits.resilience.baseMaxHp + perLevel * (level-1)
+  energy: number,                      // Current energy (0 to maxEnergy)
+  maxEnergy: number,                   // From traits.vigor.baseMaxEnergy + perLevel * (level-1)
+  attack: number,                      // From traits.strength.baseAttack + perLevel * (level-1)
+  level: number,                       // Level (1 to LEVEL_CAP)
+  xp: number,                         // Experience points toward next level
+  ageTicks: number,                    // Age in simulation ticks
+  maxAgeTicks: number,                 // From traits.longevity.maxAgeMs / TICK_MS
+
+  // State
+  factionId: string | null,            // Current faction or null
+  diseased: boolean,                   // Disease status (low hygiene can cause this)
+  action: IActionState | null,         // Current action being performed
+  lockMsRemaining: number,             // Movement lock timer
+
+  // Components
+  needs: NeedSet,                      // fullness, hygiene, social, inspiration (0-100 each)
+  inventory: Inventory,                // food, water, wood (genetic capacity)
+  relationships: RelationshipMap,      // Agent ID → value (-1 to 1), genetic slot limit
+  pregnancy: PregnancyState,           // Pregnancy state machine
+
+  // Memory
+  resourceMemory: Map<ResourceMemoryType, IResourceMemoryEntry[]>,  // Remembered resource locations
+
+  // Legacy
+  poopTimerMs: number,                 // Countdown after eating → triggers poop
+  babyMsRemaining: number,             // Time remaining as baby before promotion to adult
 }
 ```
 
@@ -48,36 +78,53 @@ When an agent is performing an action, the `action` property contains:
 }
 ```
 
+## Entity Classes
+
+Agents progress through three entity classes during their lifetime:
+
+| Class | Available Actions | Modifiers |
+|-------|-------------------|-----------|
+| Baby | `eat`, `wash` only | Cannot reproduce, limited action set |
+| Adult | All actions | Full capabilities |
+| Elder | All actions | 0.7× attack, cannot reproduce |
+
+- **Baby → Adult**: After `babyMsRemaining` expires (from `traits.maturity.babyDurationMs`)
+- **Adult → Elder**: When `ageTicks` exceeds elder threshold (from genetics)
+- **Death**: When `ageTicks >= maxAgeTicks` (from `traits.longevity.maxAgeMs`)
+
 ## Agent Lifecycle
 
 ### Creation
 
-Agents are created via `addAgentAt(world, x, y)`:
+Agents are created via `AgentFactory.create()` or `AgentFactory.createChild()`:
 
-- **Starting stats**: health=100, energy=100, attack=8, level=1
-- **Travel preference**: Randomly assigned (1/3 each for "near", "far", "wander")
-- **Traits**: Random aggression and cooperation values (0-1)
+- **Starting stats**: Derived from random (or inherited) Genome
+- **Base stats**: `maxHealth`, `maxEnergy`, `attack` all from genetic traits
 - **Name**: Generated 6-character pronounceable string
+- **Family name**: Own name (founders) or inherited from parent
 
 ### Death
 
-Agents die when health reaches 0:
+Agents die when health reaches 0 or age exceeds `maxAgeTicks`:
 
-1. Removed from `world.agents` array
-2. Removed from spatial index (`world.agentsByCell`)
-3. Removed from ID index (`world.agentsById`)
-4. All relationships to this agent are pruned
-5. Faction membership is removed
-6. Faction may disband if only 0-1 members remain
+1. Loot bag dropped if inventory is non-empty
+2. Removed from `world.agents` array
+3. Removed from spatial index (`world.agentsByCell`)
+4. Removed from ID index (`world.agentsById`)
+5. All relationships to this agent are pruned
+6. Faction membership is removed
+7. Faction may disband if only 0-1 members remain
+8. Death cause recorded (hunger, killed, disease, old_age)
+9. Family registry updated
 
 ### Leveling
 
-Agents level up when energy exceeds 70% of cap (140+):
+Agents level up when accumulated XP exceeds the threshold for the current level:
 
-- **Trigger**: After harvesting or gaining energy
-- **Benefits**: +8 maxHealth, +1.5 attack
-- **Energy reset**: Clamped to 140
-- **Cap**: Level 20 (cannot exceed)
+- **Trigger**: After eating, harvesting, killing, healing, sharing, or building
+- **Benefits**: `+traits.resilience.perLevel` maxHealth, `+traits.strength.perLevel` attack, `+traits.vigor.perLevel` maxEnergy
+- **XP formula**: `xpToNextLevel = level * 50`
+- **Cap**: `LEVEL_CAP` (cannot exceed)
 
 ## Movement Interpolation
 
@@ -106,8 +153,12 @@ Agents are indexed for O(1) lookups:
 
 ### Relationship Pruning
 
-Each agent can store at most 80 relationships. When exceeded:
+Each agent can store up to `traits.charisma.relationshipSlots` relationships (genetic, per-agent). When exceeded:
 
 1. All relationships are sorted by absolute value
 2. Weakest relationships (closest to 0) are pruned first
 3. Values below 0.02 are deleted immediately (considered neutral)
+
+### Resource Memory
+
+Agents remember where they've seen food, water, and wood blocks (`resourceMemory`). These memories are shared during social interactions and decay when the agent can see the resource is gone. This state is persisted across saves.

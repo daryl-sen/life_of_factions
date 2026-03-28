@@ -1,6 +1,6 @@
 import { TICK_MS, CELL_PX } from './core/constants';
 
-const VERSION = '4.1.1';
+const VERSION = '4.1.2';
 import { World } from './domains/world';
 import { Camera } from './domains/rendering/camera';
 import { Renderer } from './domains/rendering/renderer';
@@ -8,6 +8,7 @@ import { UIManager } from './domains/ui/ui-manager';
 import { InputHandler } from './domains/ui/input-handler';
 import { Controls } from './domains/ui/controls';
 import { SimulationEngine } from './domains/simulation';
+import { PersistenceManager } from './domains/persistence';
 
 document.addEventListener('DOMContentLoaded', () => {
   document.title = `Emoji Life — v${VERSION}`;
@@ -60,6 +61,24 @@ document.addEventListener('DOMContentLoaded', () => {
   // Wire input + controls
   InputHandler.setup(canvas, camera, world, dom);
   Controls.wire(world, dom, doRenderLog, refreshCanvasSize);
+
+  // Restore autosave if available
+  const autosaveData = PersistenceManager.loadAutosave();
+  if (autosaveData) {
+    try {
+      PersistenceManager.restore(world, autosaveData, { doRenderLog, dom });
+      // Set button states so user can resume the restored session
+      if (dom.buttons.btnStart) dom.buttons.btnStart.disabled = true;
+      if (dom.buttons.btnPause) dom.buttons.btnPause.disabled = true;
+      if (dom.buttons.btnResume) dom.buttons.btnResume.disabled = false;
+      if (dom.ranges.rngAgents) dom.ranges.rngAgents.disabled = true;
+      if (dom.nums.numAgents) dom.nums.numAgents.disabled = true;
+      if (dom.ranges.rngWorldSize) dom.ranges.rngWorldSize.disabled = true;
+      if (dom.nums.numWorldSize) dom.nums.numWorldSize.disabled = true;
+    } catch {
+      PersistenceManager.clearAutosave();
+    }
+  }
 
   // Faction sort dropdown
   if (dom.factionSortEl) {
@@ -234,6 +253,7 @@ document.addEventListener('DOMContentLoaded', () => {
         steps++;
       }
       if (steps === MAX_STEPS) acc = 0;
+      if (steps > 0) PersistenceManager.maybeAutosave(world);
       const lerpDelta = dt / (TICK_MS / (world.speedPct / 100));
       for (const a of world.agents) {
         if (a.lerpT < 1) {
