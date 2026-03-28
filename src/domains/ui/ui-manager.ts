@@ -619,7 +619,6 @@ export class UIManager {
       </div>
       <div class="agent-details" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border)">
         <div style="color:var(--muted)">POSITION</div><div>${a.cellX}, ${a.cellY}</div>
-        <div style="color:var(--muted)">ATTACK</div><div>${a.effectiveAttack.toFixed(1)}${a.pregnancy.active ? ' (debuffed)' : ''}</div>
         <div style="color:var(--muted)">XP</div><div>${a.xp} / ${a.xpToNextLevel()}</div>
         <div style="color:var(--muted)">AGE</div><div>${(a.ageTicks * TICK_MS / 1000).toFixed(0)}s / ${(a.maxAgeTicks * TICK_MS / 1000).toFixed(0)}s</div>
         <div style="color:var(--muted)">FAMILY</div><div>${a.familyName}</div>
