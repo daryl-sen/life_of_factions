@@ -1,8 +1,8 @@
-import { LOG_CATS, AGENT_EMOJIS, TUNE } from '../../shared/constants';
-import { getIdleEmoji } from '../../shared/utils';
-import type { LogCategory } from '../../shared/types';
+import { LOG_CATS, AGENT_EMOJIS } from '../../core/constants';
+import { getIdleEmoji } from '../../core/utils';
+import type { LogCategory } from '../action/types';
 import type { World } from '../world';
-import type { Agent } from '../agent';
+import type { Agent } from '../entity/agent';
 
 const PAGE_LOAD_TIME = Date.now() - performance.now();
 
@@ -500,7 +500,7 @@ export class UIManager {
         <div>
           <div class="agent-stat-header">
             <span>INVENTORY</span>
-            <span>${a.inventoryTotal()}/${TUNE.inventory.capacity}</span>
+            <span>${a.inventoryTotal()}/${a.inventory.capacity}</span>
           </div>
           <div style="font-size:10px;margin-top:2px;color:var(--muted)">
             \u{1F356} ${a.inventory.food} &nbsp; \u{1F4A7} ${a.inventory.water} &nbsp; \u{1FAB5} ${a.inventory.wood}

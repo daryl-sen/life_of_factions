@@ -1,9 +1,9 @@
-import { GRID } from '../../shared/constants';
-import { key } from '../../shared/utils';
+import { GRID_SIZE } from '../../core/constants';
+import { key } from '../../core/utils';
 import type { Grid } from './grid';
 
 const WF_INF = 0xffff;
-const wfIdx = (x: number, y: number): number => y * GRID + x;
+const wfIdx = (x: number, y: number): number => y * GRID_SIZE + x;
 
 export class WaterField {
   data: Uint16Array;
@@ -11,7 +11,7 @@ export class WaterField {
   private _allocSize = 0;
 
   constructor() {
-    const N = GRID * GRID;
+    const N = GRID_SIZE * GRID_SIZE;
     this._allocSize = N;
     this.data = new Uint16Array(N);
     this.data.fill(WF_INF);
@@ -22,7 +22,7 @@ export class WaterField {
   }
 
   recompute(grid: Grid, tick: number): void {
-    const N = GRID * GRID;
+    const N = GRID_SIZE * GRID_SIZE;
     if (N !== this._allocSize) {
       this._allocSize = N;
       this.data = new Uint16Array(N);
@@ -33,7 +33,7 @@ export class WaterField {
       return;
     }
     const staticBlocked = (x: number, y: number): boolean => {
-      if (x < 0 || y < 0 || x >= GRID || y >= GRID) return true;
+      if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) return true;
       const k = key(x, y);
       if (grid.obstacles.has(k)) return true;
       if (grid.farms.has(k)) return true;
@@ -56,7 +56,7 @@ export class WaterField {
           [c.x, c.y + 1], [c.x, c.y - 1],
         ];
         for (const [nx, ny] of adj) {
-          if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) continue;
+          if (nx < 0 || ny < 0 || nx >= GRID_SIZE || ny >= GRID_SIZE) continue;
           if (grid.waterBlocks.has(key(nx, ny))) continue; // skip water cells
           if (staticBlocked(nx, ny)) continue;
           const i = wfIdx(nx, ny);

@@ -1,9 +1,9 @@
-import { GRID } from '../../shared/constants';
-import { key } from '../../shared/utils';
+import { GRID_SIZE } from '../../core/constants';
+import { key } from '../../core/utils';
 import type { Grid } from './grid';
 
 const FF_INF = 0xffff;
-const ffIdx = (x: number, y: number): number => y * GRID + x;
+const ffIdx = (x: number, y: number): number => y * GRID_SIZE + x;
 
 export class FoodField {
   data: Uint16Array;
@@ -11,7 +11,7 @@ export class FoodField {
   private _allocSize = 0;
 
   constructor() {
-    const N = GRID * GRID;
+    const N = GRID_SIZE * GRID_SIZE;
     this._allocSize = N;
     this.data = new Uint16Array(N);
     this.data.fill(FF_INF);
@@ -22,7 +22,7 @@ export class FoodField {
   }
 
   recompute(grid: Grid, tick: number): void {
-    const N = GRID * GRID;
+    const N = GRID_SIZE * GRID_SIZE;
     if (N !== this._allocSize) {
       this._allocSize = N;
       this.data = new Uint16Array(N);
@@ -33,7 +33,7 @@ export class FoodField {
       return;
     }
     const staticBlocked = (x: number, y: number): boolean => {
-      if (x < 0 || y < 0 || x >= GRID || y >= GRID) return true;
+      if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) return true;
       const k = key(x, y);
       if (grid.obstacles.has(k)) return true;
       if (grid.farms.has(k)) return true;

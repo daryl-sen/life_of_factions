@@ -1,9 +1,12 @@
-import { FACTION_COLORS, TUNE } from '../../shared/constants';
-import { generatePronounceableString, key, rndi, log, uuid } from '../../shared/utils';
+import { FACTION_COLORS } from '../../core/constants';
+import { generatePronounceableString, key, rndi, log, uuid } from '../../core/utils';
 import type { World } from '../world';
-import type { Agent } from '../agent';
-import { LootBagManager } from '../world/loot-bag-manager';
+import type { Agent } from '../entity/agent';
 import { Faction } from './faction';
+
+// Inlined TUNE constants
+const FLAG_HP: [number, number] = [20, 40];
+const LOOT_BAG_DECAY_MS = 30000;
 
 export class FactionManager {
   private static _nextColor(world: World): string {
@@ -26,8 +29,8 @@ export class FactionManager {
       factionId: fid,
       x: spot.x,
       y: spot.y,
-      hp: rndi(TUNE.flagHp[0], TUNE.flagHp[1]),
-      maxHp: TUNE.flagHp[1],
+      hp: rndi(FLAG_HP[0], FLAG_HP[1]),
+      maxHp: FLAG_HP[1],
       storage: { food: 0, water: 0, wood: 0 },
     });
     world.flagCells.add(key(spot.x, spot.y));
@@ -67,7 +70,27 @@ export class FactionManager {
     world.factions.delete(fid);
     const flag = world.flags.get(fid);
     if (flag) {
-      LootBagManager.dropOnFlagDestruction(world, flag);
+      // Inline loot bag drop from flag storage
+      const s = flag.storage;
+      if (s.food + s.water + s.wood > 0) {
+        const k = key(flag.x, flag.y);
+        const existing = world.lootBags.get(k);
+        if (existing) {
+          existing.inventory.food += s.food;
+          existing.inventory.water += s.water;
+          existing.inventory.wood += s.wood;
+          existing.decayMs = LOOT_BAG_DECAY_MS;
+        } else {
+          world.lootBags.set(k, {
+            id: uuid(), x: flag.x, y: flag.y,
+            inventory: { food: s.food, water: s.water, wood: s.wood },
+            decayMs: LOOT_BAG_DECAY_MS,
+          });
+        }
+        log(world, 'loot', `Flag ${flag.factionId} dropped stored resources`, null, {
+          factionId: flag.factionId, x: flag.x, y: flag.y,
+        });
+      }
       world.flagCells.delete(key(flag.x, flag.y));
       world.flags.delete(fid);
       log(world, 'destroy', `Flag ${fid} destroyed`, null, { factionId: fid });

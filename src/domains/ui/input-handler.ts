@@ -1,5 +1,5 @@
-import { CELL, GRID, OBSTACLE_EMOJIS } from '../../shared/constants';
-import { key, log, uuid } from '../../shared/utils';
+import { CELL_PX, GRID_SIZE, OBSTACLE_EMOJIS } from '../../core/constants';
+import { key, log, uuid } from '../../core/utils';
 import type { World } from '../world';
 import type { Camera } from '../rendering/camera';
 import type { DomRefs } from './ui-manager';
@@ -39,9 +39,9 @@ export class InputHandler {
       const sx = (e.clientX - rect.left) * (canvas.width / rect.width);
       const sy = (e.clientY - rect.top) * (canvas.height / rect.height);
       const wpos = camera.screenToWorld(sx, sy);
-      const x = Math.floor(wpos.x / CELL);
-      const y = Math.floor(wpos.y / CELL);
-      if (x < 0 || y < 0 || x >= GRID || y >= GRID) return;
+      const x = Math.floor(wpos.x / CELL_PX);
+      const y = Math.floor(wpos.y / CELL_PX);
+      if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) return;
       const k = key(x, y);
       if (k === lastPaintKey) return;
       lastPaintKey = k;
@@ -198,9 +198,9 @@ export class InputHandler {
       const sx = (e.clientX - rect.left) * scaleX;
       const sy = (e.clientY - rect.top) * scaleY;
       const wpos = camera.screenToWorld(sx, sy);
-      const x = Math.floor(wpos.x / CELL);
-      const y = Math.floor(wpos.y / CELL);
-      if (x < 0 || y < 0 || x >= GRID || y >= GRID) return;
+      const x = Math.floor(wpos.x / CELL_PX);
+      const y = Math.floor(wpos.y / CELL_PX);
+      if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) return;
       const id = world.agentsByCell.get(key(x, y));
 
       if (world.paintMode === 'replenish' && id) {

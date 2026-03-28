@@ -1,10 +1,15 @@
-import { CELL, GRID, COLORS, AGENT_EMOJIS, IDLE_EMOJIS, WORLD_EMOJIS, FOOD_EMOJIS, TUNE } from '../../shared/constants';
+import { CELL_PX, GRID_SIZE, COLORS, AGENT_EMOJIS, IDLE_EMOJIS, WORLD_EMOJIS, FOOD_EMOJIS } from '../../core/constants';
+import { getIdleEmoji } from '../../core/utils';
 import type { TerrainField } from '../world/terrain-field';
-import { getIdleEmoji } from '../../shared/utils';
-import type { World, DeathCause } from '../world';
-import type { Agent } from '../agent';
+import type { World } from '../world';
+import type { DeathCause } from '../world/types';
+import type { Agent } from '../entity/agent';
 import { Camera } from './camera';
 import { EmojiCache } from './emoji-cache';
+
+// Inline constants that were in TUNE
+const POOP_DECAY_MS = 30000;
+const LOOT_BAG_DECAY_MS = 30000;
 
 interface ViewBounds {
   minX: number;
@@ -80,10 +85,10 @@ export class Renderer {
     }
 
     // Blit only the visible portion of the cached terrain
-    const sx = Math.max(0, vb.minX * CELL);
-    const sy = Math.max(0, vb.minY * CELL);
-    const sw = (vb.maxX - vb.minX + 1) * CELL;
-    const sh = (vb.maxY - vb.minY + 1) * CELL;
+    const sx = Math.max(0, vb.minX * CELL_PX);
+    const sy = Math.max(0, vb.minY * CELL_PX);
+    const sw = (vb.maxX - vb.minX + 1) * CELL_PX;
+    const sh = (vb.maxY - vb.minY + 1) * CELL_PX;
     ctx.drawImage(this._terrainCanvas!, sx, sy, sw, sh, sx, sy, sw, sh);
 
     if (world.drawGrid) this._drawGrid(ctx, camera, vb);
@@ -112,10 +117,10 @@ export class Renderer {
   // --- Helpers ---
 
   private _viewBounds(camera: Camera, canvas: HTMLCanvasElement): ViewBounds {
-    const minX = Math.max(0, Math.floor(camera.x / CELL) - 1);
-    const minY = Math.max(0, Math.floor(camera.y / CELL) - 1);
-    const maxX = Math.min(GRID - 1, Math.ceil((camera.x + canvas.width / camera.scale) / CELL));
-    const maxY = Math.min(GRID - 1, Math.ceil((camera.y + canvas.height / camera.scale) / CELL));
+    const minX = Math.max(0, Math.floor(camera.x / CELL_PX) - 1);
+    const minY = Math.max(0, Math.floor(camera.y / CELL_PX) - 1);
+    const maxX = Math.min(GRID_SIZE - 1, Math.ceil((camera.x + canvas.width / camera.scale) / CELL_PX));
+    const maxY = Math.min(GRID_SIZE - 1, Math.ceil((camera.y + canvas.height / camera.scale) / CELL_PX));
     return { minX, minY, maxX, maxY };
   }
 
@@ -125,13 +130,13 @@ export class Renderer {
 
   private _fillCell(ctx: CanvasRenderingContext2D, cellX: number, cellY: number, color: string, pad = 2): void {
     ctx.fillStyle = color;
-    ctx.fillRect(cellX * CELL + pad, cellY * CELL + pad, CELL - pad * 2, CELL - pad * 2);
+    ctx.fillRect(cellX * CELL_PX + pad, cellY * CELL_PX + pad, CELL_PX - pad * 2, CELL_PX - pad * 2);
   }
 
   // --- Terrain cache ---
 
   private _rebuildTerrainCache(world: World): void {
-    const size = GRID * CELL;
+    const size = GRID_SIZE * CELL_PX;
     if (!this._terrainCanvas) {
       this._terrainCanvas = document.createElement('canvas');
       this._terrainCanvas.width = size;
@@ -144,8 +149,8 @@ export class Renderer {
   }
 
   private _drawTerrainToCtx(ctx: CanvasRenderingContext2D, terrainField: TerrainField): void {
-    for (let y = 0; y < GRID; y++) {
-      for (let x = 0; x < GRID; x++) {
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
         const m = terrainField.moistureAt(x, y);
         let base: [number, number, number];
         if (m <= 128) {
@@ -161,9 +166,9 @@ export class Renderer {
         const b = Math.max(0, Math.min(255, Math.round(base[2] + variation)));
 
         ctx.fillStyle = `rgb(${r},${g},${b})`;
-        const px = x * CELL;
-        const py = y * CELL;
-        ctx.fillRect(px, py, CELL, CELL);
+        const px = x * CELL_PX;
+        const py = y * CELL_PX;
+        ctx.fillRect(px, py, CELL_PX, CELL_PX);
 
         const h1 = Renderer._cellHash(x, y, 1);
         const h2 = Renderer._cellHash(x, y, 2);
@@ -174,17 +179,17 @@ export class Renderer {
           ? `rgba(0,0,0,${speckAlpha})`
           : `rgba(255,255,255,${speckAlpha})`;
 
-        const sx1 = px + ((h1 >> 16) & 0xf) % CELL;
-        const sy1 = py + ((h1 >> 20) & 0xf) % CELL;
+        const sx1 = px + ((h1 >> 16) & 0xf) % CELL_PX;
+        const sy1 = py + ((h1 >> 20) & 0xf) % CELL_PX;
         ctx.fillRect(sx1, sy1, 2, 1);
 
-        const sx2 = px + ((h2 >> 4) & 0xf) % CELL;
-        const sy2 = py + ((h2 >> 8) & 0xf) % CELL;
+        const sx2 = px + ((h2 >> 4) & 0xf) % CELL_PX;
+        const sy2 = py + ((h2 >> 8) & 0xf) % CELL_PX;
         ctx.fillRect(sx2, sy2, 1, 2);
 
         if ((h3 & 3) === 0) {
-          const sx3 = px + ((h3 >> 12) & 0xf) % CELL;
-          const sy3 = py + ((h3 >> 16) & 0xf) % CELL;
+          const sx3 = px + ((h3 >> 12) & 0xf) % CELL_PX;
+          const sy3 = py + ((h3 >> 16) & 0xf) % CELL_PX;
           ctx.fillRect(sx3, sy3, 1, 1);
         }
       }
@@ -200,15 +205,15 @@ export class Renderer {
       const g = Math.max(0, Math.min(255, Math.round(Renderer._SALT[1] + variation)));
       const b = Math.max(0, Math.min(255, Math.round(Renderer._SALT[2] + variation)));
       ctx.fillStyle = `rgb(${r},${g},${b})`;
-      const px = sw.x * CELL;
-      const py = sw.y * CELL;
-      ctx.fillRect(px, py, CELL, CELL);
+      const px = sw.x * CELL_PX;
+      const py = sw.y * CELL_PX;
+      ctx.fillRect(px, py, CELL_PX, CELL_PX);
 
       const h1 = Renderer._cellHash(sw.x, sw.y, 8);
       if ((h1 & 3) < 2) {
         ctx.fillStyle = `rgba(255,255,255,0.1)`;
-        const wx = px + ((h1 >> 4) & 0xf) % (CELL - 3);
-        const wy = py + ((h1 >> 12) & 0xf) % CELL;
+        const wx = px + ((h1 >> 4) & 0xf) % (CELL_PX - 3);
+        const wy = py + ((h1 >> 12) & 0xf) % CELL_PX;
         ctx.fillRect(wx, wy, 3, 1);
       }
     }
@@ -222,14 +227,14 @@ export class Renderer {
     ctx.lineWidth = 1 / camera.scale;
     ctx.beginPath();
     for (let i = vb.minY; i <= vb.maxY + 1; i++) {
-      const y = i * CELL + 0.5;
-      ctx.moveTo(vb.minX * CELL, y);
-      ctx.lineTo((vb.maxX + 1) * CELL, y);
+      const y = i * CELL_PX + 0.5;
+      ctx.moveTo(vb.minX * CELL_PX, y);
+      ctx.lineTo((vb.maxX + 1) * CELL_PX, y);
     }
     for (let i = vb.minX; i <= vb.maxX + 1; i++) {
-      const x = i * CELL + 0.5;
-      ctx.moveTo(x, vb.minY * CELL);
-      ctx.lineTo(x, (vb.maxY + 1) * CELL);
+      const x = i * CELL_PX + 0.5;
+      ctx.moveTo(x, vb.minY * CELL_PX);
+      ctx.lineTo(x, (vb.maxY + 1) * CELL_PX);
     }
     ctx.stroke();
     ctx.restore();
@@ -258,14 +263,14 @@ export class Renderer {
 
   // --- Entity drawing (with viewport culling + LOD) ---
 
-  private _drawCellEmoji(ctx: CanvasRenderingContext2D, cellX: number, cellY: number, emoji: string, size = CELL - 2): void {
+  private _drawCellEmoji(ctx: CanvasRenderingContext2D, cellX: number, cellY: number, emoji: string, size = CELL_PX - 2): void {
     const { canvas: ec, w, h } = this._emojiCache.get(emoji);
     const scale = Math.min(size / w, size / h);
     const dw = w * scale;
     const dh = h * scale;
-    const x = cellX * CELL;
-    const y = cellY * CELL;
-    ctx.drawImage(ec, x + (CELL - dw) / 2, y + (CELL - dh) / 2, dw, dh);
+    const x = cellX * CELL_PX;
+    const y = cellY * CELL_PX;
+    ctx.drawImage(ec, x + (CELL_PX - dw) / 2, y + (CELL_PX - dh) / 2, dw, dh);
   }
 
   private _drawWaterBlocks(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
@@ -321,13 +326,13 @@ export class Renderer {
       } else {
         // Pre-cached filtered emoji — no per-frame ctx.filter
         const { canvas: ec, w, h } = this._emojiCache.getFiltered(tree.emoji, DRY_TREE_FILTER);
-        const size = CELL - 2;
+        const size = CELL_PX - 2;
         const scale = Math.min(size / w, size / h);
         const dw = w * scale;
         const dh = h * scale;
-        const x = tree.x * CELL;
-        const y = tree.y * CELL;
-        ctx.drawImage(ec, x + (CELL - dw) / 2, y + (CELL - dh) / 2, dw, dh);
+        const x = tree.x * CELL_PX;
+        const y = tree.y * CELL_PX;
+        ctx.drawImage(ec, x + (CELL_PX - dw) / 2, y + (CELL_PX - dh) / 2, dw, dh);
       }
       ctx.globalAlpha = 1;
     }
@@ -339,7 +344,7 @@ export class Renderer {
       if (lod) {
         this._fillCell(ctx, s.x, s.y, LOD_SEEDLING, 4);
       } else {
-        this._drawCellEmoji(ctx, s.x, s.y, WORLD_EMOJIS.seedling, CELL / 2);
+        this._drawCellEmoji(ctx, s.x, s.y, WORLD_EMOJIS.seedling, CELL_PX / 2);
       }
     }
   }
@@ -358,12 +363,12 @@ export class Renderer {
   private _drawPoopBlocks(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
     for (const poop of world.poopBlocks.values()) {
       if (!this._inView(poop.x, poop.y, vb)) continue;
-      const fadeRatio = Math.max(0.3, poop.decayMs / TUNE.poop.decayMs);
+      const fadeRatio = Math.max(0.3, poop.decayMs / POOP_DECAY_MS);
       ctx.globalAlpha = fadeRatio;
       if (lod) {
         this._fillCell(ctx, poop.x, poop.y, LOD_POOP, 4);
       } else {
-        this._drawCellEmoji(ctx, poop.x, poop.y, WORLD_EMOJIS.poop, CELL / 2);
+        this._drawCellEmoji(ctx, poop.x, poop.y, WORLD_EMOJIS.poop, CELL_PX / 2);
       }
       ctx.globalAlpha = 1;
     }
@@ -377,7 +382,7 @@ export class Renderer {
       if (lod) {
         this._fillCell(ctx, fb.x, fb.y, LOD_FOOD, 4);
       } else {
-        this._drawCellEmoji(ctx, fb.x, fb.y, fb.emoji || FOOD_EMOJIS.lq[0], CELL / 2);
+        this._drawCellEmoji(ctx, fb.x, fb.y, fb.emoji || FOOD_EMOJIS.lq[0], CELL_PX / 2);
       }
       ctx.globalAlpha = 1;
     }
@@ -386,7 +391,7 @@ export class Renderer {
   private _drawLootBags(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
     for (const bag of world.lootBags.values()) {
       if (!this._inView(bag.x, bag.y, vb)) continue;
-      const fadeRatio = Math.max(0.3, bag.decayMs / TUNE.lootBag.decayMs);
+      const fadeRatio = Math.max(0.3, bag.decayMs / LOOT_BAG_DECAY_MS);
       ctx.globalAlpha = fadeRatio;
       if (lod) {
         this._fillCell(ctx, bag.x, bag.y, LOD_LOOT, 3);
@@ -430,13 +435,13 @@ export class Renderer {
         }
       } else if (o.size === '2x2') {
         const { canvas: ec, w, h } = this._emojiCache.get(o.emoji);
-        const drawSize = CELL * 2 - 2;
+        const drawSize = CELL_PX * 2 - 2;
         const scale = Math.min(drawSize / w, drawSize / h);
         const dw = w * scale;
         const dh = h * scale;
-        const bx = o.x * CELL;
-        const by = o.y * CELL;
-        ctx.drawImage(ec, bx + (CELL * 2 - dw) / 2, by + (CELL * 2 - dh) / 2, dw, dh);
+        const bx = o.x * CELL_PX;
+        const by = o.y * CELL_PX;
+        ctx.drawImage(ec, bx + (CELL_PX * 2 - dw) / 2, by + (CELL_PX * 2 - dh) / 2, dw, dh);
       } else {
         this._drawCellEmoji(ctx, o.x, o.y, o.emoji);
       }
@@ -453,12 +458,12 @@ export class Renderer {
         this._fillCell(ctx, f.x, f.y, col, 2);
       } else {
         const { canvas: ec, w, h } = this._emojiCache.getTinted(WORLD_EMOJIS.flag, col);
-        const scale = Math.min((CELL - 2) / w, (CELL - 2) / h);
+        const scale = Math.min((CELL_PX - 2) / w, (CELL_PX - 2) / h);
         const dw = w * scale;
         const dh = h * scale;
-        const x = f.x * CELL;
-        const y = f.y * CELL;
-        ctx.drawImage(ec, x + (CELL - dw) / 2, y + (CELL - dh) / 2, dw, dh);
+        const x = f.x * CELL_PX;
+        const y = f.y * CELL_PX;
+        ctx.drawImage(ec, x + (CELL_PX - dw) / 2, y + (CELL_PX - dh) / 2, dw, dh);
       }
     }
   }
@@ -481,16 +486,16 @@ export class Renderer {
       const py = agent.prevCellY != null ? agent.prevCellY : agent.cellY;
       const lx = px + (agent.cellX - px) * t;
       const ly = py + (agent.cellY - py) * t;
-      const x = lx * CELL;
-      const y = ly * CELL;
-      const cx = x + CELL / 2;
-      const cy = y + CELL / 2;
+      const x = lx * CELL_PX;
+      const y = ly * CELL_PX;
+      const cx = x + CELL_PX / 2;
+      const cy = y + CELL_PX / 2;
 
       const hpRatio = agent.maxHealth > 0 ? Math.max(0, Math.min(1, agent.health / agent.maxHealth)) : 0;
       const ringColor = this._hpToColor(hpRatio);
       const actionType = agent.action?.type;
       let emoji: string;
-      if (agent.babyMsRemaining > 0 && (actionType === 'eat' || actionType === 'drink')) {
+      if (agent.babyMsRemaining > 0 && (actionType === 'eat' || actionType === 'wash')) {
         emoji = IDLE_EMOJIS.babyEating;
       } else {
         emoji = AGENT_EMOJIS[actionType as string] || getIdleEmoji(agent);
@@ -512,7 +517,7 @@ export class Renderer {
           const eased = Math.sin(((progress - 0.7) / 0.3) * Math.PI / 2);
           sy = 0.62 + 0.38 * eased;
         }
-        offY = (1 - sy) * (CELL / 2);
+        offY = (1 - sy) * (CELL_PX / 2);
       } else if (actionType === 'share') {
         offX = Math.sin(now * 0.005) * 2;
       }
@@ -530,18 +535,18 @@ export class Renderer {
       if (angle !== 0) ctx.rotate(angle);
       if (sx !== 1 || sy !== 1) ctx.scale(sx, sy);
       ctx.translate(-cx, -cy);
-      this._drawAgentEmoji(ctx, x, y, CELL / 2 - 3, ringColor, emoji);
+      this._drawAgentEmoji(ctx, x, y, CELL_PX / 2 - 3, ringColor, emoji);
       ctx.restore();
 
       if (agent.factionId) {
         const faction = world.factions.get(agent.factionId);
         if (faction) {
           const { canvas: fc, w: fw, h: fh } = this._emojiCache.getTinted(WORLD_EMOJIS.flag, faction.color);
-          const flagSize = CELL / 3;
+          const flagSize = CELL_PX / 3;
           const fScale = Math.min(flagSize / fw, flagSize / fh);
           const fdw = fw * fScale;
           const fdh = fh * fScale;
-          ctx.drawImage(fc, x + CELL - fdw, y, fdw, fdh);
+          ctx.drawImage(fc, x + CELL_PX - fdw, y, fdw, fdh);
         }
       }
 
@@ -550,23 +555,23 @@ export class Renderer {
         if (t2) attackLines.push([agent, t2]);
       }
 
-      if (world.selectedId === agent.id) this._drawStar(ctx, x + CELL / 2, y - 16);
+      if (world.selectedId === agent.id) this._drawStar(ctx, x + CELL_PX / 2, y - 16);
     }
   }
 
   private _drawAgentEmoji(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, stroke: string, emoji: string): void {
     ctx.beginPath();
-    ctx.arc(x + CELL / 2, y + CELL / 2, radius + 1, 0, Math.PI * 2);
+    ctx.arc(x + CELL_PX / 2, y + CELL_PX / 2, radius + 1, 0, Math.PI * 2);
     ctx.lineWidth = 2;
     ctx.strokeStyle = stroke;
     ctx.stroke();
 
     const { canvas: ec, w, h } = this._emojiCache.get(emoji);
-    const drawSize = CELL - 4;
+    const drawSize = CELL_PX - 4;
     const scale = Math.min(drawSize / w, drawSize / h);
     const dw = w * scale;
     const dh = h * scale;
-    ctx.drawImage(ec, x + (CELL - dw) / 2, y + (CELL - dh) / 2, dw, dh);
+    ctx.drawImage(ec, x + (CELL_PX - dw) / 2, y + (CELL_PX - dh) / 2, dw, dh);
   }
 
   private _drawStar(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
@@ -600,32 +605,32 @@ export class Renderer {
   private _drawDeadMarkers(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
     for (const marker of world.deadMarkers) {
       if (!this._inView(marker.cellX, marker.cellY, vb)) continue;
-      const x = marker.cellX * CELL;
-      const y = marker.cellY * CELL;
+      const x = marker.cellX * CELL_PX;
+      const y = marker.cellY * CELL_PX;
       const fade = Math.min(1, marker.msRemaining / 3000);
       ctx.globalAlpha = fade;
 
       if (lod) {
         ctx.fillStyle = '#cc2222';
-        ctx.fillRect(x + 4, y + 4, CELL - 8, CELL - 8);
+        ctx.fillRect(x + 4, y + 4, CELL_PX - 8, CELL_PX - 8);
       } else if (marker.cause === 'tree') {
         const stumpEmoji = DEATH_CAUSE_EMOJI.tree;
         const { canvas: sc, w: sw, h: sh } = this._emojiCache.get(stumpEmoji);
-        const drawSize = CELL - 2;
+        const drawSize = CELL_PX - 2;
         const scale = Math.min(drawSize / sw, drawSize / sh);
-        ctx.drawImage(sc, x + (CELL - sw * scale) / 2, y + (CELL - sh * scale) / 2, sw * scale, sh * scale);
+        ctx.drawImage(sc, x + (CELL_PX - sw * scale) / 2, y + (CELL_PX - sh * scale) / 2, sw * scale, sh * scale);
       } else {
         const deadEmoji = '\u{1F635}'; // 😵
         const { canvas: ec, w, h } = this._emojiCache.get(deadEmoji);
-        const drawSize = CELL - 4;
+        const drawSize = CELL_PX - 4;
         const scale = Math.min(drawSize / w, drawSize / h);
-        ctx.drawImage(ec, x + (CELL - w * scale) / 2, y + (CELL - h * scale) / 2, w * scale, h * scale);
+        ctx.drawImage(ec, x + (CELL_PX - w * scale) / 2, y + (CELL_PX - h * scale) / 2, w * scale, h * scale);
 
         const causeEmoji = DEATH_CAUSE_EMOJI[marker.cause];
         const { canvas: cc, w: cw, h: ch } = this._emojiCache.get(causeEmoji);
-        const causeSize = CELL / 4;
+        const causeSize = CELL_PX / 4;
         const cScale = Math.min(causeSize / cw, causeSize / ch);
-        ctx.drawImage(cc, x + CELL - cw * cScale - 1, y + 1, cw * cScale, ch * cScale);
+        ctx.drawImage(cc, x + CELL_PX - cw * cScale - 1, y + 1, cw * cScale, ch * cScale);
       }
 
       ctx.globalAlpha = 1;
@@ -637,18 +642,18 @@ export class Renderer {
   private _drawAttackLines(ctx: CanvasRenderingContext2D, _camera: Camera, lines: [Agent, Agent][]): void {
     const daggerEmoji = '\uD83D\uDDE1\uFE0F'; // 🗡️
     const { canvas: ec, w, h } = this._emojiCache.get(daggerEmoji);
-    const daggerSize = CELL - 2;
+    const daggerSize = CELL_PX - 2;
     const scale = Math.min(daggerSize / w, daggerSize / h);
     const dw = w * scale;
     const dh = h * scale;
 
     for (const [att, tgt] of lines) {
       const at = att.lerpT != null ? att.lerpT : 1;
-      const ax = ((att.prevCellX ?? att.cellX) + (att.cellX - (att.prevCellX ?? att.cellX)) * at) * CELL + CELL / 2;
-      const ay = ((att.prevCellY ?? att.cellY) + (att.cellY - (att.prevCellY ?? att.cellY)) * at) * CELL + CELL / 2;
+      const ax = ((att.prevCellX ?? att.cellX) + (att.cellX - (att.prevCellX ?? att.cellX)) * at) * CELL_PX + CELL_PX / 2;
+      const ay = ((att.prevCellY ?? att.cellY) + (att.cellY - (att.prevCellY ?? att.cellY)) * at) * CELL_PX + CELL_PX / 2;
       const tt = tgt.lerpT != null ? tgt.lerpT : 1;
-      const tx = ((tgt.prevCellX ?? tgt.cellX) + (tgt.cellX - (tgt.prevCellX ?? tgt.cellX)) * tt) * CELL + CELL / 2;
-      const ty = ((tgt.prevCellY ?? tgt.cellY) + (tgt.cellY - (tgt.prevCellY ?? tgt.cellY)) * tt) * CELL + CELL / 2;
+      const tx = ((tgt.prevCellX ?? tgt.cellX) + (tgt.cellX - (tgt.prevCellX ?? tgt.cellX)) * tt) * CELL_PX + CELL_PX / 2;
+      const ty = ((tgt.prevCellY ?? tgt.cellY) + (tgt.cellY - (tgt.prevCellY ?? tgt.cellY)) * tt) * CELL_PX + CELL_PX / 2;
 
       const mx = (ax + tx) / 2;
       const my = (ay + ty) / 2;
@@ -699,26 +704,26 @@ export class Renderer {
         // Simplified cloud: single semi-transparent rectangle
         ctx.globalAlpha = Math.max(0, alpha) * maxAlpha * 0.5;
         ctx.fillStyle = cloud.decorative ? '#dddddd' : '#aabbcc';
-        const px = xF * CELL;
-        const py = cloud.y * CELL;
-        ctx.fillRect(px - CELL, py - CELL * 0.5, CELL * 3, CELL * 1.5);
+        const px = xF * CELL_PX;
+        const py = cloud.y * CELL_PX;
+        ctx.fillRect(px - CELL_PX, py - CELL_PX * 0.5, CELL_PX * 3, CELL_PX * 1.5);
         ctx.globalAlpha = 1;
         continue;
       }
 
       const shadowAlpha = Math.max(0, alpha) * (cloud.decorative ? 0.08 : 0.12);
       ctx.fillStyle = `rgba(0,0,0,${shadowAlpha})`;
-      const sx = xF * CELL - CELL * 0.5;
-      const sy = (cloud.y + 2) * CELL;
+      const sx = xF * CELL_PX - CELL_PX * 0.5;
+      const sy = (cloud.y + 2) * CELL_PX;
       ctx.beginPath();
-      ctx.ellipse(sx + CELL * 1.5, sy + CELL * 0.4, CELL * 1.8, CELL * 0.5, 0, 0, Math.PI * 2);
+      ctx.ellipse(sx + CELL_PX * 1.5, sy + CELL_PX * 0.4, CELL_PX * 1.8, CELL_PX * 0.5, 0, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.globalAlpha = Math.max(0, alpha) * maxAlpha;
-      this._drawCloudAt(ctx, xF, cloud.y, CELL * 2, emoji);
+      this._drawCloudAt(ctx, xF, cloud.y, CELL_PX * 2, emoji);
       ctx.globalAlpha = Math.max(0, alpha) * maxAlpha * 0.6;
-      this._drawCloudAt(ctx, xF - 1, cloud.y, CELL * 1.6, emoji);
-      this._drawCloudAt(ctx, xF + 1, cloud.y - 1, CELL * 1.6, emoji);
+      this._drawCloudAt(ctx, xF - 1, cloud.y, CELL_PX * 1.6, emoji);
+      this._drawCloudAt(ctx, xF + 1, cloud.y - 1, CELL_PX * 1.6, emoji);
       ctx.globalAlpha = 1;
     }
   }
@@ -728,9 +733,9 @@ export class Renderer {
     const scale = Math.min(size / w, size / h);
     const dw = w * scale;
     const dh = h * scale;
-    const px = xF * CELL;
-    const py = y * CELL;
-    ctx.drawImage(ec, px + (CELL - dw) / 2, py + (CELL - dh) / 2, dw, dh);
+    const px = xF * CELL_PX;
+    const py = y * CELL_PX;
+    ctx.drawImage(ec, px + (CELL_PX - dw) / 2, py + (CELL_PX - dh) / 2, dw, dh);
   }
 
   // --- Selected agent path ---
@@ -754,18 +759,18 @@ export class Renderer {
     ctx.globalAlpha = 0.65;
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
-    const cx = lx * CELL + CELL / 2;
-    const cy = ly * CELL + CELL / 2;
-    const ringRadius = CELL / 2 - 2;
+    const cx = lx * CELL_PX + CELL_PX / 2;
+    const cy = ly * CELL_PX + CELL_PX / 2;
+    const ringRadius = CELL_PX / 2 - 2;
     const firstPos = remaining[0];
-    const fdx = firstPos.x * CELL + CELL / 2 - cx;
-    const fdy = firstPos.y * CELL + CELL / 2 - cy;
+    const fdx = firstPos.x * CELL_PX + CELL_PX / 2 - cx;
+    const fdy = firstPos.y * CELL_PX + CELL_PX / 2 - cy;
     const fdist = Math.sqrt(fdx * fdx + fdy * fdy);
     const startX = fdist > 0 ? cx + (fdx / fdist) * ringRadius : cx;
     const startY = fdist > 0 ? cy + (fdy / fdist) * ringRadius : cy;
     ctx.moveTo(startX, startY);
     for (const pos of remaining) {
-      ctx.lineTo(pos.x * CELL + CELL / 2, pos.y * CELL + CELL / 2);
+      ctx.lineTo(pos.x * CELL_PX + CELL_PX / 2, pos.y * CELL_PX + CELL_PX / 2);
     }
     ctx.stroke();
     ctx.setLineDash([]);
@@ -774,7 +779,7 @@ export class Renderer {
     const goalPos = agent.goal ?? remaining[remaining.length - 1];
     if (goalPos) {
       ctx.globalAlpha = 0.9;
-      this._drawCellEmoji(ctx, goalPos.x, goalPos.y, '\uD83D\uDCCD', CELL - 2);
+      this._drawCellEmoji(ctx, goalPos.x, goalPos.y, '\uD83D\uDCCD', CELL_PX - 2);
       ctx.globalAlpha = 1;
     }
   }

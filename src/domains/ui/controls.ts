@@ -1,18 +1,21 @@
-import { key, rndi, uuid } from '../../shared/utils';
-import { GRID, LOG_CATS, OBSTACLE_EMOJIS, TUNE, setGridSize } from '../../shared/constants';
-import { RingLog } from '../../shared/utils';
+import { key, rndi, uuid, RingLog } from '../../core/utils';
+import { GRID_SIZE, LOG_CATS, OBSTACLE_EMOJIS, setGridSize } from '../../core/constants';
 import type { World } from '../world';
-import { AgentFactory } from '../agent';
+import { AgentFactory } from '../entity/agent-factory';
 import { SimulationEngine } from '../simulation';
 import { PersistenceManager } from '../persistence';
 import type { DomRefs } from './ui-manager';
 import { UIManager } from './ui-manager';
 
+// Inlined TUNE constants
+const SALT_WATER_SPAWN_RANGE: [number, number] = [1, 3];
+const CLOUD_LIFETIME_RANGE: [number, number] = [5000, 10000];
+
 function seedEnvironment(world: World): void {
   for (let i = 0; i < 4; i++) {
-    const x = rndi(5, GRID - 6);
-    const y = rndi(5, GRID - 6);
-    world.farms.set(key(x, y), { id: uuid(), x, y });
+    const x = rndi(5, GRID_SIZE -6);
+    const y = rndi(5, GRID_SIZE -6);
+    world.farms.set(key(x, y), { id: uuid(), x, y, spawnsRemaining: 12, spawnTimerMs: rndi(15000, 25000) });
   }
   // Scatter random obstacles — mix of 1x1 and 2x2
   const obstacleCount = rndi(30, 50);
@@ -22,8 +25,8 @@ function seedEnvironment(world: World): void {
       // Try 2x2 placement — one shared obstacle object across all 4 cells
       let placed = false;
       for (let attempt = 0; attempt < 50; attempt++) {
-        const x = rndi(1, GRID - 3);
-        const y = rndi(1, GRID - 3);
+        const x = rndi(1, GRID_SIZE -3);
+        const y = rndi(1, GRID_SIZE -3);
         if (!world.grid.isCellOccupied(x, y) &&
             !world.grid.isCellOccupied(x + 1, y) &&
             !world.grid.isCellOccupied(x, y + 1) &&
@@ -46,7 +49,7 @@ function seedEnvironment(world: World): void {
       world.obstacles.set(key(x, y), { id: uuid(), x, y, emoji, hp: 12, maxHp: 12 });
     }
   }
-  SimulationEngine.seedInitialSaltWater(world, rndi(TUNE.saltWater.spawnRange[0], TUNE.saltWater.spawnRange[1]));
+  SimulationEngine.seedInitialSaltWater(world, rndi(SALT_WATER_SPAWN_RANGE[0], SALT_WATER_SPAWN_RANGE[1]));
   SimulationEngine.seedInitialTrees(world, rndi(8, 15));
   SimulationEngine.seedInitialWater(world, rndi(3, 6));
   SimulationEngine.seedInitialFood(world, rndi(5, 10));
@@ -61,7 +64,10 @@ export class Controls {
     function spawnAgents(n: number): void {
       for (let i = 0; i < n; i++) {
         const { x, y } = world.grid.randomFreeCell();
-        AgentFactory.create(world, x, y);
+        const agent = AgentFactory.create(x, y);
+        world.agents.push(agent);
+        world.agentsById.set(agent.id, agent);
+        world.agentsByCell.set(key(x, y), agent.id);
       }
     }
 
@@ -176,9 +182,9 @@ export class Controls {
     });
 
     buttons.btnSpawnCloud?.addEventListener('click', () => {
-      const x = rndi(0, GRID - 1);
-      const y = rndi(0, GRID - 1);
-      const lifetime = rndi(TUNE.cloud.lifetimeRange[0], TUNE.cloud.lifetimeRange[1]);
+      const x = rndi(0, GRID_SIZE -1);
+      const y = rndi(0, GRID_SIZE -1);
+      const lifetime = rndi(CLOUD_LIFETIME_RANGE[0], CLOUD_LIFETIME_RANGE[1]);
       world.clouds.push({ id: uuid(), x, y, xF: x, spawnedAtMs: performance.now(), lifetimeMs: lifetime, totalLifetimeMs: lifetime, rained: false });
     });
 
