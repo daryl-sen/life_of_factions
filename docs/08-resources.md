@@ -1,6 +1,6 @@
 # Resources and Economy
 
-Resources drive agent behavior. Energy, fullness, and hygiene are the three survival resources. Energy is restored only via sleep; fullness is restored by eating food from inventory; hygiene is restored by drinking water. Agents carry resources in a personal inventory and must harvest food blocks before consuming them. Low hygiene can cause disease (Phase 5), which accelerates health and energy loss.
+Resources drive agent behavior. Energy, fullness, and hygiene are the three survival resources. Energy is restored only via sleep; fullness is restored by eating food from inventory; hygiene is restored by the wash action (consuming water from inventory). Agents carry resources in a personal inventory and must harvest food blocks before consuming them. Low hygiene can cause disease (Phase 5), which accelerates health and energy loss.
 
 ## Energy System
 
@@ -48,8 +48,8 @@ agent.energy -= 0.12  // Per cell moved
 ### Energy Recovery (Sleep)
 
 Energy is restored **only** via the sleep action:
-- Duration: 8–12 seconds
-- Restores: +8 energy per 500ms tick (total 128–192 energy)
+- Duration: 20.8–31.2 seconds
+- Restores: +8 energy per 500ms tick (total ~333–499 energy)
 - Mandatory at energy < 20, voluntary at energy < 40
 - Interruptible by attack
 - Emoji: 😴
@@ -105,7 +105,7 @@ agent.health = min(agent.maxHealth, agent.health + 0.5 * (tickMs / 1000))
 
 ## Hygiene System (0–100)
 
-Hygiene is a survival need restored by drinking water. It was activated in Phase 3 alongside the introduction of water blocks. In Phase 5, hygiene gains additional decay sources (movement, social actions, poop) and drives the disease system.
+Hygiene is a survival need restored by the wash action (consuming water from inventory). In Phase 5, hygiene gains additional decay sources (movement, social actions, poop) and drives the disease system.
 
 ### Hygiene Properties
 
@@ -119,7 +119,7 @@ Hygiene is a survival need restored by drinking water. It was activated in Phase
 | Social action decay | -0.5 on completion of talk, quarrel, share, or heal |
 | Poop action decay | -5 on poop action completion |
 | Stepping on poop | -5 per step through a 💩 block |
-| Recovery | Drinking water from inventory: +30 hygiene |
+| Recovery | Wash action (consuming water from inventory): +30 hygiene |
 
 ### Hygiene Thresholds
 
@@ -143,7 +143,7 @@ Hygiene is a survival need restored by drinking water. It was activated in Phase
 
 When an agent needs water (hygiene < 40 proactive, < 20 critical):
 
-1. **Drink from inventory** if agent has water in inventory
+1. **Wash from inventory** if agent has water in inventory
 2. **Harvest adjacent water block** if one is within distance 1
 3. **Pathfind to nearest water block** and harvest it
 
@@ -193,9 +193,9 @@ Inspiration is an active need that affects agent action efficiency. It decays pa
 
 | Source | Amount | Details |
 |--------|--------|---------|
-| Play action | +15 | Adjacent to any interactable block (1500–2500ms, 0.15 energy/sec) |
-| Clean action | +10 | Adjacent to poop block (800–1200ms, 0.25 energy/sec) |
-| Build farm action | +25 | Explicit build action (2000ms, 0.25 energy/sec, requires 3 wood + 6 energy) |
+| Play action | +15 | Adjacent to any interactable block (3.9–6.5s, 0.15 energy/sec) |
+| Clean action | +10 | Adjacent to poop block (2.1–3.1s, 0.25 energy/sec) |
+| Build farm action | +25 | Explicit build action (5.2s, 0.25 energy/sec, requires 3 wood + 6 energy) |
 
 ### Duration Scaling
 
@@ -232,7 +232,7 @@ Agents carry resources in a personal inventory. All resource consumption require
 
 | Property | Value |
 |----------|-------|
-| Capacity | **20 total units** across all resource types |
+| Capacity | `traits.endurance.inventoryCapacity` total units across all resource types (genetic, per-agent) |
 | Resource types | food, water, wood |
 | Starting inventory | 0 (agents start with nothing) |
 
@@ -316,13 +316,13 @@ function tryEat(agent) {
 }
 ```
 
-### Drink Action (from inventory)
+### Wash Action (from inventory)
 
 ```javascript
-function tryDrink(agent) {
+function tryWash(agent) {
   if (agent.inventory.water <= 0) return false
 
-  // Start drink action (300-500ms, no energy cost)
+  // Start wash action (0.8-1.3s, no energy cost)
   // On completion:
   agent.inventory.water -= 1
   agent.hygiene = min(100, agent.hygiene + 30)
@@ -341,7 +341,7 @@ When an agent needs food (fullness < 40 proactive, < 20 urgent):
 
 ## Water Blocks (Phase 3)
 
-Water exists as blocks on the grid that agents harvest for drinking water to restore hygiene. There are two sizes of water blocks.
+Water exists as blocks on the grid that agents harvest for water, which they then consume via the wash action to restore hygiene. There are two sizes of water blocks.
 
 ### Water Block Properties
 
@@ -400,13 +400,13 @@ function tryHarvestWater(world, agent, waterBlock) {
 }
 ```
 
-### Drink Action (from inventory)
+### Wash Action (from inventory)
 
 ```javascript
-function tryDrink(agent) {
+function tryWash(agent) {
   if (agent.inventory.water <= 0) return false
 
-  // Start drink action (300-500ms, no energy cost)
+  // Start wash action (0.8-1.3s, no energy cost)
   // On completion:
   agent.inventory.water -= 1
   agent.hygiene = min(100, agent.hygiene + 30)
@@ -542,9 +542,9 @@ Loot bags decay after 30 seconds if not picked up:
 ### Pickup Action
 
 Any agent can pick up a loot bag via the pickup action:
-- **Duration:** 300–500ms
+- **Duration:** 0.8–1.3s
 - **Energy cost:** None
-- **Effect:** Takes all contents from the loot bag up to the agent's inventory cap (20 total)
+- **Effect:** Takes all contents from the loot bag up to the agent's inventory cap
 - **Decision priority:** Checked before roaming (priority 7e)
 
 ## Poop Blocks (Phase 5)
@@ -577,7 +577,7 @@ Poop blocks are spawned by the poop action (see `docs/04-actions.md`). They will
 After an agent completes the eat action, a 30-second poop cooldown window begins. During this window:
 - Each tick has a **10% chance** of triggering the poop action
 - Only triggers when the agent is **idle** (no current action)
-- The poop action lasts 500–1000ms and costs no energy
+- The poop action lasts 1.3–2.6s and costs no energy
 - On completion, a 💩 block is placed at the agent's cell and the agent loses 5 hygiene
 
 ### Decay
@@ -587,7 +587,7 @@ Poop blocks have a 30-second decay timer. When the timer reaches 0, the block is
 ### Clean Action
 
 Any agent can remove an adjacent poop block via the clean action:
-- **Duration:** 800–1200ms
+- **Duration:** 2.1–3.1s
 - **Energy cost:** 0.25/sec
 - **Effect:** Removes the poop block and grants +10 inspiration to the cleaning agent
 - **Decision priority:** Opportunistic (priority 7g, before social actions)
@@ -601,7 +601,7 @@ Faction flags serve as communal resource storage. See `docs/07-factions.md` for 
 | Storage capacity | 30 per resource type (food, water, wood) |
 | Deposit trigger | Adjacent to own flag, inventory >= 3 items |
 | Withdraw trigger | Adjacent to own flag, needing resources, flag has stored resources |
-| Deposit/Withdraw duration | 300–500ms |
+| Deposit/Withdraw duration | 0.8–1.3s |
 | Deposit/Withdraw energy cost | None |
 | On flag destruction | All stored resources drop as a loot bag |
 
@@ -612,7 +612,7 @@ Faction flags serve as communal resource storage. See `docs/07-factions.md` for 
 | Property | Value |
 |----------|-------|
 | Build cost | 3 wood + 6 energy (explicit build_farm action) |
-| Build duration | 2000ms (fixed) |
+| Build duration | 5.2s (fixed) |
 | Build energy cost | 0.25 energy/sec |
 | Build rewards | +15 XP, +25 inspiration |
 | Emoji | 🌻 |
@@ -640,7 +640,7 @@ function tryBuildFarm(world, agent) {
   const adjacent = getFreeAdjacentCells(agent)
   if (adjacent.length === 0) return
 
-  // Start build_farm action (2000ms, 0.25 energy/sec)
+  // Start build_farm action (5.2s, 0.25 energy/sec)
   // On completion:
   agent.inventory.wood -= 3
   const spot = random(adjacent)
@@ -730,12 +730,12 @@ Eat (from inventory):
   → -1 food from inventory
   → +20 fullness
   → +5 XP
-  → No energy cost (300-500ms)
+  → No energy cost (0.8-1.3s)
 
-Drink (from inventory):
+Wash (from inventory):
   → -1 water from inventory
   → +30 hygiene
-  → No energy cost (300-500ms)
+  → No energy cost (0.8-1.3s)
 
 Harvest Water (water block → inventory):
   → +1 water to inventory
@@ -753,28 +753,28 @@ Share (inventory → target inventory):
   → +5 XP for sharer
   → +8 social for sharer, +5 social for recipient
   → +0.14 relationship
-  → -0.4 energy/sec (300-500ms)
+  → -0.4 energy/sec (0.8-1.3s)
 
 Deposit (inventory → flag storage):
   → Transfers resources to faction flag
-  → No energy cost (300-500ms)
+  → No energy cost (0.8-1.3s)
 
 Withdraw (flag storage → inventory):
   → Transfers resources from faction flag
-  → No energy cost (300-500ms)
+  → No energy cost (0.8-1.3s)
 
 Pickup (loot bag → inventory):
   → Takes all contents up to inventory cap
-  → No energy cost (300-500ms)
+  → No energy cost (0.8-1.3s)
 
 Loot Bag Spawn:
   → Agent death: drops full inventory
   → Flag destruction: drops all stored resources
   → 30s decay timer, bags on same cell merge
 
-Sleep Action (8–12s):
+Sleep Action (20.8–31.2s):
   → +8 energy per 500ms tick
-  → Total: 128–192 energy restored
+  → Total: ~333–499 energy restored
 
 Energy Drains:
   - Passive: ~0.25/sec
@@ -783,23 +783,23 @@ Energy Drains:
   - Harvest (food): 0.25/sec
   - Harvest (water): 0.25/sec
   - Harvest (wood): 0.25/sec
-  - Build farm: 0.25/sec over 2000ms (+ 3 wood from inventory)
+  - Build farm: 0.25/sec over 5.2s (+ 3 wood from inventory)
 
 Clean (poop block → removed):
   → Removes adjacent poop block
   → +10 inspiration
-  → -0.25 energy/sec (800-1200ms)
+  → -0.25 energy/sec (2.1-3.1s)
 
 Play (adjacent to interactable block):
   → +15 inspiration
   → -3 hygiene if near poop
-  → -0.15 energy/sec (1500-2500ms)
+  → -0.15 energy/sec (3.9-6.5s)
 
 Build Farm (3 wood → farm):
   → -3 wood from inventory
   → Spawns farm (🌻) on adjacent free cell
   → +15 XP, +25 inspiration
-  → -0.25 energy/sec (2000ms fixed)
+  → -0.25 energy/sec (5.2s fixed)
   → Farm produces up to 10 HQ food blocks (15-25s interval)
 
 Inspiration Drains:
@@ -845,9 +845,9 @@ passiveDrain = 0.25/sec
 movementDrain = 0.12 * 2 = 0.24/sec
 totalDrain = 0.49/sec
 
-// Sleep restores ~160 energy over ~10s
-// Energy lasts: 160 / 0.49 ≈ 326 seconds between sleeps
-// Sleep every ~5.4 minutes
+// Sleep restores ~416 energy over ~26s
+// Energy lasts: 416 / 0.49 ≈ 849 seconds between sleeps
+// Sleep every ~14 minutes
 ```
 
 ### Scarcity Dynamics
@@ -878,37 +878,28 @@ When accumulated XP exceeds the threshold for the current level:
 
 ```javascript
 function levelCheck(world, agent) {
-  if (agent.level >= 20) return  // Cap
+  if (agent.level >= LEVEL_CAP) return
 
   xpNeeded = agent.level * 50
   if (agent.xp >= xpNeeded):
     agent.xp -= xpNeeded
     agent.level++
-    agent.maxHealth += 8
-    agent.attack += 1.5
-    agent.maxEnergy += 5
+    agent.maxHealth += agent.traits.resilience.perLevel
+    agent.attack += agent.traits.strength.perLevel
+    agent.maxEnergy += agent.traits.vigor.perLevel
 }
 ```
 
 ### Level Progression
 
-| Level | Max Health | Attack | Max Energy | XP to Next |
-|-------|------------|--------|------------|------------|
-| 1 | 100 | 8.0 | 200 | 50 |
-| 5 | 132 | 14.0 | 220 | 250 |
-| 10 | 172 | 21.5 | 245 | 500 |
-| 15 | 212 | 29.0 | 270 | 750 |
-| 20 | 252 | 36.5 | 295 | (max) |
+All base stats and per-level gains are determined by the agent's genetics:
 
 **Formula:**
-- `maxHealth = 100 + (level - 1) * 8`
-- `attack = 8 + (level - 1) * 1.5`
-- `maxEnergy = 200 + (level - 1) * 5`
+- `maxHealth = traits.resilience.baseMaxHp + (level - 1) * traits.resilience.perLevel`
+- `attack = traits.strength.baseAttack + (level - 1) * traits.strength.perLevel`
+- `maxEnergy = traits.vigor.baseMaxEnergy + (level - 1) * traits.vigor.perLevel`
 - `xpToNextLevel = level * 50`
 
 ### Level Cap
 
-Level 20 is the maximum. Agents at level 20:
-- Cannot level up further
-- maxEnergy caps at 295
-- Have maximum stats (252 HP, 36.5 attack)
+`LEVEL_CAP` (from `core/constants.ts`) is the maximum level. Agents at the cap cannot level up further.
