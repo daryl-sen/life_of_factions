@@ -203,8 +203,13 @@ export class Controls {
       }
     });
 
-    buttons.btnSave?.addEventListener('click', () => PersistenceManager.export(world, doRenderLog));
-    buttons.btnLoad?.addEventListener('click', () => dom.fileLoad?.click());
+    buttons.btnQuickSave?.addEventListener('click', () => {
+      PersistenceManager.saveToLocalStorage(world);
+      world.log.push({ t: performance.now(), cat: 'info', msg: 'State saved', actorId: null, extra: {} });
+      doRenderLog();
+    });
+    buttons.btnExport?.addEventListener('click', () => PersistenceManager.export(world, doRenderLog));
+    buttons.btnImport?.addEventListener('click', () => dom.fileLoad?.click());
     dom.fileLoad?.addEventListener('change', (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;

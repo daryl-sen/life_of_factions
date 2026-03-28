@@ -51,6 +51,12 @@ export class PersistenceManager {
     }
   }
 
+  static saveToLocalStorage(world: World): void {
+    try {
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(PersistenceManager.serialize(world)));
+    } catch { /* QuotaExceededError — skip silently */ }
+  }
+
   static clearAutosave(): void {
     try {
       localStorage.removeItem(AUTOSAVE_KEY);

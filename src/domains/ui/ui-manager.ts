@@ -91,8 +91,9 @@ export interface DomRefs {
     btnSpawnCrop: HTMLButtonElement | null;
     btnDrawObstacles: HTMLButtonElement | null;
     btnEraseObstacles: HTMLButtonElement | null;
-    btnSave: HTMLButtonElement | null;
-    btnLoad: HTMLButtonElement | null;
+    btnQuickSave: HTMLButtonElement | null;
+    btnExport: HTMLButtonElement | null;
+    btnImport: HTMLButtonElement | null;
     btnSpawnTree: HTMLButtonElement | null;
     btnSpawnCloud: HTMLButtonElement | null;
     btnReplenish: HTMLButtonElement | null;
@@ -166,8 +167,9 @@ export class UIManager {
         btnSpawnCrop: qs('#btnSpawnCrop') as HTMLButtonElement | null,
         btnDrawObstacles: qs('#btnDrawObstacles') as HTMLButtonElement | null,
         btnEraseObstacles: qs('#btnEraseObstacles') as HTMLButtonElement | null,
-        btnSave: qs('#btnSave') as HTMLButtonElement | null,
-        btnLoad: qs('#btnLoad') as HTMLButtonElement | null,
+        btnQuickSave: qs('#btnQuickSave') as HTMLButtonElement | null,
+        btnExport: qs('#btnExport') as HTMLButtonElement | null,
+        btnImport: qs('#btnImport') as HTMLButtonElement | null,
         btnSpawnTree: qs('#btnSpawnTree') as HTMLButtonElement | null,
         btnSpawnCloud: qs('#btnSpawnCloud') as HTMLButtonElement | null,
         btnReplenish: qs('#btnReplenish') as HTMLButtonElement | null,
