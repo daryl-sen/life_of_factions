@@ -1,10 +1,17 @@
-import { CELL, GRID, TUNE } from '../../shared/constants';
-import { VERSION } from '../../shared/version';
-import { key, rndi } from '../../shared/utils';
+import { CELL_PX, GRID_SIZE } from '../../core/constants';
+import { key, rndi } from '../../core/utils';
 import type { World } from '../world';
 import type { DomRefs } from '../ui/ui-manager';
-import { Agent } from '../agent';
+import { Agent } from '../entity/agent';
+import { Genome } from '../genetics';
 import { Faction, FactionManager } from '../faction';
+
+const VERSION = '4.0.0';
+
+// Inlined TUNE constants
+const FARM_MAX_SPAWNS = 12;
+const FARM_SPAWN_INTERVAL_RANGE: [number, number] = [15000, 25000];
+const TREE_MAX_AGE_RANGE: [number, number] = [780000, 1020000];
 
 export class PersistenceManager {
   static serialize(world: World): Record<string, unknown> {
@@ -21,6 +28,9 @@ export class PersistenceManager {
     const agents = world.agents.map((a) => ({
       id: a.id,
       name: a.name,
+      dna: a.genome.dna,
+      familyName: a.familyName,
+      entityClass: a.entityClass,
       cellX: a.cellX,
       cellY: a.cellY,
       health: a.health,
@@ -43,14 +53,12 @@ export class PersistenceManager {
           }
         : null,
       lockMsRemaining: a.lockMsRemaining,
-      aggression: a.aggression,
-      cooperation: a.cooperation,
       fullness: a.fullness,
       hygiene: a.hygiene,
       social: a.social,
       inspiration: a.inspiration,
       xp: a.xp,
-      inventory: a.inventory,
+      inventory: { food: a.inventory.food, water: a.inventory.water, wood: a.inventory.wood },
       poopTimerMs: a.poopTimerMs,
       diseased: a.diseased,
       babyMsRemaining: a.babyMsRemaining,
@@ -58,7 +66,7 @@ export class PersistenceManager {
     }));
     return {
       meta: { version: VERSION, savedAt: Date.now() },
-      grid: { CELL, GRID },
+      grid: { CELL: CELL_PX, GRID: GRID_SIZE },
       state: {
         tick: world.tick,
         speedPct: world.speedPct,
@@ -166,8 +174,8 @@ export class PersistenceManager {
     for (const fm of d.farms || []) {
       world.farms.set(key(fm.x, fm.y), {
         ...fm,
-        spawnsRemaining: fm.spawnsRemaining ?? TUNE.farm.maxSpawns,
-        spawnTimerMs: fm.spawnTimerMs ?? rndi(TUNE.farm.spawnIntervalRange[0], TUNE.farm.spawnIntervalRange[1]),
+        spawnsRemaining: fm.spawnsRemaining ?? FARM_MAX_SPAWNS,
+        spawnTimerMs: fm.spawnTimerMs ?? rndi(FARM_SPAWN_INTERVAL_RANGE[0], FARM_SPAWN_INTERVAL_RANGE[1]),
       });
     }
     for (const c of (d.foodBlocks || d.crops || [])) {
@@ -201,7 +209,7 @@ export class PersistenceManager {
         emoji: tb.emoji, units: tb.units ?? 3,
         maxUnits: tb.maxUnits ?? 3,
         ageTotalMs: tb.ageTotalMs ?? 0,
-        maxAgeMs: tb.maxAgeMs ?? rndi(TUNE.tree.maxAgeRange[0], TUNE.tree.maxAgeRange[1]),
+        maxAgeMs: tb.maxAgeMs ?? rndi(TREE_MAX_AGE_RANGE[0], TREE_MAX_AGE_RANGE[1]),
       });
     }
     // Restore seedlings
@@ -257,16 +265,17 @@ export class PersistenceManager {
       ) {
         action = null;
       }
+      const genome = a.dna ? new Genome(a.dna) : Genome.random();
       const agent = new Agent({
         id: a.id,
         name: a.name,
+        genome,
+        familyName: a.familyName ?? a.name,
+        entityClass: a.entityClass ?? 'adult',
         cellX: a.cellX,
         cellY: a.cellY,
         health: a.health,
-        maxHealth: a.maxHealth,
-        energy: a.energy,
-        maxEnergy: a.maxEnergy ?? TUNE.maxEnergyBase,
-        attack: a.attack,
+        energy: a.energy ?? 100,
         level: a.level,
         ageTicks: a.ageTicks,
         factionId: a.factionId || null,
@@ -275,12 +284,10 @@ export class PersistenceManager {
         pathIdx: a.pathIdx || 0,
         action,
         lockMsRemaining: a.lockMsRemaining || 0,
-        aggression: a.aggression ?? Math.random(),
-        cooperation: a.cooperation ?? Math.random(),
-        fullness: a.fullness ?? TUNE.fullness.start,
-        hygiene: a.hygiene ?? TUNE.needs.hygieneStart,
-        social: a.social ?? TUNE.needs.socialStart,
-        inspiration: a.inspiration ?? TUNE.needs.inspirationStart,
+        fullness: a.fullness ?? 50,
+        hygiene: a.hygiene ?? 50,
+        social: a.social ?? 50,
+        inspiration: a.inspiration ?? 50,
         xp: a.xp ?? 0,
         inventory: a.inventory ?? { food: 0, water: 0, wood: 0 },
         poopTimerMs: a.poopTimerMs ?? 0,

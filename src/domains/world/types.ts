@@ -1,73 +1,4 @@
-export interface IPosition {
-  readonly x: number;
-  readonly y: number;
-}
-
-export type ActionType =
-  | 'talk'
-  | 'quarrel'
-  | 'attack'
-  | 'heal'
-  | 'share'
-  | 'attack_flag'
-  | 'reproduce'
-  | 'sleep'
-  | 'harvest'
-  | 'eat'
-  | 'drink'
-  | 'deposit'
-  | 'withdraw'
-  | 'pickup'
-  | 'poop'
-  | 'clean'
-  | 'play'
-  | 'build_farm';
-
-export type LogCategory =
-  | 'talk'
-  | 'quarrel'
-  | 'attack'
-  | 'heal'
-  | 'share'
-  | 'reproduce'
-  | 'build'
-  | 'destroy'
-  | 'death'
-  | 'faction'
-  | 'level'
-  | 'spawn'
-  | 'info'
-  | 'sleep'
-  | 'eat'
-  | 'harvest'
-  | 'loot'
-  | 'hygiene';
-
-export type PaintMode = 'none' | 'draw' | 'erase' | 'replenish' | 'paintSaltWater' | 'paintLand';
-
-export interface IActionState {
-  type: ActionType;
-  remainingMs: number;
-  tickCounterMs: number;
-  payload: IActionPayload | null;
-  startedAtMs: number;
-  totalMs: number;
-}
-
-export interface IActionPayload {
-  targetId?: string;
-  targetPos?: { x: number; y: number };
-  resourceType?: string;
-  amount?: number;
-}
-
-export interface ILogEntry {
-  t: number;
-  cat: LogCategory;
-  msg: string;
-  actorId: string | null;
-  extra: Record<string, unknown>;
-}
+// Block and world-level types — moved from shared/types.ts
 
 export type FoodQuality = 'hq' | 'lq';
 
@@ -79,12 +10,6 @@ export interface IFoodBlock {
   quality: FoodQuality;
   units: number;
   maxUnits: number;
-}
-
-export interface IInventory {
-  food: number;
-  water: number;
-  wood: number;
 }
 
 export interface IFarm {
@@ -125,7 +50,7 @@ export interface ILootBag {
   id: string;
   x: number;
   y: number;
-  inventory: IInventory;
+  inventory: { food: number; water: number; wood: number };
   decayMs: number;
 }
 
@@ -163,7 +88,7 @@ export interface ICloud {
   id: string;
   x: number;
   y: number;
-  xF: number;             // float visual x position in grid units
+  xF: number;
   spawnedAtMs: number;
   lifetimeMs: number;
   totalLifetimeMs: number;
@@ -191,20 +116,13 @@ export interface ISaltWaterBlock {
   y: number;
 }
 
-export type ResourceMemoryType = 'food' | 'water' | 'wood';
+export type PaintMode = 'none' | 'draw' | 'erase' | 'replenish' | 'paintSaltWater' | 'paintLand';
 
-export interface IResourceMemoryEntry {
-  x: number;
-  y: number;
-  tick: number;
-}
+export type DeathCause = 'hunger' | 'killed' | 'disease' | 'old_age' | 'tree';
 
-export interface ICameraState {
-  x: number;
-  y: number;
-  scale: number;
-  min: number;
-  max: number;
-  viewW: number;
-  viewH: number;
+export interface DeadAgentMarker {
+  cellX: number;
+  cellY: number;
+  cause: DeathCause;
+  msRemaining: number;
 }

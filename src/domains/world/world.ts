@@ -1,39 +1,44 @@
-import { TUNE, LOG_CATS } from '../../shared/constants';
-import { RingLog } from '../../shared/utils';
-import type { LogCategory, PaintMode, ICloud } from '../../shared/types';
-import type { Agent } from '../agent/agent';
+import { LOG_CATS, PATH_BUDGET_PER_TICK } from '../../core/constants';
+import { RingLog } from '../../core/utils';
+import { EventBus } from '../../core/event-bus';
+import type { LogCategory } from '../action/types';
+import type { Agent } from '../entity/agent';
 import type { Faction } from '../faction/faction';
+import { FamilyRegistry } from '../entity/family-registry';
 import { Grid } from './grid';
 import { FoodField } from './food-field';
 import { WaterField } from './water-field';
 import { TerrainField } from './terrain-field';
-
-export type DeathCause = 'hunger' | 'killed' | 'disease' | 'old_age' | 'tree';
-
-export interface DeadAgentMarker {
-  cellX: number;
-  cellY: number;
-  cause: DeathCause;
-  msRemaining: number;
-}
+import { BlockManager } from './block-manager';
+import type { PaintMode, ICloud, DeadAgentMarker } from './types';
 
 export class World {
+  // Core infrastructure
+  readonly events: EventBus = new EventBus();
   readonly grid: Grid = new Grid();
   readonly foodField: FoodField = new FoodField();
   readonly waterField: WaterField = new WaterField();
   readonly terrainField: TerrainField = new TerrainField();
+  readonly blockManager: BlockManager = new BlockManager(this.grid, this.events);
+  readonly familyRegistry: FamilyRegistry = new FamilyRegistry();
 
+  // Entity collections
   agents: Agent[] = [];
   readonly agentsById: Map<string, Agent> = new Map();
   readonly factions: Map<string, Faction> = new Map();
 
+  // Logging
   log: RingLog = new RingLog(200);
   activeLogCats: Set<LogCategory> = new Set(LOG_CATS);
   activeLogAgentId: string | null = null;
 
+  // Simulation state
   tick = 0;
   totalBirths = 0;
   totalDeaths = 0;
+  running = false;
+  speedPct = 100;
+  cloudSpawnRate = 1;
 
   // Death animation markers
   deadMarkers: DeadAgentMarker[] = [];
@@ -41,23 +46,22 @@ export class World {
   // Birth/death timestamps for per-minute rate tracking
   birthTimestamps: number[] = [];
   deathTimestamps: number[] = [];
-  speedPct = 100;
-  cloudSpawnRate = 1;
-  running = false;
+
+  // UI state
   selectedId: string | null = null;
   paintMode: PaintMode = 'none';
   pauseOnBlur = false;
   drawGrid = false;
   factionSort: 'members' | 'created' | 'name' | 'level' = 'members';
-  starredStats: string[] = ['agents', 'factions', 'crops']; // max 3, shown in top nav bar
+  starredStats: string[] = ['agents', 'factions', 'crops'];
 
-  pathBudgetMax: number = Number.isFinite(TUNE.pathBudgetPerTick)
-    ? TUNE.pathBudgetPerTick
-    : 30;
+  // Pathfinding budget
+  pathBudgetMax: number = PATH_BUDGET_PER_TICK;
   pathBudget = 0;
   _pathRR = 0;
   readonly _pathWhitelist: Set<string> = new Set();
 
+  // UI callbacks
   _lastFactionsDomAt = 0;
   _lastAgentCount = 0;
   _rebuildAgentOptions: (() => void) | null = null;
@@ -67,10 +71,9 @@ export class World {
   clouds: ICloud[] = [];
   _nextCloudSpawnMs = 0;
 
-  // Convenience accessors that delegate to grid
+  // Convenience accessors that delegate to grid (backward compat)
   get obstacles() { return this.grid.obstacles; }
   get foodBlocks() { return this.grid.foodBlocks; }
-  /** @deprecated Use foodBlocks */
   get crops() { return this.grid.foodBlocks; }
   get farms() { return this.grid.farms; }
   get flags() { return this.grid.flags; }

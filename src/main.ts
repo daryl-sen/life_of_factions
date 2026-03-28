@@ -1,5 +1,6 @@
-import { BASE_TICK_MS } from './shared/constants';
-import { VERSION } from './shared/version';
+import { TICK_MS } from './core/constants';
+
+const VERSION = '4.0.0';
 import { World } from './domains/world';
 import { Camera } from './domains/rendering/camera';
 import { Renderer } from './domains/rendering/renderer';
@@ -201,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
       fpsCount = 0;
     }
     if (world.running) {
-      const effTick = BASE_TICK_MS / (world.speedPct / 100);
+      const effTick = TICK_MS / (world.speedPct / 100);
       acc += dt;
       let steps = 0;
       while (acc >= effTick && steps < MAX_STEPS) {
@@ -212,7 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
         steps++;
       }
       if (steps === MAX_STEPS) acc = 0;
-      const lerpDelta = dt / (BASE_TICK_MS / (world.speedPct / 100));
+      const lerpDelta = dt / (TICK_MS / (world.speedPct / 100));
       for (const a of world.agents) {
         if (a.lerpT < 1) {
           a.lerpT = Math.min(1, a.lerpT + lerpDelta);

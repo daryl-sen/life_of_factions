@@ -1,6 +1,6 @@
-import { WORLD_PX } from '../../shared/constants';
-import { clamp } from '../../shared/utils';
-import type { ICameraState } from '../../shared/types';
+import { WORLD_PX } from '../../core/constants';
+import { clamp } from '../../core/utils';
+import type { ICameraState } from '../../core/types';
 
 export class Camera implements ICameraState {
   x = 0;

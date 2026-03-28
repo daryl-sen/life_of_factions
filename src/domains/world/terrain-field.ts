@@ -1,8 +1,8 @@
-import { GRID, TUNE } from '../../shared/constants';
-import { manhattan } from '../../shared/utils';
+import { GRID_SIZE } from '../../core/constants';
+import { manhattan } from '../../core/utils';
 import type { Grid } from './grid';
 
-const tfIdx = (x: number, y: number): number => y * GRID + x;
+const tfIdx = (x: number, y: number): number => y * GRID_SIZE + x;
 
 /** Per-frame step size for display moisture lerp (higher = faster transition). */
 const LERP_STEP = 3;
@@ -18,14 +18,14 @@ export class TerrainField {
   transitioning = false;
 
   constructor() {
-    const N = GRID * GRID;
+    const N = GRID_SIZE * GRID_SIZE;
     this.moisture = new Uint8Array(N);
     this.displayMoisture = new Uint8Array(N);
   }
 
   /** Full recompute of all cell moisture values based on water proximity. */
   recomputeAll(grid: Grid): void {
-    const radius = TUNE.terrain.waterRadius;
+    const radius = 5; // terrain.waterRadius
 
     const waterPositions: Array<{ x: number; y: number }> = [];
     const seen = new Set<string>();
@@ -37,8 +37,8 @@ export class TerrainField {
       }
     }
 
-    for (let y = 0; y < GRID; y++) {
-      for (let x = 0; x < GRID; x++) {
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
         const i = tfIdx(x, y);
 
         if (grid.saltWaterBlocks.has(`${x},${y}`)) {
@@ -108,7 +108,7 @@ export class TerrainField {
   }
 
   moistureAt(x: number, y: number): number {
-    if (x < 0 || y < 0 || x >= GRID || y >= GRID) return 0;
+    if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) return 0;
     return this.displayMoisture[tfIdx(x, y)];
   }
 }

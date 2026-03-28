@@ -1,9 +1,9 @@
-import { GRID } from '../../shared/constants';
-import { key } from '../../shared/utils';
-import type { IFoodBlock, IFarm, IObstacle, IFlag, IWaterBlock, ITreeBlock, ISeedling, ILootBag, IPoopBlock, IEgg, ISaltWaterBlock } from '../../shared/types';
+import { GRID_SIZE } from '../../core/constants';
+import { key } from '../../core/utils';
+import type { IFoodBlock, IFarm, IObstacle, IFlag, IWaterBlock, ITreeBlock, ISeedling, ILootBag, IPoopBlock, IEgg, ISaltWaterBlock } from './types';
 
 export class Grid {
-  size: number = GRID;
+  size: number = GRID_SIZE;
   readonly obstacles: Map<string, IObstacle> = new Map();
   readonly foodBlocks: Map<string, IFoodBlock> = new Map();
   readonly farms: Map<string, IFarm> = new Map();

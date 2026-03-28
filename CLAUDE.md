@@ -5,7 +5,7 @@
 Emoji Life is a zero-player, real-time 2D sandbox simulation deployed to GitHub Pages. Autonomous agents live on a 62x62 grid, gathering food, forming factions, reproducing, building, and fighting. The simulation is "cozy-chaotic" — designed to produce emergent stories, not follow a script.
 
 **Live site:** https://daryl-sen.github.io/life_of_factions/
-**Version:** 3.0.0
+**Version:** 4.0.0 (in development — genetics system)
 **Branch strategy:** Feature branches off `main`, bundled PRs.
 
 ---
@@ -19,18 +19,18 @@ Emoji Life is a zero-player, real-time 2D sandbox simulation deployed to GitHub 
 - `*.bundle.js` — Bundled output files
 - `package-lock.json` — Auto-generated lockfile (read only if debugging dependency issues)
 
-When searching or exploring the codebase, restrict to `src/`, `docs/`, and root config files (`package.json`, `tsconfig.json`, `CLAUDE.md`, `tech_specs.md`, `index.html`).
+When searching or exploring the codebase, restrict to `src/`, `docs/`, and root config files (`package.json`, `tsconfig.json`, `CLAUDE.md`, `index.html`).
 
 ---
 
 ## Tech Stack
 
-- **Language:** TypeScript (migrating from JavaScript — see Migration section)
-- **Build:** esbuild (bundles TS/JS to a single file for GitHub Pages)
+- **Language:** TypeScript (strict mode, no `any`)
+- **Build:** esbuild (bundles TS to a single file for GitHub Pages)
 - **Runtime:** Browser (Canvas 2D, requestAnimationFrame, ES modules)
 - **Package manager:** npm
 - **Dev server:** `npx serve .`
-- **Deployment:** Static HTML on GitHub Pages (requires a build step for TS)
+- **Deployment:** Static HTML on GitHub Pages
 - **No test framework** currently configured
 
 ---
@@ -45,59 +45,159 @@ npx esbuild src/main.ts --bundle --outfile=dist/app.js   # Production build
 
 ---
 
-## Architecture & Design Principles
+## Design Documents
 
-### SOLID Principles (enforced)
+Read these before making architectural changes:
 
-1. **Single Responsibility** — Each class/module owns one concern. A `Faction` class manages faction state, not rendering. A `Renderer` draws, it doesn't simulate.
-2. **Open/Closed** — Extend behavior through composition and strategy patterns, not by modifying existing classes. New action types should implement an `Action` interface, not add branches to a switch statement.
-3. **Liskov Substitution** — Subtypes must be substitutable for their base types. If `CombatAction` extends `Action`, any code expecting `Action` must work with `CombatAction`.
-4. **Interface Segregation** — Keep interfaces focused. An `IRenderable` interface should not force implementers to define simulation logic.
-5. **Dependency Inversion** — High-level modules (simulation loop) depend on abstractions (interfaces), not concrete implementations. Pass dependencies via constructor injection.
+| Document | Purpose |
+|----------|---------|
+| `genetics-prd.md` | Product requirements for the genetics system (traits, DNA, reproduction, actions, world changes) |
+| `genetics-trd.md` | Technical architecture — directory structure, domain specs, dependency rules, data flow |
+| `genetics-analysis.md` | Analysis of the pre-v4 codebase (traits, actions, decision trees) |
+| `tech_specs.md` | Game mechanics specification (being updated for v4.0) |
+| `docs/00-overview.md` | Architecture overview and doc index |
 
-### Domain-Driven Design
+---
 
-The codebase is organized into bounded contexts (domains):
+## Architecture
 
-| Domain | Responsibility | Key entities |
-|--------|---------------|--------------|
-| **Simulation** | Tick loop, game clock, update orchestration | `SimulationEngine`, `GameLoop` |
-| **Agent** | Agent lifecycle, decision-making, personality | `Agent`, `Personality`, `DecisionEngine` |
-| **Faction** | Faction formation, membership, reconciliation | `Faction`, `FactionManager` |
-| **World** | Grid state, spatial queries, pathfinding | `World`, `Grid`, `Pathfinder` |
-| **Action** | Action execution, costs, durations, effects | `Action` (interface), concrete actions |
-| **Rendering** | Canvas drawing, camera, viewport | `Renderer`, `Camera` |
-| **UI** | DOM bindings, inspector, event log, controls | `UIManager`, `EventLog` |
-| **Persistence** | Save/load, serialization | `PersistenceManager` |
+### Core Principles
 
-**Directory structure target:**
+1. **Domain-driven.** Each domain owns its data, logic, and types. No domain reaches into another's internals.
+2. **Event-driven communication.** Domains communicate through a central `EventBus`, not direct cross-imports. Eliminates circular dependencies.
+3. **Composition over inheritance.** Agents are composed of components (Genome, Needs, Inventory, Relationships, Pregnancy), not deep class hierarchies.
+4. **Data flows down, events flow up.** The simulation loop reads state and calls domain methods. Domains emit events when noteworthy things happen.
+5. **Per-agent configuration.** Game-mechanical values that vary per agent come from genetics (DNA → trait expression), not global constants.
+
+### Directory Structure
 
 ```
 src/
+  core/                          # Framework — imported by all, imports nothing from domains
+    event-bus.ts                 # Pub/sub event system
+    types.ts                     # Universal types (IPosition, IInventory)
+    constants.ts                 # Truly global: TICK_MS, GRID_SIZE, CELL_PX, LEVEL_CAP
+    utils.ts                     # Pure functions: rnd, clamp, key, uuid, manhattan
+    pathfinding.ts               # A* (takes IGridQuery interface, not concrete World)
+
   domains/
-    simulation/
-    agent/
-    faction/
-    world/
-    action/
-    rendering/
-    ui/
-    persistence/
-  shared/          # Cross-cutting: interfaces, types, constants, utils
-  main.ts          # Entry point, wiring
+    genetics/                    # DNA encoding, gene expression, crossover, mutation
+      genome.ts                  # Genome class — parses DNA string, expresses traits
+      gene-registry.ts           # Gene code → trait definition lookup
+      expression.ts              # expressGenome(dna) → TraitSet
+      crossover.ts               # recombine(dnaA, dnaB) → childDna
+      mutation.ts                # mutate(dna) → mutatedDna
+      viability.ts               # isViable(traitSet) → boolean
+      types.ts                   # GeneDef, TraitDef, TraitSet, RawGeneEntry
+
+    entity/                      # Agents, entity classes, components
+      agent.ts                   # Agent class (composed of components)
+      agent-factory.ts           # create(), createChild(), createFromEgg()
+      entity-class.ts            # Class definitions: Baby, Adult, Elder
+      family-registry.ts         # Dynasty tracking
+      components/
+        needs.ts                 # NeedSet with band evaluation
+        inventory.ts             # Genetic capacity
+        relationships.ts         # Genetic capacity
+        pregnancy.ts             # Pregnancy state machine
+      types.ts
+
+    decision/                    # What should this agent do next?
+      decision-engine.ts         # Context → score candidates → select
+      context-builder.ts         # Snapshot of agent's surroundings
+      action-scorer.ts           # Score = base + genetic + situational + [future]
+      need-evaluator.ts          # Maps need values to bands (CRITICAL/LOW/NORMAL/HIGH/FULL)
+      flee-evaluator.ts          # Courage-based flee decisions
+      types.ts
+
+    action/                      # Action definitions and execution
+      action-registry.ts         # All actions: tags, costs, durations, requirements
+      action-factory.ts          # Creates IActionState from registry + agent traits
+      action-processor.ts        # Tick-by-tick execution
+      effects/                   # Completion effects by category
+        combat-effects.ts
+        social-effects.ts
+        survival-effects.ts
+        resource-effects.ts
+        build-effects.ts
+        hygiene-effects.ts
+        reproduce-effects.ts
+      types.ts                   # ActionDef, ActionTag, ActionType, IActionState
+
+    world/                       # Grid, terrain, blocks
+      world.ts                   # Slim container: grid + agents + factions + EventBus
+      grid.ts                    # Spatial data structure
+      terrain-field.ts
+      food-field.ts
+      water-field.ts
+      block-manager.ts           # Unified block lifecycle (spawn, decay, remove)
+      types.ts                   # Block interfaces
+
+    faction/                     # Faction formation and management
+      faction.ts
+      faction-manager.ts
+
+    simulation/                  # Tick orchestration (thin coordinator)
+      simulation-engine.ts       # Top-level tick: delegates to updaters
+      agent-updater.ts           # Per-agent: drain stats, check death, delegate decisions
+      world-updater.ts           # Per-tick: farms, trees, water, terrain
+      spawner.ts                 # Eggs, seedlings, clouds from water
+
+    rendering/                   # Canvas drawing
+      renderer.ts
+      camera.ts
+      emoji-cache.ts
+
+    ui/                          # DOM, inspector, controls
+      ui-manager.ts
+      input-handler.ts
+      controls.ts
+
+    persistence/                 # Save/load
+      persistence-manager.ts
+
+  main.ts                        # Entry point: creates World, wires EventBus, starts loop
 ```
 
-Each domain folder contains:
-- `index.ts` — Public API (barrel export)
-- `*.ts` — Classes, interfaces, types for that domain
-- Domain-specific documentation lives in `docs/domains/<domain-name>.md`
+Each domain folder has an `index.ts` barrel export. External code imports from the domain barrel, never from internal files.
 
-### Additional Patterns
+### Import Dependency Rules
 
-- **Factory pattern** for entity creation (agents, factions, crops)
-- **Strategy pattern** for agent decision-making (swappable behaviors)
-- **Observer/Event pattern** for decoupled logging and UI updates
-- **Value objects** for immutable data (positions, trait sets)
+```
+core/  ← imported by all, imports nothing from domains
+  ↓
+genetics/  ← pure logic, imports only core/
+  ↓
+entity/  ← imports core/, genetics/
+  ↓
+decision/  ← imports core/, entity/, action/ types only
+  ↓
+action/  ← imports core/, entity/, world/ (effects touch multiple domains)
+  ↓
+world/  ← imports core/, entity/ types
+faction/  ← imports core/, entity/ types
+  ↓
+simulation/  ← imports all above, orchestrates
+  ↓
+rendering/, ui/, persistence/  ← consumer domains (read state, subscribe to events)
+  ↓
+main.ts  ← wires everything together
+```
+
+**Rules:**
+- No circular imports. Use events or shared interfaces in `core/` to break cycles.
+- `import type` is OK across any boundary (no runtime coupling).
+- `action/effects/` modules may import from `world/` and `entity/` — they are the designated integration point.
+
+### Key Patterns
+
+- **EventBus** on `World` for cross-domain communication (agent:died, action:completed, faction:formed, etc.)
+- **Scored action selection** in `decision/` replaces if-chains (score = need-based + genetic + situational + noise)
+- **Need bands** (CRITICAL/LOW/NORMAL/HIGH/FULL) with genetic thresholds per agent
+- **Entity classes** (Baby/Adult/Elder) define available action sets and emoji maps
+- **Genome** parsed once at birth → immutable TraitSet drives all per-agent stats
+- **Action registry** with tags (combat, social, helpful, survival, etc.) for generic scoring
+- **BlockManager** unifies lifecycle for all world block types
 
 ---
 
@@ -108,39 +208,41 @@ Every change must follow this workflow:
 ### Before writing code
 
 1. **Read relevant docs first.** Before touching any domain, read its documentation in `docs/`. The doc index is at `docs/00-overview.md`.
-2. **Read the tech spec.** `tech_specs.md` contains game mechanics. If your change involves game mechanics, read the relevant section first.
-3. **Understand existing behavior** by reading the current source code in the affected domain(s).
-4. **Fix bad docs** if any docs are not up to date, make sure to update them to reflect the latest state in the code.
+2. **Read the TRD.** `genetics-trd.md` defines the target architecture. All new code must conform to it.
+3. **Read the PRD.** `genetics-prd.md` defines game mechanics. If your change involves gameplay, check it.
+4. **Understand existing behavior** by reading the current source code in the affected domain(s).
 
 ### During/after writing code
 
-4. **Update documentation.** Any change that alters behavior, adds features, or changes architecture MUST include corresponding doc updates:
+5. **Update documentation.** Any change that alters behavior, adds features, or changes architecture MUST include corresponding doc updates:
    - `docs/domains/<domain>.md` for domain-level changes
    - `tech_specs.md` for game mechanics changes
    - `docs/00-overview.md` if the change affects cross-domain structure
-5. **Keep docs and code in sync.** If code and docs disagree, update the docs.
+6. **Keep docs and code in sync.** If code and docs disagree, update the docs.
 
 ### Documentation structure
 
 ```
 docs/
   00-overview.md              # High-level architecture, domain map, quick reference
-  01-agent-structure.md        # Agent data model (legacy, migrate to domains/)
-  02-traits.md                 # Personality traits
-  03-decision-making.md        # Decision engine logic
-  04-actions.md                # Action system
-  05-social-behavior.md        # Social interactions
-  06-movement.md               # Pathfinding and movement
-  07-factions.md               # Faction mechanics
-  08-resources.md              # Energy, food, economy
-  09-combat.md                 # Combat system
-  10-reproduction.md           # Breeding mechanics
-  domains/                     # Domain-specific docs (created as domains are migrated)
-    simulation.md
-    agent.md
-    faction.md
-    world.md
+  01-agent-structure.md       # Agent data model
+  02-traits.md                # Genetics and trait system
+  03-decision-making.md       # Decision engine and action scoring
+  04-actions.md               # Action registry, tags, effects
+  05-social-behavior.md       # Social interactions
+  06-movement.md              # Pathfinding and movement
+  07-factions.md              # Faction mechanics
+  08-resources.md             # Energy, food, economy
+  09-combat.md                # Combat system
+  10-reproduction.md          # Genetics, breeding, pregnancy, family names
+  domains/                    # Domain-specific docs
+    genetics.md
+    entity.md
+    decision.md
     action.md
+    simulation.md
+    world.md
+    faction.md
     rendering.md
     ui.md
     persistence.md
@@ -148,17 +250,15 @@ docs/
 
 ---
 
-## TypeScript Migration
+## TypeScript Rules
 
-The project is migrating from vanilla JS to TypeScript. Guidelines:
-
-1. **New code** must be TypeScript (`.ts` files).
-2. **Touched files** should be converted to TypeScript when modified (rename `.js` to `.ts`, add types).
-3. **Strict mode** — `tsconfig.json` should use `"strict": true`.
-4. **No `any`** — Use proper types. If a type is complex, define an interface.
-5. **Interfaces over type aliases** for object shapes (prefer `interface Agent {}` over `type Agent = {}`).
-6. **Enums** for fixed sets (action types, log categories, agent states).
-7. **Build step** — esbuild compiles TS to JS for GitHub Pages deployment. The HTML loads the bundled output.
+1. **All code is TypeScript** (`.ts` files). No `.js` files in `src/`.
+2. **Strict mode** — `tsconfig.json` uses `"strict": true`.
+3. **No `any`** — Use proper types. If a type is complex, define an interface.
+4. **Interfaces over type aliases** for object shapes (prefer `interface Foo {}` over `type Foo = {}`).
+5. **Enums** for fixed sets (ActionType, ActionTag, NeedBand, EntityClassName).
+6. **`readonly`** on properties that shouldn't change after construction.
+7. **`import type`** for type-only imports to avoid runtime coupling.
 
 ---
 
@@ -166,27 +266,30 @@ The project is migrating from vanilla JS to TypeScript. Guidelines:
 
 ### Naming
 
-- **Classes:** PascalCase (`AgentManager`, `FactionReconciler`)
-- **Interfaces:** PascalCase with `I` prefix (`IAction`, `IRenderable`)
-- **Methods/functions:** camelCase (`findNearestCrop`, `applyDamage`)
-- **Constants:** UPPER_SNAKE_CASE (`BASE_TICK_MS`, `ENERGY_CAP`)
-- **Files:** kebab-case (`faction-manager.ts`, `decision-engine.ts`)
+- **Classes:** PascalCase (`AgentFactory`, `DecisionEngine`)
+- **Interfaces:** PascalCase with `I` prefix (`IActionState`, `IPosition`)
+- **Type aliases / Enums:** PascalCase (`ActionType`, `NeedBand`)
+- **Methods/functions:** camelCase (`expressGenome`, `crossover`)
+- **Constants:** UPPER_SNAKE_CASE (`TICK_MS`, `GRID_SIZE`)
+- **Files:** kebab-case (`gene-registry.ts`, `action-scorer.ts`)
 - **Directories:** kebab-case, matching domain names
 
 ### Structure
 
 - **Max file length:** ~300 lines. If a file exceeds this, split it.
 - **One class per file** (with exceptions for tightly coupled small classes).
-- **Barrel exports** (`index.ts`) for each domain — external code imports from the domain, not individual files.
-- **No circular dependencies** between domains. Use shared interfaces in `shared/`.
+- **Barrel exports** (`index.ts`) for each domain — external code imports from the barrel.
+- **No circular dependencies.** Use EventBus or core interfaces to break cycles.
+- **Domain types** live in `<domain>/types.ts`. Universal types live in `core/types.ts`.
 
 ### General
 
-- **No magic numbers** — Use named constants in `constants.ts` or domain-specific config.
+- **No magic numbers** — Use named constants in `core/constants.ts`, domain constants, or gene-expressed trait values.
 - **Prefer composition over inheritance.**
-- **Immutable by default** — Use `readonly` properties where possible.
-- **Pure functions** for calculations (damage, energy costs, trait effects).
-- **Side effects** only in clearly marked methods (e.g., `apply()`, `execute()`, `render()`).
+- **Immutable by default** — Use `readonly` properties. Genome and TraitSet are immutable after construction.
+- **Pure functions** for calculations (gene expression, scoring, damage formulas). No side effects.
+- **Side effects** only in clearly marked methods (`apply()`, `execute()`, `emit()`, `render()`).
+- **Per-agent values** come from `agent.traits`, not from global constants.
 
 ---
 
@@ -194,21 +297,15 @@ The project is migrating from vanilla JS to TypeScript. Guidelines:
 
 ### For all changes
 
-1. Read existing docs and relevant source code before making changes.
-2. Update docs alongside code changes.
-3. Keep changes focused — don't refactor unrelated code in the same PR.
+1. Read the TRD and PRD before making architectural or gameplay changes.
+2. Read existing docs and relevant source code before making changes.
+3. Update docs alongside code changes.
+4. Keep changes focused — don't refactor unrelated code in the same PR.
 
 ### For large/multi-file changes
 
 1. **Create a plan first** and get user approval before writing code.
 2. A change is "large" if it touches 3+ files or introduces new abstractions.
-
-### For refactoring existing code
-
-- When modifying existing JS files, convert them to TypeScript.
-- Apply OOP patterns (classes, interfaces) to replace plain objects and loose functions.
-- Maintain backward compatibility of the public API during migration (other modules that import from the refactored module should not break).
-- Update imports in all consuming files.
 
 ### Commit style
 
@@ -222,23 +319,18 @@ The project is migrating from vanilla JS to TypeScript. Guidelines:
 
 | File | Purpose |
 |------|---------|
-| `src/main.js` | Entry point, game loop, DOM wiring |
-| `src/constants.js` | All tuning values, colors, emojis |
-| `src/world.js` | Global state container |
-| `src/simulation.js` | Tick loop and agent update order |
-| `src/actions.js` | Action system (talk/attack/help/heal/etc.) |
-| `src/renderer.js` | Canvas rendering |
-| `src/ui.js` | DOM bindings, inspector, event log |
-| `tech_specs.md` | Game mechanics specification (needs updating) |
+| `src/main.ts` | Entry point, game loop, DOM wiring |
+| `src/core/constants.ts` | Truly global constants (tick rate, grid size) |
+| `src/core/event-bus.ts` | Cross-domain pub/sub communication |
+| `src/domains/genetics/genome.ts` | DNA parsing and trait expression |
+| `src/domains/genetics/gene-registry.ts` | Gene code → trait definition lookup |
+| `src/domains/entity/agent.ts` | Agent class (composed of components) |
+| `src/domains/entity/agent-factory.ts` | Agent creation with DNA |
+| `src/domains/decision/decision-engine.ts` | Scored action selection |
+| `src/domains/action/action-registry.ts` | Action definitions with tags |
+| `src/domains/action/action-processor.ts` | Action execution state machine |
+| `src/domains/simulation/simulation-engine.ts` | Tick loop orchestration |
+| `src/domains/world/world.ts` | State container (grid + agents + factions + EventBus) |
+| `genetics-prd.md` | Product requirements document |
+| `genetics-trd.md` | Technical requirements document |
 | `docs/00-overview.md` | Architecture overview and doc index |
-
----
-
-## Known Technical Debt
-
-- `tech_specs.md` is out of date — update it when touching related mechanics.
-- No TypeScript yet — migration is in progress.
-- No automated tests — manual play-testing for now.
-- `World` is a plain object acting as a god-object — should be decomposed into domain-specific state.
-- Action selection logic in `simulation.js` uses nested conditionals — should become strategy pattern.
-- No event bus — UI updates are tightly coupled to simulation. Introduce observer pattern.

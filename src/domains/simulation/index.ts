@@ -1,2 +1,4 @@
 export { SimulationEngine } from './simulation-engine';
-export { RoamingStrategy } from './roaming';
+export { AgentUpdater } from './agent-updater';
+export { Spawner } from './spawner';
+export { WorldUpdater } from './world-updater';
