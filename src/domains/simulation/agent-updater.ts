@@ -873,7 +873,8 @@ export class AgentUpdater {
       cx, cy,
       preg.childDna,
       preg.childFamilyName ?? agent.familyName,
-      preg.childFactionId
+      preg.childFactionId,
+      agent.generation
     );
 
     world.agents.push(child);
@@ -883,7 +884,7 @@ export class AgentUpdater {
     world.birthTimestamps.push(performance.now());
 
     // Register with family registry
-    world.familyRegistry.registerBirth(child.familyName);
+    world.familyRegistry.registerBirth(child.familyName, child.generation);
 
     // Set up parent-child relationships (mutual high bond)
     const parentBond = 0.8;

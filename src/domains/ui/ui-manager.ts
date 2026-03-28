@@ -621,7 +621,7 @@ export class UIManager {
         <div style="color:var(--muted)">POSITION</div><div>${a.cellX}, ${a.cellY}</div>
         <div style="color:var(--muted)">XP</div><div>${a.xp} / ${a.xpToNextLevel()}</div>
         <div style="color:var(--muted)">AGE</div><div>${(a.ageTicks * TICK_MS / 1000).toFixed(0)}s / ${(a.maxAgeTicks * TICK_MS / 1000).toFixed(0)}s</div>
-        <div style="color:var(--muted)">FAMILY</div><div>${a.familyName}</div>
+        <div style="color:var(--muted)">FAMILY</div><div>${a.familyName} <span style="color:var(--muted)">(Gen ${a.generation})</span></div>
         <div style="color:var(--muted)">DNA</div><div>${a.genome.genes.length} genes (${a.genome.dna.length} chars)</div>
       </div>
       <div style="font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border)">

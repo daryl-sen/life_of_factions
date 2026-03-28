@@ -51,6 +51,9 @@ export class Agent {
   lockMsRemaining: number;
   _underAttack: boolean;
 
+  // Lineage
+  generation: number;
+
   // Legacy fields
   poopTimerMs: number;
   babyMsRemaining: number;
@@ -123,6 +126,9 @@ export class Agent {
     this.action = opts.action ?? null;
     this.lockMsRemaining = opts.lockMsRemaining ?? 0;
     this._underAttack = false;
+
+    // Lineage
+    this.generation = opts.generation ?? 1;
 
     // Legacy
     this.poopTimerMs = opts.poopTimerMs ?? 0;

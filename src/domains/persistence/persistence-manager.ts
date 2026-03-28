@@ -63,6 +63,7 @@ export class PersistenceManager {
       diseased: a.diseased,
       babyMsRemaining: a.babyMsRemaining,
       maxAgeTicks: a.maxAgeTicks,
+      generation: a.generation,
       pregnancy: a.pregnancy.active ? {
         remainingMs: a.pregnancy.remainingMs,
         childDna: a.pregnancy.childDna,
@@ -301,6 +302,7 @@ export class PersistenceManager {
         diseased: a.diseased ?? false,
         babyMsRemaining: a.babyMsRemaining ?? 0,
         maxAgeTicks: a.maxAgeTicks,
+        generation: a.generation ?? 1,
       });
       // Restore pregnancy state
       if (a.pregnancy && a.pregnancy.childDna) {
