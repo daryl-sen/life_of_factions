@@ -35,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const canvas = dom.canvas;
   const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true })!;
   const factionsList = dom.factionsList;
+  const familiesList = dom.familiesList;
 
   // Camera
   const camera = new Camera();
@@ -173,6 +174,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
     UIManager.rebuildFactionsListIfNeeded(world, factionsList);
+    UIManager.rebuildFamiliesListIfNeeded(world, familiesList);
 
     // Update sidebar play button icon
     if (sidebarPlay) {
