@@ -34,6 +34,13 @@ export class InputHandler {
     let painting = false;
     let lastPaintKey: string | null = null;
 
+    // Touch-specific state for single-finger pan
+    let activeTouchCount = 0;
+    let isTouchDrag = false;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    const TOUCH_DRAG_THRESHOLD = 8;
+
     function paintAtEvent(e: PointerEvent | MouseEvent) {
       const rect = canvas.getBoundingClientRect();
       const sx = (e.clientX - rect.left) * (canvas.width / rect.width);
@@ -92,6 +99,21 @@ export class InputHandler {
 
     canvas.addEventListener('pointerdown', (e) => {
       canvas.setPointerCapture(e.pointerId);
+
+      if (e.pointerType === 'touch') {
+        activeTouchCount++;
+        // Single-finger touch: prepare for pan (with drag threshold for tap detection)
+        if (activeTouchCount === 1 && world.paintMode === 'none') {
+          dragging = true;
+          isTouchDrag = false;
+          touchStartX = e.clientX;
+          touchStartY = e.clientY;
+          lastX = e.clientX;
+          lastY = e.clientY;
+          return;
+        }
+      }
+
       setAllowDrag(e);
       if (allowDrag) {
         dragging = true;
@@ -105,6 +127,29 @@ export class InputHandler {
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     canvas.addEventListener('pointermove', (e) => {
+      // Multi-touch: let the touch events handle zoom+pan
+      if (e.pointerType === 'touch' && activeTouchCount >= 2) {
+        dragging = false;
+        return;
+      }
+
+      // Single-finger touch pan
+      if (e.pointerType === 'touch' && dragging && world.paintMode === 'none') {
+        if (!isTouchDrag) {
+          const totalDx = e.clientX - touchStartX;
+          const totalDy = e.clientY - touchStartY;
+          if (Math.hypot(totalDx, totalDy) > TOUCH_DRAG_THRESHOLD) {
+            isTouchDrag = true;
+          }
+        }
+        if (isTouchDrag) {
+          camera.panBy(-(e.clientX - lastX), -(e.clientY - lastY));
+        }
+        lastX = e.clientX;
+        lastY = e.clientY;
+        return;
+      }
+
       setAllowDrag(e);
       if (dragging && allowDrag) {
         const dx = e.clientX - lastX;
@@ -116,7 +161,10 @@ export class InputHandler {
         paintAtEvent(e);
       }
     });
-    canvas.addEventListener('pointerup', () => {
+    canvas.addEventListener('pointerup', (e) => {
+      if (e.pointerType === 'touch') {
+        activeTouchCount = Math.max(0, activeTouchCount - 1);
+      }
       dragging = false;
       painting = false;
       lastPaintKey = null;
@@ -192,6 +240,8 @@ export class InputHandler {
 
     // Agent selection & replenish tool
     canvas.addEventListener('click', (e) => {
+      // Suppress click after a touch drag (tap = select, drag = pan)
+      if (isTouchDrag) { isTouchDrag = false; return; }
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
       const scaleY = canvas.height / rect.height;
