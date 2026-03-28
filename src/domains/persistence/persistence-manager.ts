@@ -68,6 +68,7 @@ export class PersistenceManager {
         childDna: a.pregnancy.childDna,
         childFamilyName: a.pregnancy.childFamilyName,
         childFactionId: a.pregnancy.childFactionId,
+        partnerId: a.pregnancy.partnerId,
       } : null,
     }));
     return {
@@ -307,7 +308,8 @@ export class PersistenceManager {
           a.pregnancy.childDna,
           a.pregnancy.remainingMs ?? 0,
           a.pregnancy.childFamilyName ?? agent.familyName,
-          a.pregnancy.childFactionId ?? null
+          a.pregnancy.childFactionId ?? null,
+          a.pregnancy.partnerId ?? null
         );
       }
 

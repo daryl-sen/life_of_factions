@@ -885,6 +885,18 @@ export class AgentUpdater {
     // Register with family registry
     world.familyRegistry.registerBirth(child.familyName);
 
+    // Set up parent-child relationships (mutual high bond)
+    const parentBond = 0.8;
+    child.relationships.set(agent.id, parentBond);
+    agent.relationships.adjust(child.id, parentBond);
+    if (preg.partnerId) {
+      const partner = world.agentsById.get(preg.partnerId);
+      if (partner) {
+        child.relationships.set(preg.partnerId, parentBond);
+        partner.relationships.adjust(child.id, parentBond);
+      }
+    }
+
     // Inherit faction membership
     if (child.factionId) {
       const faction = world.factions.get(child.factionId);
@@ -894,7 +906,7 @@ export class AgentUpdater {
     world.events.emit('agent:born', {
       child,
       parent1Id: agent.id,
-      parent2Id: null,
+      parent2Id: preg.partnerId,
     });
     world.events.emit('pregnancy:birth', {
       parentId: agent.id,
