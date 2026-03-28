@@ -1074,6 +1074,16 @@
           <button class="panel-close btn-close-panel" title="Close">&times;</button>
         </div>
         <div class="panel-body">
+          <div style="margin-bottom:8px;display:flex;align-items:center;gap:8px">
+            <span class="param-label" style="font-size:10px">SORT BY</span>
+            <select id="familySort" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11px;outline:none">
+              <option value="alive">Alive</option>
+              <option value="total">Total Born</option>
+              <option value="name">Name</option>
+              <option value="lifespan">Avg Lifespan</option>
+              <option value="generation">Generation</option>
+            </select>
+          </div>
           <div id="familiesList" class="factions-wrap"></div>
         </div>
       </div>

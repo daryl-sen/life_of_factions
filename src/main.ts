@@ -69,6 +69,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Family sort dropdown
+  if (dom.familySortEl) {
+    dom.familySortEl.addEventListener('change', () => {
+      world.familySort = dom.familySortEl!.value as 'alive' | 'total' | 'name' | 'lifespan' | 'generation';
+      UIManager._lastFamiliesSig = ''; // force rebuild
+    });
+  }
+
   // Sidebar play button
   const sidebarPlay = document.getElementById('sidebarPlay');
   if (sidebarPlay) {

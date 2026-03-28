@@ -151,6 +151,7 @@ export interface DomRefs {
   pauseChk: HTMLInputElement | null;
   gridChk: HTMLInputElement | null;
   factionSortEl: HTMLSelectElement | null;
+  familySortEl: HTMLSelectElement | null;
 }
 
 export class UIManager {
@@ -225,6 +226,7 @@ export class UIManager {
       pauseChk: qs('#cbPauseOnBlur') as HTMLInputElement | null,
       gridChk: qs('#cbDrawGrid') as HTMLInputElement | null,
       factionSortEl: qs('#factionSort') as HTMLSelectElement | null,
+      familySortEl: qs('#familySort') as HTMLSelectElement | null,
     };
   }
 
@@ -432,14 +434,14 @@ export class UIManager {
     }
   }
 
-  private static _lastFamiliesSig = '';
+  static _lastFamiliesSig = '';
   private static _lastFamiliesDomAt = 0;
 
   static rebuildFamiliesListIfNeeded(world: World, familiesList: HTMLElement | null): void {
     if (!familiesList) return;
     const now = performance.now();
     const families = world.familyRegistry.getAllFamilies();
-    const sig = families.map(f => f.familyName + ':' + f.currentlyAlive + ':' + f.totalBorn).join(',');
+    const sig = world.familySort + '|' + families.map(f => f.familyName + ':' + f.currentlyAlive + ':' + f.totalBorn).join(',');
     if (sig === UIManager._lastFamiliesSig && now - UIManager._lastFamiliesDomAt < 2000) return;
 
     familiesList.innerHTML = '';
@@ -451,8 +453,31 @@ export class UIManager {
       return;
     }
 
+    // Sort
+    switch (world.familySort) {
+      case 'alive':
+        families.sort((a, b) => b.currentlyAlive - a.currentlyAlive);
+        break;
+      case 'total':
+        families.sort((a, b) => b.totalBorn - a.totalBorn);
+        break;
+      case 'name':
+        families.sort((a, b) => a.familyName.localeCompare(b.familyName));
+        break;
+      case 'lifespan':
+        families.sort((a, b) => {
+          const aAvg = a.deathCount > 0 ? a.totalAgeMs / a.deathCount : 0;
+          const bAvg = b.deathCount > 0 ? b.totalAgeMs / b.deathCount : 0;
+          return bAvg - aAvg;
+        });
+        break;
+      case 'generation':
+        families.sort((a, b) => b.maxGeneration - a.maxGeneration);
+        break;
+    }
+
     for (const f of families) {
-      const avgLife = f.deathCount > 0 ? (f.totalAgeMs / f.deathCount / 1000).toFixed(0) + 's' : '—';
+      const avgLife = f.deathCount > 0 ? (f.totalAgeMs / f.deathCount / 1000).toFixed(0) + 's' : '\u2014';
       const div = document.createElement('div');
       div.className = 'faction-item';
       div.innerHTML = `
