@@ -722,7 +722,8 @@ export class AgentUpdater {
                 tryStartAction(agent,candidate.actionType, { targetPos: candidate.targetPos });
               }
             } else {
-              tryStartAction(agent,candidate.actionType);
+              const payload = candidate.resourceType ? { resourceType: candidate.resourceType } : undefined;
+              tryStartAction(agent,candidate.actionType, payload);
             }
           }
 
