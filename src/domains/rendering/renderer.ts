@@ -104,9 +104,11 @@ export class Renderer {
     this._drawFlags(ctx, world, vb, lod);
 
     const pendingAttackLines: [Agent, Agent][] = [];
-    this._drawAgents(ctx, world, pendingAttackLines, vb);
+    const pendingHarvestLines: [Agent, { x: number; y: number }][] = [];
+    this._drawAgents(ctx, world, pendingAttackLines, pendingHarvestLines, vb);
     this._drawDeadMarkers(ctx, world, vb, lod);
     this._drawAttackLines(ctx, camera, pendingAttackLines);
+    this._drawHarvestLines(ctx, pendingHarvestLines);
     this._drawSelectedAgentPath(ctx, world);
 
     this._drawClouds(ctx, world, camera, vb, lod);
@@ -475,7 +477,7 @@ export class Renderer {
     return `hsl(${hue}, 85%, 50%)`;
   }
 
-  private _drawAgents(ctx: CanvasRenderingContext2D, world: World, attackLines: [Agent, Agent][], vb: ViewBounds): void {
+  private _drawAgents(ctx: CanvasRenderingContext2D, world: World, attackLines: [Agent, Agent][], harvestLines: [Agent, { x: number; y: number }][], vb: ViewBounds): void {
     const now = performance.now();
     for (const agent of world.agents) {
       if (!this._inView(agent.cellX, agent.cellY, vb) &&
@@ -538,6 +540,18 @@ export class Renderer {
       this._drawAgentEmoji(ctx, x, y, CELL_PX / 2 - 3, ringColor, emoji);
       ctx.restore();
 
+      // Pregnancy visual: egg above head
+      if (agent.pregnancy.active) {
+        const { canvas: eggC, w: ew, h: eh } = this._emojiCache.get('\u{1F95A}'); // 🥚
+        const eggSize = CELL_PX / 2.5;
+        const eScale = Math.min(eggSize / ew, eggSize / eh);
+        const edw = ew * eScale;
+        const edh = eh * eScale;
+        // Bob gently up and down
+        const bob = Math.sin(performance.now() * 0.004) * 1.5;
+        ctx.drawImage(eggC, x + (CELL_PX - edw) / 2, y - edh + bob, edw, edh);
+      }
+
       if (agent.factionId) {
         const faction = world.factions.get(agent.factionId);
         if (faction) {
@@ -553,6 +567,10 @@ export class Renderer {
       if (agent.action?.type === 'attack' && agent.action.payload?.targetId) {
         const t2 = world.agentsById.get(agent.action.payload.targetId);
         if (t2) attackLines.push([agent, t2]);
+      }
+
+      if (agent.action?.type === 'harvest' && agent.action.payload?.targetPos) {
+        harvestLines.push([agent, agent.action.payload.targetPos]);
       }
 
       if (world.selectedId === agent.id) this._drawStar(ctx, x + CELL_PX / 2, y - 16);
@@ -661,6 +679,37 @@ export class Renderer {
 
       ctx.save();
       ctx.globalAlpha = 0.9;
+      ctx.translate(mx, my);
+      ctx.rotate(angle);
+      ctx.drawImage(ec, -dw / 2, -dh / 2, dw, dh);
+      ctx.restore();
+    }
+  }
+
+  // --- Harvest lines ---
+
+  private _drawHarvestLines(ctx: CanvasRenderingContext2D, lines: [Agent, { x: number; y: number }][]): void {
+    if (lines.length === 0) return;
+    const handEmoji = '\u{1F91A}'; // 🤚
+    const { canvas: ec, w, h } = this._emojiCache.get(handEmoji);
+    const handSize = CELL_PX - 4;
+    const scale = Math.min(handSize / w, handSize / h);
+    const dw = w * scale;
+    const dh = h * scale;
+
+    for (const [agent, targetPos] of lines) {
+      const at = agent.lerpT != null ? agent.lerpT : 1;
+      const ax = ((agent.prevCellX ?? agent.cellX) + (agent.cellX - (agent.prevCellX ?? agent.cellX)) * at) * CELL_PX + CELL_PX / 2;
+      const ay = ((agent.prevCellY ?? agent.cellY) + (agent.cellY - (agent.prevCellY ?? agent.cellY)) * at) * CELL_PX + CELL_PX / 2;
+      const tx = targetPos.x * CELL_PX + CELL_PX / 2;
+      const ty = targetPos.y * CELL_PX + CELL_PX / 2;
+
+      const mx = (ax + tx) / 2;
+      const my = (ay + ty) / 2;
+      const angle = Math.atan2(ty - ay, tx - ax) + Math.PI / 2;
+
+      ctx.save();
+      ctx.globalAlpha = 0.85;
       ctx.translate(mx, my);
       ctx.rotate(angle);
       ctx.drawImage(ec, -dw / 2, -dh / 2, dw, dh);

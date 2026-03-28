@@ -4,6 +4,7 @@ import { key, manhattan, rndi, log } from '../../core/utils';
 import { findPath, findNearest, planPath } from '../../core/pathfinding';
 import type { World } from '../world/world';
 import type { Agent } from '../entity/agent';
+import { AgentFactory } from '../entity/agent-factory';
 import { FoodField } from '../world/food-field';
 import { WaterField } from '../world/water-field';
 import { ActionFactory } from '../action/action-factory';
@@ -537,9 +538,9 @@ export class AgentUpdater {
   static update(world: World, agent: Agent): void {
     agent.ageTicks++;
 
-    // Passive drains
+    // Passive drains (pregnancy increases fullness decay by 50%)
     agent.energy -= PASSIVE_ENERGY_DRAIN;
-    agent.drainFullness(FULLNESS_PASSIVE_DECAY);
+    agent.drainFullness(FULLNESS_PASSIVE_DECAY * agent.fullnessDecayMult);
     agent.inspiration = Math.max(0, agent.inspiration - INSPIRATION_PASSIVE_DECAY);
     agent.social = Math.max(0, agent.social - SOCIAL_PASSIVE_DECAY);
 
@@ -552,6 +553,14 @@ export class AgentUpdater {
     // Baby timer
     if (agent.babyMsRemaining > 0) {
       agent.babyMsRemaining = Math.max(0, agent.babyMsRemaining - TICK_MS);
+    }
+
+    // Pregnancy timer
+    if (agent.pregnancy.active) {
+      const birth = agent.pregnancy.tick(TICK_MS);
+      if (birth) {
+        AgentUpdater._handleBirth(world, agent);
+      }
     }
 
     // Cancel non-essential actions when energy is low
@@ -570,6 +579,15 @@ export class AgentUpdater {
         agent.action.type !== 'play' &&
         agent.action.type !== 'build_farm'
       ) {
+        agent.action = null;
+      }
+    }
+
+    // ── Courage-based flee interrupt ──
+    // If under attack and HP drops below courage threshold, cancel current action to flee
+    if (agent._underAttack && agent.action) {
+      const hpRatio = agent.maxHealth > 0 ? agent.health / agent.maxHealth : 1;
+      if (hpRatio < agent.traits.courage.fleeHpRatio) {
         agent.action = null;
       }
     }
@@ -835,5 +853,77 @@ export class AgentUpdater {
     if (agent.fullness > FULLNESS_REGEN_THRESHOLD) {
       agent.healBy((REGEN_HP_PER_SEC * TICK_MS) / 1000);
     }
+  }
+
+  /** Handle birth when pregnancy completes */
+  private static _handleBirth(world: World, agent: Agent): void {
+    const preg = agent.pregnancy;
+    if (!preg.childDna) {
+      preg.clear();
+      return;
+    }
+
+    // Find adjacent free cell for child
+    const spots: [number, number][] = [
+      [agent.cellX + 1, agent.cellY],
+      [agent.cellX - 1, agent.cellY],
+      [agent.cellX, agent.cellY + 1],
+      [agent.cellX, agent.cellY - 1],
+    ];
+    const free = spots.find(([x, y]) => !world.grid.isBlocked(x, y));
+    if (!free) {
+      // No space — delay birth by one tick
+      preg.remainingMs = 0;
+      return;
+    }
+
+    const [cx, cy] = free;
+    const child = AgentFactory.createChild(
+      cx, cy,
+      preg.childDna,
+      preg.childFamilyName ?? agent.familyName,
+      preg.childFactionId,
+      agent.generation
+    );
+
+    world.agents.push(child);
+    world.agentsById.set(child.id, child);
+    world.agentsByCell.set(key(cx, cy), child.id);
+    world.totalBirths++;
+    world.birthTimestamps.push(performance.now());
+
+    // Register with family registry
+    world.familyRegistry.registerBirth(child.familyName, child.generation);
+
+    // Set up parent-child relationships (mutual high bond)
+    const parentBond = 0.8;
+    child.relationships.set(agent.id, parentBond);
+    agent.relationships.adjust(child.id, parentBond);
+    if (preg.partnerId) {
+      const partner = world.agentsById.get(preg.partnerId);
+      if (partner) {
+        child.relationships.set(preg.partnerId, parentBond);
+        partner.relationships.adjust(child.id, parentBond);
+      }
+    }
+
+    // Inherit faction membership
+    if (child.factionId) {
+      const faction = world.factions.get(child.factionId);
+      if (faction) faction.members.add(child.id);
+    }
+
+    world.events.emit('agent:born', {
+      child,
+      parent1Id: agent.id,
+      parent2Id: preg.partnerId,
+    });
+    world.events.emit('pregnancy:birth', {
+      parentId: agent.id,
+      childId: child.id,
+    });
+
+    log(world, 'reproduce', `${agent.name} gave birth to ${child.name} ${child.familyName}`, agent.id, { childId: child.id });
+    preg.clear();
   }
 }

@@ -6,7 +6,7 @@ import { Agent } from '../entity/agent';
 import { Genome } from '../genetics';
 import { Faction, FactionManager } from '../faction';
 
-const VERSION = '4.0.0';
+const VERSION = '4.1.0';
 
 // Inlined TUNE constants
 const FARM_MAX_SPAWNS = 12;
@@ -63,6 +63,14 @@ export class PersistenceManager {
       diseased: a.diseased,
       babyMsRemaining: a.babyMsRemaining,
       maxAgeTicks: a.maxAgeTicks,
+      generation: a.generation,
+      pregnancy: a.pregnancy.active ? {
+        remainingMs: a.pregnancy.remainingMs,
+        childDna: a.pregnancy.childDna,
+        childFamilyName: a.pregnancy.childFamilyName,
+        childFactionId: a.pregnancy.childFactionId,
+        partnerId: a.pregnancy.partnerId,
+      } : null,
     }));
     return {
       meta: { version: VERSION, savedAt: Date.now() },
@@ -294,10 +302,25 @@ export class PersistenceManager {
         diseased: a.diseased ?? false,
         babyMsRemaining: a.babyMsRemaining ?? 0,
         maxAgeTicks: a.maxAgeTicks,
+        generation: a.generation ?? 1,
       });
+      // Restore pregnancy state
+      if (a.pregnancy && a.pregnancy.childDna) {
+        agent.pregnancy.start(
+          a.pregnancy.childDna,
+          a.pregnancy.remainingMs ?? 0,
+          a.pregnancy.childFamilyName ?? agent.familyName,
+          a.pregnancy.childFactionId ?? null,
+          a.pregnancy.partnerId ?? null
+        );
+      }
+
       world.agents.push(agent);
       world.agentsById.set(agent.id, agent);
       world.agentsByCell.set(key(agent.cellX, agent.cellY), agent.id);
+
+      // Register in family registry
+      world.familyRegistry.registerBirth(agent.familyName);
     }
 
     FactionManager.reconcile(world);

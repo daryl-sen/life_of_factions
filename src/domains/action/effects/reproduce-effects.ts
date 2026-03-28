@@ -65,7 +65,7 @@ export function onReproduceComplete(world: World, agent: Agent, target: Agent | 
   // Start pregnancy on the initiator
   const babyDuration = childGenome.traits.maturity.babyDurationMs;
   const pregnancyDuration = babyDuration * 0.5;
-  agent.pregnancy.start(childDna, pregnancyDuration, familyName, factionId);
+  agent.pregnancy.start(childDna, pregnancyDuration, familyName, factionId, target.id);
 
   world.events.emit('pregnancy:started', { agentId: agent.id, duration: pregnancyDuration });
   log(world, 'reproduce', `${agent.name} & ${target.name} are expecting`, agent.id, { targetId: target.id });

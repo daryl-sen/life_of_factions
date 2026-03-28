@@ -53,6 +53,7 @@ export class World {
   pauseOnBlur = false;
   drawGrid = false;
   factionSort: 'members' | 'created' | 'name' | 'level' = 'members';
+  familySort: 'alive' | 'total' | 'name' | 'lifespan' | 'generation' = 'alive';
   starredStats: string[] = ['agents', 'factions', 'crops'];
 
   // Pathfinding budget

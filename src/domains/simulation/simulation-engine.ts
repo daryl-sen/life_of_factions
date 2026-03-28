@@ -104,6 +104,10 @@ export class SimulationEngine {
         world.totalDeaths++;
         world.deathTimestamps.push(now);
 
+        // Register death in family registry
+        const ageMs = a.ageTicks * TICK_MS;
+        world.familyRegistry.registerDeath(a.familyName, ageMs);
+
         let cause: DeathCause = 'killed';
         if (a.ageTicks >= a.maxAgeTicks) {
           cause = 'old_age';

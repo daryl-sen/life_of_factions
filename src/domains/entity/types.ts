@@ -44,4 +44,5 @@ export interface AgentOpts {
   diseased?: boolean;
   babyMsRemaining?: number;
   entityClass?: EntityClassName;
+  generation?: number;
 }

@@ -1,10 +1,46 @@
-import { LOG_CATS, AGENT_EMOJIS } from '../../core/constants';
+import { LOG_CATS, AGENT_EMOJIS, TICK_MS } from '../../core/constants';
 import { getIdleEmoji } from '../../core/utils';
 import type { LogCategory } from '../action/types';
 import type { World } from '../world';
 import type { Agent } from '../entity/agent';
+import { GENE_REGISTRY } from '../genetics/gene-registry';
 
 const PAGE_LOAD_TIME = Date.now() - performance.now();
+
+/**
+ * Color-code a trait value based on where it falls in the [min, max] range.
+ * Red = 2+ SD below midpoint, Yellow = 1 SD below, normal = within 1 SD,
+ * Green = 1 SD above, Blue = 2+ SD above.
+ * SD = (max - min) / 4 (so the full range spans ~4 SD).
+ */
+function traitColor(value: number, min: number, max: number, inverted: boolean): string {
+  const mid = (min + max) / 2;
+  const sd = (max - min) / 4;
+  if (sd === 0) return 'inherit';
+  // For inverted traits (lower value = better), flip the interpretation
+  const effective = inverted ? -(value - mid) : (value - mid);
+  const deviations = effective / sd;
+  if (deviations <= -2) return '#ef4444';   // red
+  if (deviations <= -1) return '#eab308';   // yellow
+  if (deviations >= 2)  return '#3b82f6';   // blue
+  if (deviations >= 1)  return '#22c55e';   // green
+  return 'inherit';                          // normal
+}
+
+/** Look up the first component's min/max/inverted for a gene code */
+function traitRange(geneCode: string): { min: number; max: number; inverted: boolean } {
+  const def = GENE_REGISTRY.get(geneCode);
+  if (!def || def.components.length === 0) return { min: 0, max: 1, inverted: false };
+  const c = def.components[0];
+  return { min: c.min, max: c.max, inverted: c.inverted };
+}
+
+/** Format a trait cell with color coding and tooltip */
+function traitCell(label: string, value: string, numValue: number, geneCode: string, tooltip: string): string {
+  const { min, max, inverted } = traitRange(geneCode);
+  const color = traitColor(numValue, min, max, inverted);
+  return `<div title="${tooltip}" style="color:${color};cursor:help">${label} ${value}</div>`;
+}
 
 function qs(sel: string): HTMLElement | null {
   return document.querySelector(sel);
@@ -108,12 +144,14 @@ export interface DomRefs {
     barCrops: HTMLElement | null;
   };
   factionsList: HTMLElement | null;
+  familiesList: HTMLElement | null;
   inspector: HTMLElement | null;
   logList: HTMLElement | null;
   logFilters: HTMLElement | null;
   pauseChk: HTMLInputElement | null;
   gridChk: HTMLInputElement | null;
   factionSortEl: HTMLSelectElement | null;
+  familySortEl: HTMLSelectElement | null;
 }
 
 export class UIManager {
@@ -181,12 +219,14 @@ export class UIManager {
         barCrops: qs('#barCrops'),
       },
       factionsList: qs('#factionsList'),
+      familiesList: qs('#familiesList'),
       inspector: qs('#inspector'),
       logList: qs('#logList'),
       logFilters: qs('#logFilters'),
       pauseChk: qs('#cbPauseOnBlur') as HTMLInputElement | null,
       gridChk: qs('#cbDrawGrid') as HTMLInputElement | null,
       factionSortEl: qs('#factionSort') as HTMLSelectElement | null,
+      familySortEl: qs('#familySort') as HTMLSelectElement | null,
     };
   }
 
@@ -394,6 +434,68 @@ export class UIManager {
     }
   }
 
+  static _lastFamiliesSig = '';
+  private static _lastFamiliesDomAt = 0;
+
+  static rebuildFamiliesListIfNeeded(world: World, familiesList: HTMLElement | null): void {
+    if (!familiesList) return;
+    const now = performance.now();
+    const families = world.familyRegistry.getAllFamilies();
+    const sig = world.familySort + '|' + families.map(f => f.familyName + ':' + f.currentlyAlive + ':' + f.totalBorn).join(',');
+    if (sig === UIManager._lastFamiliesSig && now - UIManager._lastFamiliesDomAt < 2000) return;
+
+    familiesList.innerHTML = '';
+
+    if (families.length === 0) {
+      familiesList.innerHTML = '<div style="color:var(--muted);font-size:11px">No families recorded yet.</div>';
+      UIManager._lastFamiliesSig = sig;
+      UIManager._lastFamiliesDomAt = now;
+      return;
+    }
+
+    // Sort
+    switch (world.familySort) {
+      case 'alive':
+        families.sort((a, b) => b.currentlyAlive - a.currentlyAlive);
+        break;
+      case 'total':
+        families.sort((a, b) => b.totalBorn - a.totalBorn);
+        break;
+      case 'name':
+        families.sort((a, b) => a.familyName.localeCompare(b.familyName));
+        break;
+      case 'lifespan':
+        families.sort((a, b) => {
+          const aAvg = a.deathCount > 0 ? a.totalAgeMs / a.deathCount : 0;
+          const bAvg = b.deathCount > 0 ? b.totalAgeMs / b.deathCount : 0;
+          return bAvg - aAvg;
+        });
+        break;
+      case 'generation':
+        families.sort((a, b) => b.maxGeneration - a.maxGeneration);
+        break;
+    }
+
+    for (const f of families) {
+      const avgLife = f.deathCount > 0 ? (f.totalAgeMs / f.deathCount / 1000).toFixed(0) + 's' : '\u2014';
+      const div = document.createElement('div');
+      div.className = 'faction-item';
+      div.innerHTML = `
+        <span class="faction-name" style="min-width:70px">${f.familyName}</span>
+        <span class="faction-detail">
+          \u{1F464} ${f.currentlyAlive} alive &middot;
+          \u{1F4CA} ${f.totalBorn} total &middot;
+          \u{23F1}\u{FE0F} ${avgLife} avg &middot;
+          Gen ${f.maxGeneration}
+        </span>
+      `;
+      familiesList.appendChild(div);
+    }
+
+    UIManager._lastFamiliesSig = sig;
+    UIManager._lastFamiliesDomAt = now;
+  }
+
   static updateInspector(world: World, el: HTMLElement | null): void {
     if (!el) return;
     const badge = qs('#inspectorBadge');
@@ -423,16 +525,24 @@ export class UIManager {
         <div class="agent-avatar">${emoji}</div>
         <div class="agent-info">
           <div class="agent-name-row">
-            <span class="agent-name">${a.name}</span>
+            <span class="agent-name">${a.name} ${a.familyName !== a.name ? a.familyName : ''}</span>
             <span class="agent-level">LV. ${String(a.level).padStart(2, '0')}</span>
           </div>
           <div class="agent-badges">
+            ${a.entityClass !== 'adult'
+              ? `<span class="badge-action" style="background:#fbbf2422;color:#fbbf24;border-color:#fbbf2455">${a.entityClass.toUpperCase()}</span>`
+              : ''
+            }
             ${a.factionId
               ? `<span class="badge-faction" style="background:${factionColor}22;color:${factionColor};border-color:${factionColor}55">${a.factionId.slice(0, 8).toUpperCase()}</span>`
               : ''
             }
+            ${a.pregnancy.active
+              ? `<span class="badge-action" style="background:#f9a8d422;color:#f9a8d4;border-color:#f9a8d455">\u{1F95A} PREGNANT</span>`
+              : ''
+            }
             ${a.diseased
-              ? `<span class="badge-action" style="background:#4ade8022;color:#4ade80;border-color:#4ade8055">🤢 DISEASED</span>`
+              ? `<span class="badge-action" style="background:#4ade8022;color:#4ade80;border-color:#4ade8055">\u{1F922} DISEASED</span>`
               : ''
             }
             ${actionType
@@ -509,18 +619,64 @@ export class UIManager {
       </div>
       <div class="agent-details" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border)">
         <div style="color:var(--muted)">POSITION</div><div>${a.cellX}, ${a.cellY}</div>
-        <div style="color:var(--muted)">ATTACK</div><div>${a.attack.toFixed(1)}</div>
         <div style="color:var(--muted)">XP</div><div>${a.xp} / ${a.xpToNextLevel()}</div>
-        <div style="color:var(--muted)">AGE</div><div>${a.ageTicks} ticks</div>
+        <div style="color:var(--muted)">AGE</div><div>${(a.ageTicks * TICK_MS / 1000).toFixed(0)}s / ${(a.maxAgeTicks * TICK_MS / 1000).toFixed(0)}s</div>
+        <div style="color:var(--muted)">FAMILY</div><div>${a.familyName} <span style="color:var(--muted)">(Gen ${a.generation})</span></div>
+        <div style="color:var(--muted)">DNA</div><div>${a.genome.genes.length} genes (${a.genome.dna.length} chars)</div>
+      </div>
+      <div style="font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border)">
+        <div style="color:var(--muted);margin-bottom:4px;font-weight:600">TRAITS</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;font-size:10px">
+          ${traitCell('STR', a.traits.strength.baseAttack.toFixed(1), a.traits.strength.baseAttack, 'AA', 'Strength — Base attack damage')}
+          ${traitCell('RES', a.traits.resilience.baseMaxHp.toFixed(0), a.traits.resilience.baseMaxHp, 'EE', 'Resilience — Base max health')}
+          ${traitCell('VIG', a.traits.vigor.baseMaxEnergy.toFixed(0), a.traits.vigor.baseMaxEnergy, 'CC', 'Vigor — Base max energy')}
+          ${traitCell('LON', (a.traits.longevity.maxAgeMs / 1000).toFixed(0) + 's', a.traits.longevity.maxAgeMs, 'BB', 'Longevity — Max lifespan')}
+          ${traitCell('AGI', a.traits.agility.speedMult.toFixed(2) + 'x', a.traits.agility.speedMult, 'GG', 'Agility — Movement speed multiplier')}
+          ${traitCell('MET', a.traits.metabolism.fullnessDecay.toFixed(3), a.traits.metabolism.fullnessDecay, 'DD', 'Metabolism — Fullness decay rate (lower = slower hunger)')}
+          ${traitCell('AGG', a.traits.aggression.baseProbability.toFixed(2), a.traits.aggression.baseProbability, 'JJ', 'Aggression — Likelihood to attack')}
+          ${traitCell('COP', a.traits.cooperation.baseProbability.toFixed(2), a.traits.cooperation.baseProbability, 'II', 'Cooperation — Likelihood to help/heal/share')}
+          ${traitCell('CRG', a.traits.courage.fleeHpRatio.toFixed(2), a.traits.courage.fleeHpRatio, 'KK', 'Courage — Flee HP threshold (lower = braver)')}
+          ${traitCell('FER', a.traits.fertility.energyThreshold.toFixed(0), a.traits.fertility.energyThreshold, 'LL', 'Fertility — Energy needed to reproduce (lower = more fertile)')}
+          ${traitCell('APT', a.traits.aptitude.xpPerLevel.toFixed(0), a.traits.aptitude.xpPerLevel, 'HH', 'Aptitude — XP per level (lower = faster leveling)')}
+          ${traitCell('FID', a.traits.fidelity.leaveProbability.toFixed(2), a.traits.fidelity.leaveProbability, 'SS', 'Fidelity — Chance to leave faction (lower = more loyal)')}
+          ${traitCell('RCL', a.traits.recall.memorySlots.toFixed(0), a.traits.recall.memorySlots, 'MM', 'Recall — Resource memory slots')}
+          ${traitCell('CHR', a.traits.charisma.relationshipSlots.toFixed(0), a.traits.charisma.relationshipSlots, 'NN', 'Charisma — Max relationship slots')}
+          ${traitCell('END', a.traits.endurance.inventoryCapacity.toFixed(0), a.traits.endurance.inventoryCapacity, 'RR', 'Endurance — Inventory capacity')}
+          ${traitCell('MAT', (a.traits.maturity.babyDurationMs / 1000).toFixed(0) + 's', a.traits.maturity.babyDurationMs, 'QQ', 'Maturity — Baby stage duration (lower = matures faster)')}
+          ${a.traits.parthenogenesis.canSelfReproduce ? '<div title="Parthenogenesis — Can reproduce without a partner" style="color:#f9a8d4;cursor:help">ASEXUAL</div>' : ''}
+        </div>
+      </div>
+      <div style="font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border)">
+        <div style="color:var(--muted);margin-bottom:4px;font-weight:600">RELATIONSHIPS (${a.relationships.size}/${a.relationships.maxSlots})</div>
+        ${a.relationships.size > 0
+          ? `<div style="font-size:10px;max-height:80px;overflow-y:auto">${
+              Array.from(a.relationships.entries()).map(([rid, val]) => {
+                const other = world.agentsById.get(rid);
+                const name = other ? other.name : rid.slice(0, 6);
+                const barColor = val >= 0 ? '#22c55e' : '#ef4444';
+                const pct = Math.abs(val) * 50;
+                const side = val >= 0 ? 'left' : 'right';
+                return `<div style="display:flex;align-items:center;gap:4px;margin:1px 0">
+                  <span style="width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>
+                  <div style="flex:1;height:4px;background:rgba(255,255,255,0.05);border-radius:2px;position:relative">
+                    <div style="position:absolute;${side}:50%;width:${pct}%;height:100%;background:${barColor};border-radius:2px"></div>
+                  </div>
+                  <span style="width:30px;text-align:right;color:var(--muted)">${val.toFixed(2)}</span>
+                </div>`;
+              }).join('')
+            }</div>`
+          : '<div style="font-size:10px;color:var(--muted)">No relationships</div>'
+        }
       </div>
       <div style="font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border)">
         <div style="color:var(--muted);margin-bottom:4px;font-weight:600">MEMORY</div>
         ${(['food', 'water', 'wood'] as const).map(type => {
           const entries = a.resourceMemory.get(type) || [];
+          const maxSlots = a.traits.recall.memorySlots;
           const icon = type === 'food' ? '\u{1F356}' : type === 'water' ? '\u{1F4A7}' : '\u{1FAB5}';
-          return entries.length > 0
-            ? `<div>${icon} ${type}: ${entries.map(e => `(${e.x},${e.y})`).join(' ')}</div>`
-            : `<div style="color:var(--muted)">${icon} ${type}: none</div>`;
+          return `<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:2px 0">${icon} <span style="color:var(--muted);font-size:9px">${entries.length}/${maxSlots}</span>${entries.map(e =>
+                `<span style="display:inline-block;padding:1px 5px;border-radius:4px;background:rgba(255,255,255,0.06);border:1px solid var(--border);font-size:9px;font-family:monospace">${e.x},${e.y}</span>`
+              ).join('')}</div>`;
         }).join('')}
       </div>`;
   }

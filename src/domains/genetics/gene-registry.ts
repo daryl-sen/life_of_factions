@@ -94,7 +94,7 @@ export const GENE_REGISTRY: ReadonlyMap<string, TraitDef> = new Map<string, Trai
   ['NN', {
     code: 'NN', name: 'Charisma', essential: false,
     components: [
-      { key: 'relationshipSlots', min: 20, default: 80, max: 200, scale: 1, inverted: false },
+      { key: 'relationshipSlots', min: 5, default: 20, max: 40, scale: 1, inverted: false },
     ],
   }],
   ['OO', {

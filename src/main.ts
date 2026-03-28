@@ -35,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const canvas = dom.canvas;
   const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true })!;
   const factionsList = dom.factionsList;
+  const familiesList = dom.familiesList;
 
   // Camera
   const camera = new Camera();
@@ -65,6 +66,14 @@ document.addEventListener('DOMContentLoaded', () => {
     dom.factionSortEl.addEventListener('change', () => {
       world.factionSort = dom.factionSortEl!.value as 'members' | 'created' | 'name' | 'level';
       world._lastFactionsSig = ''; // force rebuild
+    });
+  }
+
+  // Family sort dropdown
+  if (dom.familySortEl) {
+    dom.familySortEl.addEventListener('change', () => {
+      world.familySort = dom.familySortEl!.value as 'alive' | 'total' | 'name' | 'lifespan' | 'generation';
+      UIManager._lastFamiliesSig = ''; // force rebuild
     });
   }
 
@@ -173,6 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
     UIManager.rebuildFactionsListIfNeeded(world, factionsList);
+    UIManager.rebuildFamiliesListIfNeeded(world, familiesList);
 
     // Update sidebar play button icon
     if (sidebarPlay) {
