@@ -32,7 +32,8 @@ export class AgentFactory {
     childDna: string,
     familyName: string,
     factionId: string | null,
-    parentGeneration: number = 1
+    parentGeneration: number = 1,
+    donatedFullness: number = 0
   ): Agent {
     const genome = new Genome(childDna);
     const name = generatePronounceableString(6);
@@ -48,6 +49,7 @@ export class AgentFactory {
       entityClass: 'baby',
       babyMsRemaining: genome.traits.maturity.babyDurationMs,
       energy: 50,
+      fullness: Math.max(5, donatedFullness),
       health: genome.traits.resilience.baseMaxHp,
       generation: parentGeneration + 1,
     });

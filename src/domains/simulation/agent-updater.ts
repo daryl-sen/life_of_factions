@@ -601,9 +601,27 @@ export class AgentUpdater {
 
     // Pregnancy timer
     if (agent.pregnancy.active) {
-      const birth = agent.pregnancy.tick(TICK_MS);
-      if (birth) {
-        AgentUpdater._handleBirth(world, agent);
+      // Miscarriage: starvation ends pregnancy immediately
+      if (agent.fullness <= 0) {
+        agent.pregnancy.clear();
+        log(world, 'reproduce', `${agent.name} lost the pregnancy (starvation)`, agent.id, {});
+        world.events.emit('pregnancy:miscarriage', { agentId: agent.id, cause: 'starvation' });
+      }
+      // Miscarriage: sickness has a per-tick chance scaled by fertility
+      // Lower energyThreshold = more fertile = more resistant (range 50-130)
+      else if (agent.diseased) {
+        const threshold = agent.traits.fertility.energyThreshold;
+        const miscarriageChance = ((threshold - 50) / 80) * 0.008;
+        if (Math.random() < miscarriageChance) {
+          agent.pregnancy.clear();
+          log(world, 'reproduce', `${agent.name} lost the pregnancy (illness)`, agent.id, {});
+          world.events.emit('pregnancy:miscarriage', { agentId: agent.id, cause: 'disease' });
+        }
+      } else {
+        const birth = agent.pregnancy.tick(TICK_MS);
+        if (birth) {
+          AgentUpdater._handleBirth(world, agent);
+        }
       }
     }
 
@@ -643,59 +661,66 @@ export class AgentUpdater {
     } else {
       const locked = agent.lockMsRemaining > 0 && !agent._underAttack;
       if (!locked) {
-        // ── Path following ──
+        // ── Path following (speed-based: slow agents skip ticks, fast agents always move) ──
         if (agent.path && agent.pathIdx < agent.path.length) {
-          const step = agent.path[agent.pathIdx];
-          if (world.grid.isBlockedTerrain(step.x, step.y)) {
-            agent.path = null;
-          } else {
-            const cellKey = key(step.x, step.y);
-            const occupant = world.grid.agentsByCell.get(cellKey);
-            const hasOtherAgent = occupant != null && occupant !== agent.id;
-            const isLastStep = agent.pathIdx === agent.path.length - 1;
+          const effectiveSpeed = agent.traits.agility.speedMult * agent.speedMult;
+          agent.moveCredit = Math.min(agent.moveCredit + effectiveSpeed, 2);
 
-            let targetX = step.x;
-            let targetY = step.y;
-            let canMove = true;
-
-            if (hasOtherAgent && isLastStep) {
-              const fallback = findAdjacentOpen(world, step.x, step.y, agent.id);
-              if (fallback) {
-                targetX = fallback.x;
-                targetY = fallback.y;
-              } else {
-                canMove = false;
-              }
-            }
-
-            if (canMove) {
-              agent.prevCellX = agent.cellX;
-              agent.prevCellY = agent.cellY;
-              agent.lerpT = 0;
-              const oldKey = key(agent.cellX, agent.cellY);
-              if (world.agentsByCell.get(oldKey) === agent.id) {
-                world.agentsByCell.delete(oldKey);
-              }
-              agent.cellX = targetX;
-              agent.cellY = targetY;
-              const newKey = key(agent.cellX, agent.cellY);
-              const newOccupant = world.agentsByCell.get(newKey);
-              if (!newOccupant || newOccupant === agent.id) {
-                world.agentsByCell.set(newKey, agent.id);
-              }
-              agent.pathIdx++;
-              agent.energy -= MOVE_ENERGY;
-              agent.drainFullness(FULLNESS_MOVE_DECAY);
-              agent.hygiene = Math.max(0, agent.hygiene - HYGIENE_MOVE_DECAY);
-              if (world.poopBlocks.has(key(agent.cellX, agent.cellY))) {
-                agent.hygiene = Math.max(0, agent.hygiene - HYGIENE_STEP_ON_POOP_DECAY);
-              }
-            } else {
+          if (agent.moveCredit >= 1) {
+            const step = agent.path[agent.pathIdx];
+            if (world.grid.isBlockedTerrain(step.x, step.y)) {
               agent.path = null;
+            } else {
+              const cellKey = key(step.x, step.y);
+              const occupant = world.grid.agentsByCell.get(cellKey);
+              const hasOtherAgent = occupant != null && occupant !== agent.id;
+              const isLastStep = agent.pathIdx === agent.path.length - 1;
+
+              let targetX = step.x;
+              let targetY = step.y;
+              let canMove = true;
+
+              if (hasOtherAgent && isLastStep) {
+                const fallback = findAdjacentOpen(world, step.x, step.y, agent.id);
+                if (fallback) {
+                  targetX = fallback.x;
+                  targetY = fallback.y;
+                } else {
+                  canMove = false;
+                }
+              }
+
+              if (canMove) {
+                agent.prevCellX = agent.cellX;
+                agent.prevCellY = agent.cellY;
+                agent.lerpT = 0;
+                const oldKey = key(agent.cellX, agent.cellY);
+                if (world.agentsByCell.get(oldKey) === agent.id) {
+                  world.agentsByCell.delete(oldKey);
+                }
+                agent.cellX = targetX;
+                agent.cellY = targetY;
+                const newKey = key(agent.cellX, agent.cellY);
+                const newOccupant = world.agentsByCell.get(newKey);
+                if (!newOccupant || newOccupant === agent.id) {
+                  world.agentsByCell.set(newKey, agent.id);
+                }
+                agent.pathIdx++;
+                agent.moveCredit -= 1;
+                agent.energy -= MOVE_ENERGY;
+                agent.drainFullness(FULLNESS_MOVE_DECAY);
+                agent.hygiene = Math.max(0, agent.hygiene - HYGIENE_MOVE_DECAY);
+                if (world.poopBlocks.has(key(agent.cellX, agent.cellY))) {
+                  agent.hygiene = Math.max(0, agent.hygiene - HYGIENE_STEP_ON_POOP_DECAY);
+                }
+              } else {
+                agent.path = null;
+              }
             }
           }
         } else {
           agent.path = null;
+          agent.moveCredit = 0;
         }
 
         // Ensure stationary agents on unique cell
@@ -929,7 +954,8 @@ export class AgentUpdater {
       preg.childDna,
       preg.childFamilyName ?? agent.familyName,
       preg.childFactionId,
-      agent.generation
+      agent.generation,
+      preg.donatedFullness
     );
 
     world.agents.push(child);

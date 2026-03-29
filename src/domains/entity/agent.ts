@@ -57,6 +57,9 @@ export class Agent {
   // Navigation
   pathFailCount: number;
 
+  // Movement speed accumulator (ephemeral, not persisted)
+  moveCredit: number;
+
   // Legacy fields
   poopTimerMs: number;
   babyMsRemaining: number;
@@ -135,6 +138,7 @@ export class Agent {
 
     // Navigation
     this.pathFailCount = 0;
+    this.moveCredit = 0;
 
     // Legacy
     this.poopTimerMs = opts.poopTimerMs ?? 0;

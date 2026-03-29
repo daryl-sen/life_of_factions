@@ -70,7 +70,14 @@ export class PersistenceManager {
       createdAtTick: f.createdAtTick,
     }));
     const flags = [...world.flags.values()];
-    const obstacles = [...world.obstacles.values()];
+    // Deduplicate 2x2 obstacles (same object at 4 keys)
+    const obstaclesSeen = new Set<string>();
+    const obstacles: unknown[] = [];
+    for (const o of world.obstacles.values()) {
+      if (obstaclesSeen.has(o.id)) continue;
+      obstaclesSeen.add(o.id);
+      obstacles.push(o);
+    }
     const farms = [...world.farms.values()];
     const foodBlocks = [...world.foodBlocks.values()];
     const agents = world.agents.map((a) => ({
@@ -126,6 +133,7 @@ export class PersistenceManager {
         childFamilyName: a.pregnancy.childFamilyName,
         childFactionId: a.pregnancy.childFactionId,
         partnerId: a.pregnancy.partnerId,
+        donatedFullness: a.pregnancy.donatedFullness,
       } : null,
     }));
     return {
@@ -140,6 +148,8 @@ export class PersistenceManager {
         totalBirths: world.totalBirths,
         totalDeaths: world.totalDeaths,
         factionSort: world.factionSort,
+        familySort: world.familySort,
+        starredStats: world.starredStats,
       },
       factions,
       flags,
@@ -154,6 +164,14 @@ export class PersistenceManager {
       saltWaterBlocks: [...world.saltWaterBlocks.values()],
       eggs: [...world.eggs.values()],
       agents,
+      familyRegistry: world.familyRegistry.getAllFamiliesIncludingDead().map(f => ({
+        familyName: f.familyName,
+        totalBorn: f.totalBorn,
+        currentlyAlive: f.currentlyAlive,
+        totalAgeMs: f.totalAgeMs,
+        deathCount: f.deathCount,
+        maxGeneration: f.maxGeneration,
+      })),
       log: { limit: world.log.limit, arr: world.log.arr },
       selectedId: world.selectedId,
       activeLogCats: [...world.activeLogCats],
@@ -214,6 +232,7 @@ export class PersistenceManager {
     world.agents.length = 0;
     world.agentsById.clear();
     world.factions.clear();
+    world.familyRegistry.clear();
     world.tick = d.state?.tick ?? 0;
     world.speedPct = d.state?.speedPct ?? world.speedPct;
     world.cloudSpawnRate = d.state?.cloudSpawnRate ?? world.cloudSpawnRate;
@@ -222,6 +241,10 @@ export class PersistenceManager {
     world.totalBirths = d.state?.totalBirths ?? 0;
     world.totalDeaths = d.state?.totalDeaths ?? 0;
     world.factionSort = d.state?.factionSort ?? 'members';
+    world.familySort = d.state?.familySort ?? 'alive';
+    if (Array.isArray(d.state?.starredStats)) {
+      world.starredStats = d.state.starredStats;
+    }
 
     for (const f of d.factions || []) {
       const faction = new Faction(f.id, f.color, new Set(f.members || []), f.createdAtTick ?? 0);
@@ -234,8 +257,15 @@ export class PersistenceManager {
       });
       world.flagCells.add(key(fl.x, fl.y));
     }
-    for (const o of d.obstacles || d.walls || [])
-      world.obstacles.set(key(o.x, o.y), { ...o, emoji: o.emoji || '🪨' });
+    for (const o of d.obstacles || d.walls || []) {
+      const obs = { ...o, emoji: o.emoji || '🪨' };
+      world.obstacles.set(key(o.x, o.y), obs);
+      if (o.size === '2x2') {
+        world.obstacles.set(key(o.x + 1, o.y), obs);
+        world.obstacles.set(key(o.x, o.y + 1), obs);
+        world.obstacles.set(key(o.x + 1, o.y + 1), obs);
+      }
+    }
     for (const fm of d.farms || []) {
       world.farms.set(key(fm.x, fm.y), {
         ...fm,
@@ -329,6 +359,20 @@ export class PersistenceManager {
     world.clouds = [];
     world._nextCloudSpawnMs = 0;
 
+    // Restore family registry (before agents, so we don't double-count)
+    if (Array.isArray(d.familyRegistry)) {
+      for (const f of d.familyRegistry) {
+        world.familyRegistry.restoreFamily({
+          familyName: f.familyName,
+          totalBorn: f.totalBorn ?? 0,
+          currentlyAlive: f.currentlyAlive ?? 0,
+          totalAgeMs: f.totalAgeMs ?? 0,
+          deathCount: f.deathCount ?? 0,
+          maxGeneration: f.maxGeneration ?? 1,
+        });
+      }
+    }
+
     for (const a of d.agents || []) {
       let action = a.action ? { ...a.action } : null;
       // Backward compat: rename 'help' → 'share'
@@ -387,7 +431,8 @@ export class PersistenceManager {
           a.pregnancy.remainingMs ?? 0,
           a.pregnancy.childFamilyName ?? agent.familyName,
           a.pregnancy.childFactionId ?? null,
-          a.pregnancy.partnerId ?? null
+          a.pregnancy.partnerId ?? null,
+          a.pregnancy.donatedFullness ?? 0
         );
       }
 
@@ -395,8 +440,10 @@ export class PersistenceManager {
       world.agentsById.set(agent.id, agent);
       world.agentsByCell.set(key(agent.cellX, agent.cellY), agent.id);
 
-      // Register in family registry
-      world.familyRegistry.registerBirth(agent.familyName);
+      // Only register births if no saved family registry (backward compat)
+      if (!Array.isArray(d.familyRegistry)) {
+        world.familyRegistry.registerBirth(agent.familyName, agent.generation);
+      }
     }
 
     FactionManager.reconcile(world);
@@ -427,11 +474,21 @@ export class PersistenceManager {
     if (dom.gridChk) dom.gridChk.checked = world.drawGrid;
     if (dom.pauseChk) dom.pauseChk.checked = world.pauseOnBlur;
     if (dom.factionSortEl) dom.factionSortEl.value = world.factionSort;
+    if (dom.familySortEl) dom.familySortEl.value = world.familySort;
     if (dom.ranges.rngSpeed) dom.ranges.rngSpeed.value = String(world.speedPct);
     if (dom.nums.numSpeed) dom.nums.numSpeed.value = String(world.speedPct);
     if (dom.labels.lblSpeed) dom.labels.lblSpeed.textContent = `${world.speedPct}%`;
     if (dom.ranges.rngCloudRate) dom.ranges.rngCloudRate.value = String(world.cloudSpawnRate);
     if (dom.nums.numCloudRate) dom.nums.numCloudRate.value = String(world.cloudSpawnRate);
     if (dom.labels.lblCloudRate) dom.labels.lblCloudRate.textContent = world.cloudSpawnRate.toFixed(1) + '\u00d7';
+    // Sync starred stat buttons
+    document.querySelectorAll('.telemetry-star').forEach((btn) => {
+      const stat = (btn as HTMLElement).dataset['stat'];
+      if (stat && world.starredStats.includes(stat)) {
+        btn.classList.add('starred');
+      } else {
+        btn.classList.remove('starred');
+      }
+    });
   }
 }
