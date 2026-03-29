@@ -330,15 +330,23 @@ export class Spawner {
     for (const tree of world.treeBlocks.values()) {
       if (tree.units <= 0) continue;
       const nearPoop = Spawner.hasPoopNearby(world, tree.x, tree.y, TREE_POOP_BOOST_SEEDLING_RADIUS);
-      const seedlingChance = nearPoop
-        ? TREE_SEEDLING_PASSIVE_CHANCE * 2
-        : TREE_SEEDLING_PASSIVE_CHANCE;
+      const hydrated = Spawner.hasWaterNearby(world, tree.x, tree.y, TREE_WATER_REQUIRED_FOR_SEEDLING);
+      let seedlingChance = TREE_SEEDLING_PASSIVE_CHANCE;
+      if (hydrated) seedlingChance *= 3;
+      if (nearPoop) seedlingChance *= 2;
       if (Math.random() < seedlingChance) {
         Spawner.trySpawnSeedling(world, tree.x, tree.y);
       } else if (nearPoop && Math.random() < TREE_FOOD_PASSIVE_CHANCE) {
         Spawner.trySpawnFoodNearTree(world, tree.x, tree.y);
       }
     }
+  }
+
+  static hasWaterNearby(world: World, x: number, y: number, radius: number): boolean {
+    for (const wb of world.waterBlocks.values()) {
+      if (manhattan(x, y, wb.x, wb.y) <= radius) return true;
+    }
+    return false;
   }
 
   // ── Saltwater spawning ──

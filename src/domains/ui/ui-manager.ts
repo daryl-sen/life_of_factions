@@ -7,6 +7,17 @@ import { GENE_REGISTRY } from '../genetics/gene-registry';
 
 const PAGE_LOAD_TIME = Date.now() - performance.now();
 
+/** Format large numbers compactly: 1000→1k, 1500→1.5k, 1000000→1m */
+function compactNum(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) {
+    const k = n / 1000;
+    return (k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)) + 'k';
+  }
+  const m = n / 1_000_000;
+  return (m % 1 === 0 ? m.toFixed(0) : m.toFixed(1)) + 'm';
+}
+
 /**
  * Color-code a trait value based on where it falls in the [min, max] range.
  * Red = 2+ SD below midpoint, Yellow = 1 SD below, normal = within 1 SD,
@@ -350,22 +361,22 @@ export class UIManager {
     const rMax = (stats.renderMax as number) || 0;
 
     const s = stats as Record<string, HTMLElement | null>;
-    if (s.stAgents) s.stAgents.textContent = String(world.agents.length);
-    if (s.stFactions) s.stFactions.textContent = String(world.factions.size);
-    if (s.stCrops) s.stCrops.textContent = String(world.foodBlocks.size);
-    if (s.stFarms) s.stFarms.textContent = String(world.farms.size);
-    if (s.stObstacles) s.stObstacles.textContent = String(world.obstacles.size);
-    if (s.stFlags) s.stFlags.textContent = String(world.flags.size);
+    if (s.stAgents) s.stAgents.textContent = compactNum(world.agents.length);
+    if (s.stFactions) s.stFactions.textContent = compactNum(world.factions.size);
+    if (s.stCrops) s.stCrops.textContent = compactNum(world.foodBlocks.size);
+    if (s.stFarms) s.stFarms.textContent = compactNum(world.farms.size);
+    if (s.stObstacles) s.stObstacles.textContent = compactNum(world.obstacles.size);
+    if (s.stFlags) s.stFlags.textContent = compactNum(world.flags.size);
 
     const birthsPerMin = UIManager._ratePerMinute(world.birthTimestamps);
     const deathsPerMin = UIManager._ratePerMinute(world.deathTimestamps);
-    if (s.stBirths) s.stBirths.textContent = `${world.totalBirths} (${birthsPerMin}/m)`;
-    if (s.stDeaths) s.stDeaths.textContent = `${world.totalDeaths} (${deathsPerMin}/m)`;
+    if (s.stBirths) s.stBirths.textContent = `${compactNum(world.totalBirths)} (${compactNum(birthsPerMin)}/m)`;
+    if (s.stDeaths) s.stDeaths.textContent = `${compactNum(world.totalDeaths)} (${compactNum(deathsPerMin)}/m)`;
     // Count unique water blocks (large blocks share references across cells)
     const seenWater = new Set<string>();
     for (const wb of world.waterBlocks.values()) seenWater.add(wb.id);
-    if (s.stWater) s.stWater.textContent = String(seenWater.size);
-    if (s.stTrees) s.stTrees.textContent = String(world.treeBlocks.size);
+    if (s.stWater) s.stWater.textContent = compactNum(seenWater.size);
+    if (s.stTrees) s.stTrees.textContent = compactNum(world.treeBlocks.size);
     if (s.stTick) s.stTick.textContent = UIManager.formatTickCount(world.tick);
     if (s.stFps) s.stFps.textContent = fps.toFixed(0);
     if (s.stTickAvg) s.stTickAvg.textContent = tAvg.toFixed(1);

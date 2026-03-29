@@ -207,6 +207,12 @@ export class Controls {
       PersistenceManager.saveToLocalStorage(world);
       world.log.push({ t: performance.now(), cat: 'info', msg: 'State saved', actorId: null, extra: {} });
       doRenderLog();
+      // Flash button to confirm save
+      const btn = buttons.btnQuickSave!;
+      const orig = btn.textContent;
+      btn.textContent = 'Saved!';
+      btn.disabled = true;
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1200);
     });
     buttons.btnExport?.addEventListener('click', () => PersistenceManager.export(world, doRenderLog));
     buttons.btnImport?.addEventListener('click', () => dom.fileLoad?.click());
