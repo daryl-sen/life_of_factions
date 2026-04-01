@@ -4,6 +4,7 @@ import type { Agent } from '../entity/agent';
 import { ENTITY_CLASSES } from '../entity/entity-class';
 import { ACTION_REGISTRY } from '../action/action-registry';
 import type { ActionType } from '../action/types';
+import { Mood } from '../entity/types';
 import { shouldFlee } from './flee-evaluator';
 import { scoreAction } from './action-scorer';
 import type { DecisionContext, ActionCandidate } from './types';
@@ -93,17 +94,31 @@ function passesRequirements(type: ActionType, agent: Agent, ctx: DecisionContext
     case 'reproduce': {
       if (agent.pregnancy.active) return false;
       if (agent.entityClass === 'elder') return false;
-      if (agent.energy < agent.traits.fertility.energyThreshold) return false;
       // Parthenogenesis: no partner needed
       if (agent.traits.parthenogenesis.canSelfReproduce) return true;
-      // Need adjacent partner with sufficient relationship and energy
+      // Need adjacent partner with sufficient relationship, not diseased
       const partners = ctx.nearbyAgents.filter(
         n => n.dist === 1 &&
           n.relationship >= 0.4 &&
-          n.agent.energy >= agent.traits.fertility.energyThreshold &&
           !n.agent.diseased && !agent.diseased
       );
       return partners.length > 0;
+    }
+    case 'seek_mate': {
+      if (agent.traits.parthenogenesis.canSelfReproduce) return false;
+      if (agent.pregnancy.active) return false;
+      if (agent.entityClass === 'elder') return false;
+      if (agent.matingTargetId) return false;
+      if (ctx.mood !== Mood.HAPPY) return false;
+      const seekPartners = ctx.nearbyAgents.filter(
+        n => n.dist > 1 &&
+          n.relationship >= 0.4 &&
+          !n.agent.diseased && !agent.diseased &&
+          !n.agent.pregnancy.active &&
+          n.agent.entityClass !== 'elder' &&
+          n.agent.entityClass !== 'baby'
+      );
+      return seekPartners.length > 0;
     }
     case 'harvest': {
       if (agent.inventoryFull()) return false;
@@ -176,11 +191,23 @@ function resolveTarget(
     case 'reproduce': {
       if (agent.traits.parthenogenesis.canSelfReproduce) return {};
       const partners = ctx.nearbyAgents.filter(
-        n => n.dist === 1 && n.relationship >= 0.4 &&
-          n.agent.energy >= agent.traits.fertility.energyThreshold
+        n => n.dist === 1 && n.relationship >= 0.4 && !n.agent.diseased
       );
       if (!partners.length) return null;
       return { targetId: partners[0].agent.id };
+    }
+    case 'seek_mate': {
+      const seekPartners = ctx.nearbyAgents.filter(
+        n => n.dist > 1 &&
+          n.relationship >= 0.4 &&
+          !n.agent.diseased &&
+          !n.agent.pregnancy.active &&
+          n.agent.entityClass !== 'elder' &&
+          n.agent.entityClass !== 'baby'
+      );
+      if (!seekPartners.length) return null;
+      seekPartners.sort((a, b) => b.relationship - a.relationship);
+      return { targetId: seekPartners[0].agent.id };
     }
     case 'harvest': {
       const adjRes = ctx.nearbyResources.filter(r => r.dist <= 1);

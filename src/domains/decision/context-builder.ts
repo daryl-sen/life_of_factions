@@ -1,8 +1,8 @@
 import { key, manhattan } from '../../core/utils';
 import type { Agent } from '../entity/agent';
 import type { World } from '../world/world';
-import { NeedBand } from '../entity/types';
 import { evaluateNeeds } from './need-evaluator';
+import { computeMood } from './mood-evaluator';
 import type { DecisionContext, NearbyAgent, NearbyResource, NearbyBlock } from './types';
 
 const DEFAULT_VISION_RANGE = 10;
@@ -79,16 +79,19 @@ export class ContextBuilder {
       }
     }
 
+    const needBands = evaluateNeeds(agent);
+
     return {
       agent,
       nearbyAgents,
       nearbyResources,
       nearbyBlocks,
-      needBands: evaluateNeeds(agent),
+      needBands,
       underAttack: agent._underAttack,
       pregnant: agent.pregnancy.active,
       nearOwnFlag,
       ownFlagPos,
+      mood: computeMood(needBands),
     };
   }
 }

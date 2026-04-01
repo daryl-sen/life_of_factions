@@ -4,6 +4,8 @@ import type { TerrainField } from '../world/terrain-field';
 import type { World } from '../world';
 import type { DeathCause } from '../world/types';
 import type { Agent } from '../entity/agent';
+import { evaluateNeeds } from '../decision/need-evaluator';
+import { computeMood } from '../decision/mood-evaluator';
 import { Camera } from './camera';
 import { EmojiCache } from './emoji-cache';
 
@@ -499,8 +501,13 @@ export class Renderer {
       let emoji: string;
       if (agent.babyMsRemaining > 0 && (actionType === 'eat' || actionType === 'wash')) {
         emoji = IDLE_EMOJIS.babyEating;
+      } else if (AGENT_EMOJIS[actionType as string]) {
+        emoji = AGENT_EMOJIS[actionType as string];
+      } else if (agent.matingTargetId) {
+        emoji = AGENT_EMOJIS['seek_mate'] || '\u{1F495}';
       } else {
-        emoji = AGENT_EMOJIS[actionType as string] || getIdleEmoji(agent);
+        const mood = computeMood(evaluateNeeds(agent));
+        emoji = getIdleEmoji(agent, mood);
       }
 
       let offX = 0, offY = 0, angle = 0, sx = 1, sy = 1;

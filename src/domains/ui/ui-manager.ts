@@ -3,7 +3,10 @@ import { getIdleEmoji } from '../../core/utils';
 import type { LogCategory } from '../action/types';
 import type { World } from '../world';
 import type { Agent } from '../entity/agent';
+import { Mood } from '../entity/types';
 import { GENE_REGISTRY } from '../genetics/gene-registry';
+import { evaluateNeeds } from '../decision/need-evaluator';
+import { computeMood } from '../decision/mood-evaluator';
 
 const PAGE_LOAD_TIME = Date.now() - performance.now();
 
@@ -525,9 +528,19 @@ export class UIManager {
     }
     if (badge) (badge as HTMLElement).style.display = '';
 
+    const mood = computeMood(evaluateNeeds(a));
+    const moodColors: Record<string, { bg: string; fg: string; border: string }> = {
+      [Mood.HAPPY]: { bg: '#22c55e22', fg: '#22c55e', border: '#22c55e55' },
+      [Mood.CONTENT]: { bg: '#3b82f622', fg: '#3b82f6', border: '#3b82f655' },
+      [Mood.UNHAPPY]: { bg: '#eab30822', fg: '#eab308', border: '#eab30855' },
+      [Mood.FRUSTRATED]: { bg: '#ef444422', fg: '#ef4444', border: '#ef444455' },
+    };
+    const mc = moodColors[mood] ?? moodColors[Mood.CONTENT];
+    const moodEmoji = mood === Mood.HAPPY ? '\u{1F600}' : mood === Mood.CONTENT ? '\u{1F642}' : mood === Mood.UNHAPPY ? '\u{1F629}' : '\u{1F621}';
+
     const actionType = a.action?.type;
     const emoji =
-      AGENT_EMOJIS[actionType as string] || getIdleEmoji(a);
+      AGENT_EMOJIS[actionType as string] || getIdleEmoji(a, mood);
     const factionColor = a.factionId
       ? world.factions.get(a.factionId)?.color || '#888'
       : null;
@@ -556,6 +569,11 @@ export class UIManager {
             }
             ${a.diseased
               ? `<span class="badge-action" style="background:#4ade8022;color:#4ade80;border-color:#4ade8055">\u{1F922} DISEASED</span>`
+              : ''
+            }
+            <span class="badge-action" style="background:${mc.bg};color:${mc.fg};border-color:${mc.border}">${moodEmoji} ${mood.toUpperCase()}</span>
+            ${a.matingTargetId
+              ? `<span class="badge-action" style="background:#f9a8d422;color:#f9a8d4;border-color:#f9a8d455">\u{1F495} SEEKING MATE</span>`
               : ''
             }
             ${actionType
@@ -657,6 +675,7 @@ export class UIManager {
           ${traitCell('END', a.traits.endurance.inventoryCapacity.toFixed(0), a.traits.endurance.inventoryCapacity, 'RR', 'Endurance — Inventory capacity')}
           ${traitCell('MAT', (a.traits.maturity.babyDurationMs / 1000).toFixed(0) + 's', a.traits.maturity.babyDurationMs, 'QQ', 'Maturity — Baby stage duration (lower = matures faster)')}
           ${traitCell('GRD', a.traits.greed.hoardProbability.toFixed(2), a.traits.greed.hoardProbability, 'UU', 'Greed — Probability of opportunistic resource hoarding')}
+          ${traitCell('MTN', a.traits.maternity.feedProbability.toFixed(2), a.traits.maternity.feedProbability, 'VV', 'Maternity — Probability of feeding nearby babies')}
           ${a.traits.parthenogenesis.canSelfReproduce ? '<div title="Parthenogenesis — Can reproduce without a partner" style="color:#f9a8d4;cursor:help">ASEXUAL</div>' : ''}
         </div>
       </div>

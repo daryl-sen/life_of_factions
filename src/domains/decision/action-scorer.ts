@@ -1,6 +1,6 @@
 import { clamp } from '../../core/utils';
 import type { Agent } from '../entity/agent';
-import { NeedBand } from '../entity/types';
+import { NeedBand, Mood } from '../entity/types';
 import { ActionTag } from '../action/types';
 import type { ActionDef } from '../action/types';
 import type { DecisionContext } from './types';
@@ -35,10 +35,13 @@ export function scoreAction(
   // 3. Genetic modifier
   score += geneticScore(action, agent);
 
-  // 4. Situational modifier
+  // 4. Mood modifier
+  score += moodScore(action, agent, context);
+
+  // 5. Situational modifier
   score += situationalScore(action, agent, context);
 
-  // 5. Random noise (±5% of score magnitude)
+  // 6. Random noise (±5% of score magnitude)
   const noise = (Math.random() - 0.5) * 0.1;
   score *= 1 + noise;
 
@@ -58,6 +61,16 @@ function hardOverride(action: ActionDef, agent: Agent, context: DecisionContext)
 
   // Elders can't reproduce
   if (action.type === 'reproduce' && agent.entityClass === 'elder') {
+    return -Infinity;
+  }
+
+  // Unhappy/frustrated agents won't initiate reproduction
+  if (action.type === 'reproduce' && (context.mood === Mood.UNHAPPY || context.mood === Mood.FRUSTRATED)) {
+    return -Infinity;
+  }
+
+  // Block seek_mate when unhappy or frustrated
+  if (action.type === 'seek_mate' && (context.mood === Mood.UNHAPPY || context.mood === Mood.FRUSTRATED)) {
     return -Infinity;
   }
 
@@ -122,8 +135,8 @@ function geneticScore(action: ActionDef, agent: Agent): number {
     score += (1 - agent.traits.fidelity.leaveProbability) * 30;
   }
 
-  // Fertility boosts reproduction
-  if (action.type === 'reproduce') {
+  // Fertility boosts reproduction and mate seeking
+  if (action.type === 'reproduce' || action.type === 'seek_mate') {
     // Higher fertility (lower energyThreshold) means more eagerness
     const fertilityScore = (130 - agent.traits.fertility.energyThreshold) / 80;
     score += fertilityScore * 60;
@@ -132,6 +145,38 @@ function geneticScore(action: ActionDef, agent: Agent): number {
     const ageRatio = agent.maxAgeTicks > 0 ? agent.ageTicks / agent.maxAgeTicks : 0;
     if (ageRatio > agent.traits.fertility.urgencyAge) {
       score += 300;
+    }
+  }
+
+  return score;
+}
+
+function moodScore(action: ActionDef, agent: Agent, context: DecisionContext): number {
+  let score = 0;
+  const mood = context.mood;
+
+  // Happy: boost reproduction, mate seeking, and building
+  if (mood === Mood.HAPPY) {
+    if (action.type === 'reproduce' || action.type === 'seek_mate') {
+      const fertilityBonus = (130 - agent.traits.fertility.energyThreshold) / 80;
+      score += 150 + fertilityBonus * 50;
+    }
+    if (action.type === 'build_farm') {
+      score += 80;
+    }
+  }
+
+  // Content: boost positive social interactions
+  if (mood === Mood.CONTENT) {
+    if (action.type === 'talk' || action.type === 'share' || action.type === 'heal') {
+      score += 60;
+    }
+  }
+
+  // Frustrated: boost aggressive actions
+  if (mood === Mood.FRUSTRATED) {
+    if (action.tags.has(ActionTag.COMBAT)) {
+      score += 80;
     }
   }
 
@@ -169,15 +214,20 @@ function situationalScore(action: ActionDef, agent: Agent, context: DecisionCont
     score += 100;
   }
 
+  // Eligible partners for mate seeking
+  if (action.type === 'seek_mate') {
+    const seekPartners = context.nearbyAgents.filter(
+      n => n.dist > 1 && n.relationship >= 0.4 && !n.agent.diseased
+    );
+    if (seekPartners.length > 0) score += 150;
+  }
+
   // Adjacent partner for reproduction
   if (action.type === 'reproduce') {
     const adjPartners = context.nearbyAgents.filter(
-      n => n.dist === 1 && n.relationship >= 0.4 &&
-        n.agent.energy >= agent.traits.fertility.energyThreshold &&
-        !n.agent.diseased
+      n => n.dist === 1 && n.relationship >= 0.4 && !n.agent.diseased
     );
     if (adjPartners.length > 0) score += 200;
-    else score -= 500; // No valid partner = don't bother
   }
 
   // Loot nearby boosts pickup

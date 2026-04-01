@@ -159,4 +159,22 @@ export const ACTION_REGISTRY: ReadonlyMap<ActionType, ActionDef> = new Map<Actio
     targetRange: 0,
     interruptible: false,
   }],
+  ['seek_mate', {
+    type: 'seek_mate',
+    tags: new Set([ActionTag.SOCIAL]),
+    energyCost: 0,
+    durationRange: [0, 0],
+    requiresTarget: true,
+    targetRange: 10,
+    interruptible: true,
+  }],
+  ['await_mate', {
+    type: 'await_mate',
+    tags: new Set([ActionTag.SOCIAL]),
+    energyCost: 0.1,
+    durationRange: [15000, 20000],
+    requiresTarget: false,
+    targetRange: 0,
+    interruptible: true,
+  }],
 ]);

@@ -141,6 +141,12 @@ export const GENE_REGISTRY: ReadonlyMap<string, TraitDef> = new Map<string, Trai
       { key: 'hoardProbability', min: 0.0, default: 0.4, max: 1.0, scale: 500, inverted: false },
     ],
   }],
+  ['VV', {
+    code: 'VV', name: 'Maternity', essential: false,
+    components: [
+      { key: 'feedProbability', min: 0.0, default: 0.5, max: 1.0, scale: 500, inverted: false },
+    ],
+  }],
 ]);
 
 /**

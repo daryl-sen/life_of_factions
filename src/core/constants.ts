@@ -61,16 +61,19 @@ export const AGENT_EMOJIS: Record<string, string> = {
   clean: '\u{1F637}',
   play: '\u{1F92A}',
   build_farm: '\u{1F920}',
+  seek_mate: '\u{1F495}',
+  await_mate: '\u{1F497}',
 };
 
 export const IDLE_EMOJIS = {
   baby: '\u{1F476}',
   babyEating: '\u{1F47C}',
-  lowEnergy: '\u{1F924}',
-  lowHealth: '\u{1F915}',
-  lowFullness: '\u{1F629}',
   diseased: '\u{1F922}',
-  highEnergy: '\u{1F600}',
+  // Mood-based idle emojis
+  happy: '\u{1F600}',       // 😀
+  content: '\u{1F642}',     // 🙂
+  unhappy: '\u{1F629}',     // 😩
+  frustrated: '\u{1F621}',  // 😡
   default: '\u{1F642}',
 };
 

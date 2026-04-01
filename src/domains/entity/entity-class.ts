@@ -27,7 +27,7 @@ export const ENTITY_CLASSES: Record<EntityClassName, EntityClassDef> = {
       'talk', 'quarrel', 'attack', 'heal', 'share',
       'reproduce', 'sleep', 'harvest', 'eat', 'wash',
       'deposit', 'withdraw', 'pickup', 'poop', 'clean',
-      'play', 'build_farm',
+      'play', 'build_farm', 'seek_mate',
     ]),
     emojiMap: {
       idle: '\u{1F642}',     // 🙂
@@ -48,6 +48,8 @@ export const ENTITY_CLASSES: Record<EntityClassName, EntityClassDef> = {
       clean: '\u{1F637}',    // 😷
       play: '\u{1F92A}',     // 🤪
       build_farm: '\u{1F920}',// 🤠
+      seek_mate: '\u{1F495}', // 💕
+      await_mate: '\u{1F497}',// 💗
     },
   },
   elder: {
@@ -76,6 +78,7 @@ export const ENTITY_CLASSES: Record<EntityClassName, EntityClassDef> = {
       clean: '\u{1F637}',
       play: '\u{1F92A}',
       build_farm: '\u{1F920}',
+      await_mate: '\u{1F497}',// 💗
     },
     statModifiers: { attackMult: 0.7 },
   },
