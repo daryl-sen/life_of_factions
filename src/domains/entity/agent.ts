@@ -50,9 +50,11 @@ export class Agent {
   action: IActionState | null;
   lockMsRemaining: number;
   _underAttack: boolean;
+  matingTargetId: string | null;
 
   // Lineage
   generation: number;
+  parentIds: string[];
 
   // Navigation
   pathFailCount: number;
@@ -132,9 +134,11 @@ export class Agent {
     this.action = opts.action ?? null;
     this.lockMsRemaining = opts.lockMsRemaining ?? 0;
     this._underAttack = false;
+    this.matingTargetId = opts.matingTargetId ?? null;
 
     // Lineage
     this.generation = opts.generation ?? 1;
+    this.parentIds = opts.parentIds ?? [];
 
     // Navigation
     this.pathFailCount = 0;

@@ -12,6 +12,13 @@ export enum NeedBand {
   FULL = 'full',
 }
 
+export enum Mood {
+  FRUSTRATED = 'frustrated',
+  UNHAPPY = 'unhappy',
+  CONTENT = 'content',
+  HAPPY = 'happy',
+}
+
 export interface AgentOpts {
   id: string;
   name: string;
@@ -45,4 +52,6 @@ export interface AgentOpts {
   babyMsRemaining?: number;
   entityClass?: EntityClassName;
   generation?: number;
+  matingTargetId?: string | null;
+  parentIds?: string[];
 }

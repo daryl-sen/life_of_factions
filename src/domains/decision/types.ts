@@ -1,7 +1,7 @@
 import type { IPosition } from '../../core/types';
 import type { Agent } from '../entity/agent';
 import type { ActionType } from '../action/types';
-import type { NeedBand } from '../entity/types';
+import type { NeedBand, Mood } from '../entity/types';
 
 export interface NearbyAgent {
   readonly agent: Agent;
@@ -34,6 +34,7 @@ export interface DecisionContext {
   readonly pregnant: boolean;
   readonly nearOwnFlag: boolean;
   readonly ownFlagPos: IPosition | null;
+  readonly mood: Mood;
 }
 
 export interface ActionCandidate {

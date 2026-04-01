@@ -18,7 +18,7 @@ const FULLNESS_ACTION_DECAY_PER_SEC = 0.02;
 const LOW_ENERGY_EXEMPT = new Set([
   'attack', 'sleep', 'harvest', 'eat', 'wash',
   'deposit', 'withdraw', 'pickup', 'poop', 'clean',
-  'play', 'build_farm',
+  'play', 'build_farm', 'await_mate',
 ]);
 
 export class ActionProcessor {
@@ -26,8 +26,14 @@ export class ActionProcessor {
     if (!agent.action) return;
     const act = agent.action;
 
-    // Sleep is interruptible by attack
-    if (act.type === 'sleep' && agent._underAttack) {
+    // Sleep and await_mate are interruptible by attack
+    if ((act.type === 'sleep' || act.type === 'await_mate') && agent._underAttack) {
+      agent.action = null;
+      return;
+    }
+
+    // Cancel reproduce on critical hunger
+    if (act.type === 'reproduce' && agent.fullness <= 20) {
       agent.action = null;
       return;
     }

@@ -4,6 +4,7 @@ import { key, manhattan, rndi, log } from '../../core/utils';
 import { findPath, findNearest, planPath } from '../../core/pathfinding';
 import type { World } from '../world/world';
 import type { Agent } from '../entity/agent';
+import { Mood } from '../entity/types';
 import { AgentFactory } from '../entity/agent-factory';
 import { FoodField } from '../world/food-field';
 import { WaterField } from '../world/water-field';
@@ -11,6 +12,8 @@ import { ActionFactory } from '../action/action-factory';
 import { ActionProcessor } from '../action/action-processor';
 import { DecisionEngine } from '../decision/decision-engine';
 import { ContextBuilder } from '../decision/context-builder';
+import { evaluateNeeds } from '../decision/need-evaluator';
+import { computeMood } from '../decision/mood-evaluator';
 
 // ── Inlined TUNE constants ──
 
@@ -571,6 +574,60 @@ function tryHarvestAdjacentWood(world: World, agent: Agent): boolean {
   return false;
 }
 
+// ── Mate consent check ──
+
+function checkMateConsent(world: World, agent: Agent, partner: Agent): boolean {
+  if (partner.health <= 0) return false;
+  if (partner.pregnancy.active) return false;
+  if (partner.entityClass === 'elder' || partner.entityClass === 'baby') return false;
+  if (partner.diseased) return false;
+  if (partner.relationships.get(agent.id) < 0.4) return false;
+  const partnerMood = computeMood(evaluateNeeds(partner));
+  if (partnerMood === Mood.UNHAPPY || partnerMood === Mood.FRUSTRATED) return false;
+  if (partner._underAttack) return false;
+  if (partner.matingTargetId) return false;
+  if (partner.action && partner.action.type !== 'sleep') return false;
+  return true;
+}
+
+// ── Mating target validation and adjacency check ──
+
+function processMatingTarget(world: World, agent: Agent): boolean {
+  if (!agent.matingTargetId) return false;
+  const partner = world.agentsById.get(agent.matingTargetId);
+
+  // Cancel conditions
+  const shouldCancel = !partner ||
+    partner.health <= 0 ||
+    (!partner.action || partner.action.type !== 'await_mate') ||
+    agent.fullness <= FULLNESS_CRITICAL_THRESHOLD;
+
+  if (shouldCancel) {
+    agent.matingTargetId = null;
+    if (partner?.action?.type === 'await_mate') partner.action = null;
+    agent.path = null;
+    return false;
+  }
+
+  const dist = manhattan(agent.cellX, agent.cellY, partner.cellX, partner.cellY);
+  if (dist === 1) {
+    // Adjacent — start reproduction
+    agent.matingTargetId = null;
+    agent.path = null;
+    // Refresh partner's await_mate so they stay put during reproduce
+    partner.action = ActionFactory.create('await_mate', partner, { targetId: agent.id });
+    tryStartAction(agent, 'reproduce', { targetId: partner.id });
+    log(world, 'reproduce', `${agent.name} reached ${partner.name} to mate`, agent.id, { targetId: partner.id });
+    return true;
+  }
+
+  // Not adjacent yet — repath if needed
+  if (!agent.path || agent.pathIdx >= agent.path.length) {
+    agentPlanPath(world, agent, partner.cellX, partner.cellY);
+  }
+  return true; // Still seeking, skip normal decisions
+}
+
 // ── Main Agent Update ──
 
 export class AgentUpdater {
@@ -596,6 +653,32 @@ export class AgentUpdater {
       if (agent.babyMsRemaining === 0 && agent.entityClass === 'baby') {
         agent.entityClass = 'adult';
         log(world, 'spawn', `${agent.name} grew up`, agent.id, {});
+      }
+    }
+
+    // Maternity feeding — adults feed adjacent babies
+    if (agent.babyMsRemaining > 0) {
+      const adjCells: [number, number][] = [
+        [agent.cellX + 1, agent.cellY], [agent.cellX - 1, agent.cellY],
+        [agent.cellX, agent.cellY + 1], [agent.cellX, agent.cellY - 1],
+      ];
+      for (const [nx, ny] of adjCells) {
+        const adjId = world.agentsByCell.get(key(nx, ny));
+        if (!adjId) continue;
+        const adult = world.agentsById.get(adjId);
+        if (!adult || adult.babyMsRemaining > 0 || adult.inventory.food <= 0) continue;
+
+        const isParent = agent.parentIds.includes(adult.id);
+        const feedChance = isParent
+          ? adult.traits.maternity.feedProbability * 0.05
+          : 0.01;
+
+        if (Math.random() < feedChance) {
+          adult.inventory.remove('food', 1);
+          agent.addFullness(15);
+          log(world, 'reproduce', `${adult.name} fed baby ${agent.name}`, adult.id, {});
+          break;
+        }
       }
     }
 
@@ -742,6 +825,11 @@ export class AgentUpdater {
           }
         }
 
+        // ── Mating target tracking (while pathfinding or idle) ──
+        if (!agent.action && processMatingTarget(world, agent)) {
+          // Agent is seeking mate — skip normal decisions
+        } else {
+
         // Vision scan
         if (!agent.action) {
           scanVision(world, agent);
@@ -751,7 +839,20 @@ export class AgentUpdater {
         if (!agent.path && !agent.action) {
           // Try the new DecisionEngine first for scored action selection
           const candidate = DecisionEngine.decide(agent, ContextBuilder.build(world, agent));
-          if (candidate && candidate.actionType !== 'sleep') {
+          if (candidate && candidate.actionType === 'seek_mate' && candidate.targetId) {
+            // Handle seek_mate: consent check, start pathfinding, partner waits
+            const partner = world.agentsById.get(candidate.targetId);
+            if (partner && checkMateConsent(world, agent, partner)) {
+              agent.matingTargetId = candidate.targetId;
+              if (partner.action?.type === 'sleep') partner.action = null;
+              if (!partner.action) {
+                partner.action = ActionFactory.create('await_mate', partner, { targetId: agent.id });
+                partner.path = null;
+              }
+              agentPlanPath(world, agent, partner.cellX, partner.cellY);
+              log(world, 'reproduce', `${agent.name} is seeking ${partner.name} as a mate`, agent.id, { targetId: partner.id });
+            }
+          } else if (candidate && candidate.actionType !== 'sleep') {
             // For social/combat actions that need a target, wire them up
             if (candidate.targetId) {
               tryStartAction(agent,candidate.actionType, { targetId: candidate.targetId });
@@ -891,6 +992,7 @@ export class AgentUpdater {
 
           } // end baby guard else
         }
+      } // end mating target else
       }
     }
 
@@ -957,6 +1059,10 @@ export class AgentUpdater {
       agent.generation,
       preg.donatedFullness
     );
+
+    // Set parent IDs for maternity feeding
+    child.parentIds = [agent.id];
+    if (preg.partnerId) child.parentIds.push(preg.partnerId);
 
     world.agents.push(child);
     world.agentsById.set(child.id, child);

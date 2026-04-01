@@ -119,6 +119,8 @@ export class PersistenceManager {
       babyMsRemaining: a.babyMsRemaining,
       maxAgeTicks: a.maxAgeTicks,
       generation: a.generation,
+      matingTargetId: a.matingTargetId,
+      parentIds: a.parentIds,
       goal: a.goal,
       replanAtTick: a.replanAtTick,
       pathFailCount: a.pathFailCount,
@@ -413,11 +415,17 @@ export class PersistenceManager {
         babyMsRemaining: a.babyMsRemaining ?? 0,
         maxAgeTicks: a.maxAgeTicks,
         generation: a.generation ?? 1,
+        matingTargetId: a.matingTargetId ?? null,
+        parentIds: a.parentIds ?? [],
         goal: a.goal ?? null,
         replanAtTick: a.replanAtTick ?? 0,
       });
       // Restore pathFailCount (not in AgentOpts, set directly)
       agent.pathFailCount = a.pathFailCount ?? 0;
+      // Validate matingTargetId references an existing agent
+      if (agent.matingTargetId && !(d.agents || []).some((x: Record<string, unknown>) => x.id === agent.matingTargetId)) {
+        agent.matingTargetId = null;
+      }
       // Restore resource memory
       if (Array.isArray(a.resourceMemory)) {
         for (const [rType, entries] of a.resourceMemory as [ResourceMemoryType, IResourceMemoryEntry[]][]) {

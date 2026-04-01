@@ -4,3 +4,4 @@ export { ContextBuilder } from './context-builder';
 export { scoreAction } from './action-scorer';
 export { evaluateNeeds } from './need-evaluator';
 export { shouldFlee } from './flee-evaluator';
+export { computeMood } from './mood-evaluator';

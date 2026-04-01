@@ -15,7 +15,9 @@ export type ActionType =
   | 'poop'
   | 'clean'
   | 'play'
-  | 'build_farm';
+  | 'build_farm'
+  | 'seek_mate'
+  | 'await_mate';
 
 export enum ActionTag {
   COMBAT = 'combat',
