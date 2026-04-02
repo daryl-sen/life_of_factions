@@ -145,7 +145,8 @@ export class Controls {
       seedEnvironment(world);
       spawnAgents(Number(ranges.rngAgents?.value || 20));
       world.running = true;
-      if (buttons.btnStart) buttons.btnStart.disabled = true;
+      if (buttons.btnStart) buttons.btnStart.style.display = 'none';
+      if (buttons.btnReset) buttons.btnReset.style.display = '';
       if (buttons.btnPause) buttons.btnPause.disabled = false;
       if (buttons.btnResume) buttons.btnResume.disabled = true;
       if (ranges.rngAgents) ranges.rngAgents.disabled = true;
@@ -172,6 +173,60 @@ export class Controls {
       world.running = true;
       if (buttons.btnPause) buttons.btnPause.disabled = false;
       if (buttons.btnResume) buttons.btnResume.disabled = true;
+    });
+
+    const resetModal = document.querySelector<HTMLDialogElement>('#resetModal');
+    const btnResetConfirm = document.querySelector<HTMLButtonElement>('#btnResetConfirm');
+    const btnResetCancel = document.querySelector<HTMLButtonElement>('#btnResetCancel');
+
+    buttons.btnReset?.addEventListener('click', () => {
+      resetModal?.showModal();
+    });
+    btnResetCancel?.addEventListener('click', () => {
+      resetModal?.close();
+    });
+    btnResetConfirm?.addEventListener('click', () => {
+      resetModal?.close();
+      // Stop simulation and clear all state
+      world.running = false;
+      world.grid.clear();
+      world.agents.length = 0;
+      world.agentsById.clear();
+      world.agentsByCell.clear();
+      world.factions.clear();
+      world.familyRegistry.clear();
+      world.flags.clear();
+      world.flagCells.clear();
+      world.obstacles.clear();
+      world.farms.clear();
+      world.foodBlocks.clear();
+      world.waterBlocks.clear();
+      world.treeBlocks.clear();
+      world.seedlings.clear();
+      world.lootBags.clear();
+      world.poopBlocks.clear();
+      world.saltWaterBlocks.clear();
+      world.eggs.clear();
+      world.clouds = [];
+      world._nextCloudSpawnMs = 0;
+      world.tick = 0;
+      world.totalBirths = 0;
+      world.totalDeaths = 0;
+      world.selectedId = null;
+      world.log = new RingLog(200);
+      world.activeLogCats = new Set(LOG_CATS);
+      UIManager.setupLogFilters(world, dom.logFilters, doRenderLog);
+      // Clear autosave so page refresh also starts fresh
+      PersistenceManager.clearAutosave();
+      // Restore controls to pre-start state
+      if (buttons.btnReset) buttons.btnReset.style.display = 'none';
+      if (buttons.btnStart) buttons.btnStart.style.display = '';
+      if (buttons.btnPause) buttons.btnPause.disabled = true;
+      if (buttons.btnResume) buttons.btnResume.disabled = true;
+      if (ranges.rngAgents) ranges.rngAgents.disabled = false;
+      if (nums.numAgents) nums.numAgents.disabled = false;
+      if (ranges.rngWorldSize) ranges.rngWorldSize.disabled = false;
+      if (nums.numWorldSize) nums.numWorldSize.disabled = false;
     });
 
     buttons.btnSpawnCrop?.addEventListener('click', () => {
