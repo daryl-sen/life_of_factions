@@ -323,6 +323,53 @@
         opacity: 0.4;
         cursor: not-allowed;
       }
+      .btn-reset {
+        background: #dc2626;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 8px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.5px;
+        cursor: pointer;
+        transition: all 0.2s;
+        box-shadow: none;
+        display: none;
+      }
+      .btn-reset:hover {
+        background: #ef4444;
+      }
+      #resetModal {
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 24px;
+        max-width: 340px;
+        width: 90vw;
+      }
+      #resetModal::backdrop {
+        background: rgba(0,0,0,0.6);
+      }
+      #resetModal p {
+        margin: 0 0 20px;
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--muted);
+      }
+      #resetModal h2 {
+        margin: 0 0 10px;
+        font-size: 15px;
+        font-weight: 800;
+        letter-spacing: 1px;
+        color: var(--text);
+      }
+      .reset-modal-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+      }
       .btn-action {
         background: var(--panel-2);
         color: var(--text);
@@ -948,6 +995,7 @@
         <div class="panel-body">
           <div class="action-buttons">
             <button id="btnStart" class="btn-start">&#9654; START</button>
+            <button id="btnReset" class="btn-reset">&#8635; RESET</button>
             <button id="btnPause" class="btn-action" disabled>&#10074;&#10074; PAUSE</button>
             <button id="btnResume" class="btn-action" disabled>&#9654;&#9654; RESUME</button>
           </div>
@@ -1274,5 +1322,13 @@
         });
       });
     </script>
+  <dialog id="resetModal">
+    <h2>RESET SIMULATION</h2>
+    <p>This will permanently erase the current world, all agents, and the autosave. This cannot be undone.</p>
+    <div class="reset-modal-actions">
+      <button id="btnResetCancel" class="btn-action">Cancel</button>
+      <button id="btnResetConfirm" class="btn-reset" style="display:block">Reset</button>
+    </div>
+  </dialog>
   </body>
 </html>

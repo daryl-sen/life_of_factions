@@ -100,6 +100,7 @@ export interface DomRefs {
   hud: HTMLElement | null;
   buttons: {
     btnStart: HTMLButtonElement | null;
+    btnReset: HTMLButtonElement | null;
     btnPause: HTMLButtonElement | null;
     btnResume: HTMLButtonElement | null;
     btnSpawnCrop: HTMLButtonElement | null;
@@ -176,6 +177,7 @@ export class UIManager {
       hud: qs('#hud'),
       buttons: {
         btnStart: qs('#btnStart') as HTMLButtonElement | null,
+        btnReset: qs('#btnReset') as HTMLButtonElement | null,
         btnPause: qs('#btnPause') as HTMLButtonElement | null,
         btnResume: qs('#btnResume') as HTMLButtonElement | null,
         btnSpawnCrop: qs('#btnSpawnCrop') as HTMLButtonElement | null,

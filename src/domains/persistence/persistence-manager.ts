@@ -7,7 +7,7 @@ import { Agent } from '../entity/agent';
 import { Genome } from '../genetics';
 import { Faction, FactionManager } from '../faction';
 
-const VERSION = '4.1.2';
+const VERSION = '4.1.3';
 
 // Inlined TUNE constants
 const FARM_MAX_SPAWNS = 12;
