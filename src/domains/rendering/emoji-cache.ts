@@ -64,6 +64,21 @@ export class EmojiCache {
     return entry;
   }
 
+  /** Draw emoji centered at (x, y) in world-space coordinates */
+  draw(ctx: CanvasRenderingContext2D, emoji: string, x: number, y: number): void {
+    const entry = this.get(emoji);
+    ctx.drawImage(entry.canvas, x - entry.w / 2, y - entry.h / 2);
+  }
+
+  /** Draw emoji centered at (x, y) scaled to fill size × size pixels */
+  drawAt(ctx: CanvasRenderingContext2D, emoji: string, x: number, y: number, size: number): void {
+    const entry = this.get(emoji);
+    const scale = size / Math.max(entry.w, entry.h, 1);
+    const dw = entry.w * scale;
+    const dh = entry.h * scale;
+    ctx.drawImage(entry.canvas, x - dw / 2, y - dh / 2, dw, dh);
+  }
+
   getFiltered(emoji: string, filter: string): EmojiEntry {
     const cacheKey = emoji + '|' + filter;
     if (this._filterCache.has(cacheKey)) return this._filterCache.get(cacheKey)!;

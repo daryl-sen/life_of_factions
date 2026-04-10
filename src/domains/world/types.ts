@@ -31,7 +31,8 @@ export interface IObstacle {
 }
 
 export interface IFlagStorage {
-  food: number;
+  plantFood: number;
+  meatFood: number;
   water: number;
   wood: number;
 }
@@ -50,7 +51,7 @@ export interface ILootBag {
   id: string;
   x: number;
   y: number;
-  inventory: { food: number; water: number; wood: number };
+  inventory: { plantFood: number; meatFood: number; water: number; wood: number };
   decayMs: number;
 }
 
@@ -64,15 +65,17 @@ export interface IWaterBlock {
   cells: Array<{ x: number; y: number }>;
 }
 
-export interface ITreeBlock {
+/** v5: trees are organisms; ITreeBlock is replaced by ICorpseBlock */
+export interface ICorpseBlock {
   id: string;
   x: number;
   y: number;
+  foodType: 'plant' | 'meat';
+  totalResources: number;
+  remainingResources: number;
+  decayMs: number;
   emoji: string;
-  units: number;
-  maxUnits: number;
-  ageTotalMs: number;
-  maxAgeMs: number;
+  sourcePhenotype: string;
 }
 
 export interface ISeedling {

@@ -549,6 +549,40 @@
         height: 16px;
       }
 
+      /* ── Indicator config panel ────────────── */
+      .tool-section-label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin-bottom: 8px;
+      }
+      .indicator-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 5px 0;
+        gap: 8px;
+      }
+      .indicator-label {
+        font-size: 12px;
+        color: var(--text);
+        flex: 1;
+      }
+      .indicator-select {
+        background: var(--panel-2);
+        color: var(--text);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 4px;
+        padding: 4px 6px;
+        font-size: 12px;
+        cursor: pointer;
+        min-width: 110px;
+      }
+      .indicator-select:focus {
+        outline: 1px solid var(--accent);
+      }
+
       /* ── Telemetry ─────────────────────────── */
       .telemetry-grid {
         display: grid;
@@ -1052,6 +1086,10 @@
           <div style="margin-top:12px">
             <label class="toggle-row"><input type="checkbox" id="cbPauseOnBlur"/> Pause when unfocused</label>
             <label class="toggle-row"><input type="checkbox" id="cbDrawGrid"/> Draw grid overlays</label>
+          </div>
+          <div style="margin-top:16px">
+            <div class="tool-section-label">INDICATOR SLOTS</div>
+            <div id="indicatorConfigPanel"></div>
           </div>
         </div>
       </div>

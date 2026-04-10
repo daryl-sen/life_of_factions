@@ -1,18 +1,15 @@
-import type { Agent } from '../entity/agent';
+import type { Organism } from '../entity/organism';
 import type { DecisionContext } from './types';
 
 /**
- * Determine if an agent should flee based on its courage trait.
+ * Determine if an organism should flee based on its courage trait.
  *
- * An agent flees when under attack AND their HP ratio drops below
+ * An organism flees when under attack AND their HP ratio drops below
  * their genetic courage threshold (fleeHpRatio).
- *
- * High courage (low fleeHpRatio) = fights to near-death.
- * Low courage (high fleeHpRatio) = flees at high HP.
  */
-export function shouldFlee(agent: Agent, context: DecisionContext): boolean {
+export function shouldFlee(organism: Organism, context: DecisionContext): boolean {
   if (!context.underAttack) return false;
 
-  const hpRatio = agent.maxHealth > 0 ? agent.health / agent.maxHealth : 1;
-  return hpRatio < agent.traits.courage.fleeHpRatio;
+  const hpRatio = organism.maxHealth > 0 ? organism.health / organism.maxHealth : 1;
+  return hpRatio < organism.traits.courage.fleeHpRatio;
 }

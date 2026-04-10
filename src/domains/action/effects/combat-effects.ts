@@ -1,41 +1,39 @@
 import { log } from '../../../core/utils';
-import type { Agent } from '../../entity/agent';
+import type { Organism } from '../../entity/organism';
 import type { World } from '../../world/world';
+import { LifecycleStage } from '../../phenotype/types';
 
 const XP_PER_KILL = 50;
 
-export function onAttackTick(world: World, agent: Agent, target: Agent): void {
-  // effectiveAttack already includes pregnancy debuff (-40%);
-  // elder class gets an additional 0.7x multiplier
-  const effectiveAttack = agent.entityClass === 'elder'
-    ? agent.effectiveAttack * 0.7
-    : agent.effectiveAttack;
+export function onAttackTick(world: World, organism: Organism, target: Organism): void {
+  const elderMult = organism.lifecycleStage === LifecycleStage.Elder ? 0.7 : 1.0;
+  const damage    = organism.effectiveAttack * 0.4 * elderMult;
 
-  target.takeDamage(effectiveAttack * 0.4);
+  target.takeDamage(damage);
 
-  // Same-faction attack: 30% chance target leaves faction, else retaliates
-  if (agent.factionId && agent.factionId === target.factionId) {
+  // Same-faction attack: 30% chance target leaves faction
+  if (organism.factionId && organism.factionId === target.factionId) {
     if (Math.random() < 0.3) {
       target.factionId = null;
     }
   }
 
-  agent.relationships.adjust(target.id, -0.2);
-  log(world, 'attack', `${agent.name} hit ${target.name}`, agent.id, { to: target.id });
+  organism.relationships.adjust(target.id, -0.2);
+  log(world, 'attack', `${organism.name} hit ${target.name}`, organism.id, { to: target.id });
 
   if (target.health <= 0) {
-    agent.addXp(XP_PER_KILL);
-    checkLevelUp(world, agent);
+    organism.addXp(XP_PER_KILL);
+    checkLevelUp(world, organism);
   }
 }
 
-export function onAttackComplete(_world: World, _agent: Agent, _target: Agent | undefined): void {
+export function onAttackComplete(_world: World, _organism: Organism, _target: Organism | undefined): void {
   // Attack completion has no special effect beyond periodic damage
 }
 
-function checkLevelUp(world: World, agent: Agent): void {
-  while (agent.canLevelUp()) {
-    agent.levelUp();
-    log(world, 'level', `${agent.name} leveled to ${agent.level}`, agent.id, {});
+function checkLevelUp(world: World, organism: Organism): void {
+  while (organism.canLevelUp()) {
+    organism.levelUp();
+    log(world, 'level', `${organism.name} leveled to ${organism.level}`, organism.id, {});
   }
 }

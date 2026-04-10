@@ -3,16 +3,15 @@ import { key, rndi, RingLog } from '../../core/utils';
 import type { ResourceMemoryType, IResourceMemoryEntry } from '../../core/types';
 import type { World } from '../world';
 import type { DomRefs } from '../ui/ui-manager';
-import { Agent } from '../entity/agent';
+import { Organism } from '../entity/organism';
 import { Genome } from '../genetics';
 import { Faction, FactionManager } from '../faction';
 
-const VERSION = '4.1.4';
+const VERSION = '5.0.0';
 
 // Inlined TUNE constants
 const FARM_MAX_SPAWNS = 12;
 const FARM_SPAWN_INTERVAL_RANGE: [number, number] = [15000, 25000];
-const TREE_MAX_AGE_RANGE: [number, number] = [780000, 1020000];
 
 const AUTOSAVE_KEY = 'emoji_life_autosave';
 const AUTOSAVE_INTERVAL_MS = 60_000;
@@ -80,19 +79,18 @@ export class PersistenceManager {
     }
     const farms = [...world.farms.values()];
     const foodBlocks = [...world.foodBlocks.values()];
-    const agents = world.agents.map((a) => ({
+    const agents = world.organisms.filter(o => !o.isImmobile).map((a) => ({
       id: a.id,
       name: a.name,
       dna: a.genome.dna,
       familyName: a.familyName,
-      entityClass: a.entityClass,
+      lifecycleStage: a.lifecycleStage,
       cellX: a.cellX,
       cellY: a.cellY,
       health: a.health,
       maxHealth: a.maxHealth,
       energy: a.energy,
       maxEnergy: a.maxEnergy,
-      attack: a.attack,
       level: a.level,
       ageTicks: a.ageTicks,
       factionId: a.factionId,
@@ -108,15 +106,18 @@ export class PersistenceManager {
           }
         : null,
       lockMsRemaining: a.lockMsRemaining,
-      fullness: a.fullness,
-      hygiene: a.hygiene,
-      social: a.social,
-      inspiration: a.inspiration,
+      fullness: a.needs.fullness,
+      hygiene: a.needs.hygiene,
+      social: a.needs.social,
+      inspiration: a.needs.inspiration,
       xp: a.xp,
-      inventory: { food: a.inventory.food, water: a.inventory.water, wood: a.inventory.wood },
-      poopTimerMs: a.poopTimerMs,
+      inventory: {
+        plantFood: a.inventory.plantFood,
+        meatFood: a.inventory.meatFood,
+        water: a.inventory.water,
+        wood: a.inventory.wood,
+      },
       diseased: a.diseased,
-      babyMsRemaining: a.babyMsRemaining,
       maxAgeTicks: a.maxAgeTicks,
       generation: a.generation,
       matingTargetId: a.matingTargetId,
@@ -125,17 +126,17 @@ export class PersistenceManager {
       replanAtTick: a.replanAtTick,
       pathFailCount: a.pathFailCount,
       resourceMemory: [
-        ['food', a.resourceMemory.get('food') ?? []],
-        ['water', a.resourceMemory.get('water') ?? []],
-        ['wood', a.resourceMemory.get('wood') ?? []],
+        ['plantFood', a.memory.recall('plantFood') ?? []],
+        ['water', a.memory.recall('water') ?? []],
+        ['wood', a.memory.recall('wood') ?? []],
       ],
-      pregnancy: a.pregnancy.active ? {
-        remainingMs: a.pregnancy.remainingMs,
+      pregnancy: a.pregnancy?.active ? {
+        gestationStartTick: a.pregnancy.gestationStartTick,
+        childNeeds: { ...a.pregnancy.childNeeds },
         childDna: a.pregnancy.childDna,
         childFamilyName: a.pregnancy.childFamilyName,
         childFactionId: a.pregnancy.childFactionId,
         partnerId: a.pregnancy.partnerId,
-        donatedFullness: a.pregnancy.donatedFullness,
       } : null,
     }));
     return {
@@ -151,7 +152,6 @@ export class PersistenceManager {
         totalDeaths: world.totalDeaths,
         factionSort: world.factionSort,
         familySort: world.familySort,
-        starredStats: world.starredStats,
       },
       factions,
       flags,
@@ -159,8 +159,7 @@ export class PersistenceManager {
       farms,
       foodBlocks,
       waterBlocks: PersistenceManager._serializeWaterBlocks(world),
-      treeBlocks: [...world.treeBlocks.values()],
-      seedlings: [...world.seedlings.values()],
+      corpseBlocks: [...world.corpseBlocks.values()],
       lootBags: [...world.lootBags.values()],
       poopBlocks: [...world.poopBlocks.values()],
       saltWaterBlocks: [...world.saltWaterBlocks.values()],
@@ -177,7 +176,7 @@ export class PersistenceManager {
       log: { limit: world.log.limit, arr: world.log.arr },
       selectedId: world.selectedId,
       activeLogCats: [...world.activeLogCats],
-      activeLogAgentId: world.activeLogAgentId || null,
+      activeLogOrganismId: world.activeLogOrganismId || null,
     };
   }
 
@@ -226,13 +225,13 @@ export class PersistenceManager {
   static restore(
     world: World,
     data: Record<string, unknown>,
-    opts: { doRenderLog: () => void; dom: DomRefs }
+    opts: { doRenderLog: () => void; dom: DomRefs; onRestored?: () => void }
   ): void {
     const d = data as Record<string, any>;
     world.running = false;
     world.grid.clear();
-    world.agents.length = 0;
-    world.agentsById.clear();
+    world.organisms.length = 0;
+    world.organismsById.clear();
     world.factions.clear();
     world.familyRegistry.clear();
     world.tick = d.state?.tick ?? 0;
@@ -244,10 +243,6 @@ export class PersistenceManager {
     world.totalDeaths = d.state?.totalDeaths ?? 0;
     world.factionSort = d.state?.factionSort ?? 'members';
     world.familySort = d.state?.familySort ?? 'alive';
-    if (Array.isArray(d.state?.starredStats)) {
-      world.starredStats = d.state.starredStats;
-    }
-
     for (const f of d.factions || []) {
       const faction = new Faction(f.id, f.color, new Set(f.members || []), f.createdAtTick ?? 0);
       world.factions.set(f.id, faction);
@@ -255,7 +250,7 @@ export class PersistenceManager {
     for (const fl of d.flags || []) {
       world.flags.set(fl.factionId, {
         ...fl,
-        storage: fl.storage ?? { food: 0, water: 0, wood: 0 },
+        storage: fl.storage ?? { plantFood: 0, meatFood: 0, water: 0, wood: 0 },
       });
       world.flagCells.add(key(fl.x, fl.y));
     }
@@ -299,23 +294,16 @@ export class PersistenceManager {
         world.waterBlocks.set(key(c.x, c.y), block);
       }
     }
-    // Restore tree blocks
-    for (const tb of d.treeBlocks || []) {
-      world.treeBlocks.set(key(tb.x, tb.y), {
-        id: tb.id, x: tb.x, y: tb.y,
-        emoji: tb.emoji, units: tb.units ?? 3,
-        maxUnits: tb.maxUnits ?? 3,
-        ageTotalMs: tb.ageTotalMs ?? 0,
-        maxAgeMs: tb.maxAgeMs ?? rndi(TREE_MAX_AGE_RANGE[0], TREE_MAX_AGE_RANGE[1]),
-      });
-    }
-    // Restore seedlings
-    for (const s of d.seedlings || []) {
-      world.seedlings.set(key(s.x, s.y), {
-        id: s.id, x: s.x, y: s.y,
-        plantedAtTick: s.plantedAtTick ?? 0,
-        growthDurationMs: s.growthDurationMs ?? 60000,
-        growthElapsedMs: s.growthElapsedMs ?? 0,
+    // Restore corpse blocks (v5)
+    for (const cb of d.corpseBlocks || []) {
+      world.corpseBlocks.set(key(cb.x, cb.y), {
+        id: cb.id, x: cb.x, y: cb.y,
+        foodType: cb.foodType ?? 'plant',
+        totalResources: cb.totalResources ?? 3,
+        remainingResources: cb.remainingResources ?? 3,
+        decayMs: cb.decayMs ?? 60000,
+        emoji: cb.emoji ?? '\u{1F480}',
+        sourcePhenotype: cb.sourcePhenotype ?? 'unknown',
       });
     }
     // Restore loot bags
@@ -324,7 +312,12 @@ export class PersistenceManager {
         id: lb.id,
         x: lb.x,
         y: lb.y,
-        inventory: lb.inventory ?? { food: 0, water: 0, wood: 0 },
+        inventory: {
+          plantFood: lb.inventory?.plantFood ?? lb.inventory?.food ?? 0,
+          meatFood: lb.inventory?.meatFood ?? 0,
+          water: lb.inventory?.water ?? 0,
+          wood: lb.inventory?.wood ?? 0,
+        },
         decayMs: lb.decayMs ?? 30000,
       });
     }
@@ -378,7 +371,7 @@ export class PersistenceManager {
     for (const a of d.agents || []) {
       let action = a.action ? { ...a.action } : null;
       // Backward compat: rename 'help' → 'share'
-      if (action && (action as any).type === 'help') action.type = 'share';
+      if (action && (action as Record<string, unknown>).type === 'help') action.type = 'share';
       if (
         action?.payload?.targetId &&
         !(d.agents || []).some((x: Record<string, unknown>) => x.id === action!.payload!.targetId)
@@ -386,12 +379,11 @@ export class PersistenceManager {
         action = null;
       }
       const genome = a.dna ? new Genome(a.dna) : Genome.random();
-      const agent = new Agent({
+      const organism = new Organism({
         id: a.id,
         name: a.name,
         genome,
         familyName: a.familyName ?? a.name,
-        entityClass: a.entityClass ?? 'adult',
         cellX: a.cellX,
         cellY: a.cellY,
         health: a.health,
@@ -409,10 +401,13 @@ export class PersistenceManager {
         social: a.social ?? 50,
         inspiration: a.inspiration ?? 50,
         xp: a.xp ?? 0,
-        inventory: a.inventory ?? { food: 0, water: 0, wood: 0 },
-        poopTimerMs: a.poopTimerMs ?? 0,
+        inventory: {
+          plantFood: a.inventory?.plantFood ?? a.inventory?.food ?? 0,
+          meatFood: a.inventory?.meatFood ?? 0,
+          water: a.inventory?.water ?? 0,
+          wood: a.inventory?.wood ?? 0,
+        },
         diseased: a.diseased ?? false,
-        babyMsRemaining: a.babyMsRemaining ?? 0,
         maxAgeTicks: a.maxAgeTicks,
         generation: a.generation ?? 1,
         matingTargetId: a.matingTargetId ?? null,
@@ -420,37 +415,42 @@ export class PersistenceManager {
         goal: a.goal ?? null,
         replanAtTick: a.replanAtTick ?? 0,
       });
-      // Restore pathFailCount (not in AgentOpts, set directly)
-      agent.pathFailCount = a.pathFailCount ?? 0;
-      // Validate matingTargetId references an existing agent
-      if (agent.matingTargetId && !(d.agents || []).some((x: Record<string, unknown>) => x.id === agent.matingTargetId)) {
-        agent.matingTargetId = null;
+      organism.pathFailCount = a.pathFailCount ?? 0;
+      // Validate matingTargetId
+      if (organism.matingTargetId && !(d.agents || []).some((x: Record<string, unknown>) => x.id === organism.matingTargetId)) {
+        organism.matingTargetId = null;
       }
       // Restore resource memory
       if (Array.isArray(a.resourceMemory)) {
         for (const [rType, entries] of a.resourceMemory as [ResourceMemoryType, IResourceMemoryEntry[]][]) {
-          agent.resourceMemory.set(rType, entries ?? []);
+          for (const e of (entries ?? [])) {
+            organism.memory.remember(rType, e.x, e.y, e.tick ?? 0);
+          }
         }
       }
       // Restore pregnancy state
       if (a.pregnancy && a.pregnancy.childDna) {
-        agent.pregnancy.start(
-          a.pregnancy.childDna,
-          a.pregnancy.remainingMs ?? 0,
-          a.pregnancy.childFamilyName ?? agent.familyName,
-          a.pregnancy.childFactionId ?? null,
-          a.pregnancy.partnerId ?? null,
-          a.pregnancy.donatedFullness ?? 0
-        );
+        organism.pregnancy?.start({
+          childDna: a.pregnancy.childDna,
+          childFamilyName: a.pregnancy.childFamilyName ?? organism.familyName,
+          childFactionId: a.pregnancy.childFactionId ?? null,
+          partnerId: a.pregnancy.partnerId ?? null,
+          transferRate: 0.4,
+          startTick: 0,
+        });
+        if (organism.pregnancy?.active && a.pregnancy.gestationStartTick != null) {
+          organism.pregnancy.gestationStartTick = a.pregnancy.gestationStartTick;
+        }
+        if (organism.pregnancy?.active && a.pregnancy.childNeeds != null) {
+          Object.assign(organism.pregnancy.childNeeds, a.pregnancy.childNeeds);
+        }
       }
 
-      world.agents.push(agent);
-      world.agentsById.set(agent.id, agent);
-      world.agentsByCell.set(key(agent.cellX, agent.cellY), agent.id);
+      world.addOrganism(organism);
 
       // Only register births if no saved family registry (backward compat)
       if (!Array.isArray(d.familyRegistry)) {
-        world.familyRegistry.registerBirth(agent.familyName, agent.generation);
+        world.familyRegistry.registerBirth(organism.familyName, organism.generation);
       }
     }
 
@@ -463,13 +463,14 @@ export class PersistenceManager {
     }
     // Restore log filter state
     if (Array.isArray(d.activeLogCats)) {
-      world.activeLogCats = new Set(d.activeLogCats);
+      world.activeLogCats.clear();
+      for (const c of d.activeLogCats) world.activeLogCats.add(c);
     }
-    world.activeLogAgentId = d.activeLogAgentId ?? null;
+    world.activeLogOrganismId = d.activeLogOrganismId ?? d.activeLogAgentId ?? null;
     // Restore selection
     world.selectedId = d.selectedId ?? null;
 
-    if (world._rebuildAgentOptions) world._rebuildAgentOptions();
+    if (opts.onRestored) opts.onRestored();
     opts.doRenderLog();
     world.log.push({
       t: performance.now(),
@@ -489,14 +490,5 @@ export class PersistenceManager {
     if (dom.ranges.rngCloudRate) dom.ranges.rngCloudRate.value = String(world.cloudSpawnRate);
     if (dom.nums.numCloudRate) dom.nums.numCloudRate.value = String(world.cloudSpawnRate);
     if (dom.labels.lblCloudRate) dom.labels.lblCloudRate.textContent = world.cloudSpawnRate.toFixed(1) + '\u00d7';
-    // Sync starred stat buttons
-    document.querySelectorAll('.telemetry-star').forEach((btn) => {
-      const stat = (btn as HTMLElement).dataset['stat'];
-      if (stat && world.starredStats.includes(stat)) {
-        btn.classList.add('starred');
-      } else {
-        btn.classList.remove('starred');
-      }
-    });
   }
 }

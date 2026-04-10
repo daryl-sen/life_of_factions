@@ -38,7 +38,7 @@ export class WaterField {
       if (grid.obstacles.has(k)) return true;
       if (grid.farms.has(k)) return true;
       if (grid.flagCells.has(k)) return true;
-      if (grid.treeBlocks.has(k)) return true;
+      if (grid.corpseBlocks.has(k)) return true;
       // Water blocks themselves are seeds, not obstacles for this field
       return false;
     };

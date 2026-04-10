@@ -1,9 +1,13 @@
-import { LOG_CATS, AGENT_EMOJIS, TICK_MS } from '../../core/constants';
-import { getIdleEmoji } from '../../core/utils';
+import { TICK_MS } from '../../core/constants';
 import type { LogCategory } from '../action/types';
 import type { World } from '../world';
-import type { Agent } from '../entity/agent';
+import type { Organism } from '../entity/organism';
 import { Mood } from '../entity/types';
+import { LifecycleStage } from '../phenotype/types';
+
+const LOG_CATS_ALL = ['talk', 'quarrel', 'attack', 'hunt', 'heal', 'share', 'reproduce',
+  'build', 'destroy', 'death', 'faction', 'level', 'spawn', 'info', 'sleep', 'eat',
+  'harvest', 'loot', 'hygiene'] as const;
 import { GENE_REGISTRY } from '../genetics/gene-registry';
 import { evaluateNeeds } from '../decision/need-evaluator';
 import { computeMood } from '../decision/mood-evaluator';
@@ -41,12 +45,13 @@ function traitColor(value: number, min: number, max: number, inverted: boolean):
   return 'inherit';                          // normal
 }
 
-/** Look up the first component's min/max/inverted for a gene code */
+/** Look up a trait's inverted flag for a gene code (v5: no min/max in TraitComponentDef) */
 function traitRange(geneCode: string): { min: number; max: number; inverted: boolean } {
   const def = GENE_REGISTRY.get(geneCode);
   if (!def || def.components.length === 0) return { min: 0, max: 1, inverted: false };
   const c = def.components[0];
-  return { min: c.min, max: c.max, inverted: c.inverted };
+  // v5: use floor as min, default+4*scale as approximate max
+  return { min: c.floor, max: c.default + c.scale * 4, inverted: c.inverted };
 }
 
 /** Format a trait cell with color coding and tooltip */
@@ -257,7 +262,7 @@ export class UIManager {
 
   static renderLog(world: World, logList: HTMLElement | null): void {
     if (!world || !world.log || !logList) return;
-    const items = world.log.list(world.activeLogCats, world.activeLogAgentId);
+    const items = world.log.list(world.activeLogCats, world.activeLogOrganismId);
     logList.innerHTML = items
       .slice(-100)
       .reverse()
@@ -283,7 +288,7 @@ export class UIManager {
     logFilters.appendChild(allPill);
 
     const pills = new Map<LogCategory, HTMLButtonElement>();
-    LOG_CATS.forEach((cat) => {
+    LOG_CATS_ALL.forEach((cat) => {
       const pill = document.createElement('button');
       pill.className = 'filter-pill' + (world.activeLogCats.has(cat) ? ' active' : '');
       pill.textContent = cat.toUpperCase();
@@ -299,19 +304,20 @@ export class UIManager {
           world.activeLogCats.add(cat);
           pill.classList.add('active');
         }
-        allPill.classList.toggle('active', world.activeLogCats.size === LOG_CATS.length);
+        allPill.classList.toggle('active', world.activeLogCats.size === LOG_CATS_ALL.length);
         renderLogFn();
       });
     });
 
     allPill.addEventListener('click', () => {
-      const allActive = world.activeLogCats.size === LOG_CATS.length;
+      const allActive = world.activeLogCats.size === LOG_CATS_ALL.length;
       if (allActive) {
         world.activeLogCats.clear();
         pills.forEach((p) => p.classList.remove('active'));
         allPill.classList.remove('active');
       } else {
-        world.activeLogCats = new Set(LOG_CATS);
+        world.activeLogCats.clear();
+        for (const c of LOG_CATS_ALL) world.activeLogCats.add(c);
         pills.forEach((p) => p.classList.add('active'));
         allPill.classList.add('active');
       }
@@ -321,9 +327,9 @@ export class UIManager {
     const agentSelect = qs('#agentFilterSelect') as HTMLSelectElement | null;
     if (agentSelect) {
       const rebuildAgentOptions = () => {
-        const cur = world.activeLogAgentId;
+        const cur = world.activeLogOrganismId;
         const opts = [{ value: '', label: 'All Agents' }].concat(
-          world.agents.map((a) => ({
+          world.organisms.map((a) => ({
             value: a.id,
             label: `${a.name} (${a.id.slice(0, 4)})`,
           }))
@@ -338,9 +344,9 @@ export class UIManager {
         }
       };
       rebuildAgentOptions();
-      world._rebuildAgentOptions = rebuildAgentOptions;
+      UIManager._rebuildOrganismOptions = rebuildAgentOptions;
       agentSelect.addEventListener('change', () => {
-        world.activeLogAgentId = agentSelect.value || null;
+        world.activeLogOrganismId = agentSelect.value || null;
         renderLogFn();
       });
     }
@@ -366,7 +372,7 @@ export class UIManager {
     const rMax = (stats.renderMax as number) || 0;
 
     const s = stats as Record<string, HTMLElement | null>;
-    if (s.stAgents) s.stAgents.textContent = compactNum(world.agents.length);
+    if (s.stAgents) s.stAgents.textContent = compactNum(world.organisms.length);
     if (s.stFactions) s.stFactions.textContent = compactNum(world.factions.size);
     if (s.stCrops) s.stCrops.textContent = compactNum(world.foodBlocks.size);
     if (s.stFarms) s.stFarms.textContent = compactNum(world.farms.size);
@@ -381,7 +387,7 @@ export class UIManager {
     const seenWater = new Set<string>();
     for (const wb of world.waterBlocks.values()) seenWater.add(wb.id);
     if (s.stWater) s.stWater.textContent = compactNum(seenWater.size);
-    if (s.stTrees) s.stTrees.textContent = compactNum(world.treeBlocks.size);
+    if (s.stTrees) s.stTrees.textContent = compactNum(world.corpseBlocks.size);
     if (s.stTick) s.stTick.textContent = UIManager.formatTickCount(world.tick);
     if (s.stFps) s.stFps.textContent = fps.toFixed(0);
     if (s.stTickAvg) s.stTickAvg.textContent = tAvg.toFixed(1);
@@ -404,13 +410,13 @@ export class UIManager {
       [...world.factions]
         .map(([fid, f]) => fid + ':' + f.members.size)
         .join(',');
-    if (sig !== world._lastFactionsSig || now - world._lastFactionsDomAt >= 2000) {
+    if (sig !== UIManager._lastFactionsSig || now - UIManager._lastFactionsDomAt >= 2000) {
       factionsList.innerHTML = '';
 
       // Build sortable entries
       const entries = [...world.factions].map(([fid, f]) => {
         const members = [...f.members]
-          .map((id) => world.agentsById.get(id))
+          .map((id) => world.organismsById.get(id))
           .filter(Boolean);
         const avgLvl = members.reduce((s, a) => s + a!.level, 0) / (members.length || 1);
         return { fid, f, members, avgLvl };
@@ -436,7 +442,7 @@ export class UIManager {
         const color = f.color;
         const flag = world.flags.get(fid);
         const storageStr = flag?.storage
-          ? ` &middot; 🍖${flag.storage.food} 💧${flag.storage.water} 🪵${flag.storage.wood}`
+          ? ` &middot; 🍖${(flag.storage.plantFood ?? 0) + (flag.storage.meatFood ?? 0)} 💧${flag.storage.water} 🪵${flag.storage.wood}`
           : '';
         const div = document.createElement('div');
         div.className = 'faction-item';
@@ -447,13 +453,16 @@ export class UIManager {
         `;
         factionsList.appendChild(div);
       }
-      world._lastFactionsDomAt = now;
-      world._lastFactionsSig = sig;
+      UIManager._lastFactionsDomAt = now;
+      UIManager._lastFactionsSig = sig;
     }
   }
 
   static _lastFamiliesSig = '';
   private static _lastFamiliesDomAt = 0;
+  static _rebuildOrganismOptions: (() => void) | null = null;
+  static _lastFactionsSig = '';
+  private static _lastFactionsDomAt = 0;
 
   static rebuildFamiliesListIfNeeded(world: World, familiesList: HTMLElement | null): void {
     if (!familiesList) return;
@@ -522,7 +531,7 @@ export class UIManager {
       if (badge) (badge as HTMLElement).style.display = 'none';
       return;
     }
-    const a = world.agentsById.get(world.selectedId);
+    const a = world.organismsById.get(world.selectedId);
     if (!a) {
       el.innerHTML = '<div class="muted">(agent gone)</div>';
       if (badge) (badge as HTMLElement).style.display = 'none';
@@ -541,8 +550,7 @@ export class UIManager {
     const moodEmoji = mood === Mood.HAPPY ? '\u{1F600}' : mood === Mood.CONTENT ? '\u{1F642}' : mood === Mood.UNHAPPY ? '\u{1F629}' : '\u{1F621}';
 
     const actionType = a.action?.type;
-    const emoji =
-      AGENT_EMOJIS[actionType as string] || getIdleEmoji(a, mood);
+    const emoji = a.currentEmoji;
     const factionColor = a.factionId
       ? world.factions.get(a.factionId)?.color || '#888'
       : null;
@@ -557,15 +565,15 @@ export class UIManager {
             <span class="agent-level">LV. ${String(a.level).padStart(2, '0')}</span>
           </div>
           <div class="agent-badges">
-            ${a.entityClass !== 'adult'
-              ? `<span class="badge-action" style="background:#fbbf2422;color:#fbbf24;border-color:#fbbf2455">${a.entityClass.toUpperCase()}</span>`
+            ${a.lifecycleStage !== LifecycleStage.Adult
+              ? `<span class="badge-action" style="background:#fbbf2422;color:#fbbf24;border-color:#fbbf2455">${a.lifecycleStage.toUpperCase()}</span>`
               : ''
             }
             ${a.factionId
               ? `<span class="badge-faction" style="background:${factionColor}22;color:${factionColor};border-color:${factionColor}55">${a.factionId.slice(0, 8).toUpperCase()}</span>`
               : ''
             }
-            ${a.pregnancy.active
+            ${a.pregnancy?.active
               ? `<span class="badge-action" style="background:#f9a8d422;color:#f9a8d4;border-color:#f9a8d455">\u{1F95A} PREGNANT</span>`
               : ''
             }
@@ -607,46 +615,46 @@ export class UIManager {
         <div>
           <div class="agent-stat-header">
             <span>FULLNESS</span>
-            <span>${a.fullness.toFixed(1)}/100</span>
+            <span>${a.needs.fullness.toFixed(1)}/100</span>
           </div>
           <div class="agent-stat-bar">
-            <div class="agent-stat-fill" style="background:#f0a040;width:${a.fullness}%"></div>
+            <div class="agent-stat-fill" style="background:#f0a040;width:${a.needs.fullness}%"></div>
           </div>
         </div>
         <div>
           <div class="agent-stat-header">
             <span>INSPIRATION</span>
-            <span>${a.inspiration.toFixed(1)}/100</span>
+            <span>${a.needs.inspiration.toFixed(1)}/100</span>
           </div>
           <div class="agent-stat-bar">
-            <div class="agent-stat-fill" style="background:#c084fc;width:${a.inspiration}%"></div>
+            <div class="agent-stat-fill" style="background:#c084fc;width:${a.needs.inspiration}%"></div>
           </div>
         </div>
         <div>
           <div class="agent-stat-header">
             <span>SOCIAL</span>
-            <span>${a.social.toFixed(1)}/100</span>
+            <span>${a.needs.social.toFixed(1)}/100</span>
           </div>
           <div class="agent-stat-bar">
-            <div class="agent-stat-fill" style="background:#f472b6;width:${a.social}%"></div>
+            <div class="agent-stat-fill" style="background:#f472b6;width:${a.needs.social}%"></div>
           </div>
         </div>
         <div>
           <div class="agent-stat-header">
             <span>HYGIENE</span>
-            <span>${a.hygiene.toFixed(1)}/100</span>
+            <span>${a.needs.hygiene.toFixed(1)}/100</span>
           </div>
           <div class="agent-stat-bar">
-            <div class="agent-stat-fill" style="background:#38bdf8;width:${a.hygiene}%"></div>
+            <div class="agent-stat-fill" style="background:#38bdf8;width:${a.needs.hygiene}%"></div>
           </div>
         </div>
         <div>
           <div class="agent-stat-header">
             <span>INVENTORY</span>
-            <span>${a.inventoryTotal()}/${a.inventory.capacity}</span>
+            <span>${a.inventory.total()}/${a.inventory.capacity}</span>
           </div>
           <div style="font-size:10px;margin-top:2px;color:var(--muted)">
-            \u{1F356} ${a.inventory.food} &nbsp; \u{1F4A7} ${a.inventory.water} &nbsp; \u{1FAB5} ${a.inventory.wood}
+            \u{1F356} ${a.inventory.plantFood + a.inventory.meatFood} &nbsp; \u{1F4A7} ${a.inventory.water} &nbsp; \u{1FAB5} ${a.inventory.wood}
           </div>
         </div>
       </div>
@@ -660,7 +668,7 @@ export class UIManager {
       <div style="font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border)">
         <div style="color:var(--muted);margin-bottom:4px;font-weight:600">TRAITS</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;font-size:10px">
-          ${traitCell('STR', a.traits.strength.baseAttack.toFixed(1), a.traits.strength.baseAttack, 'AA', 'Strength — Base attack damage')}
+          ${traitCell('STR', a.traits.strength.value.toFixed(1), a.traits.strength.value, 'AA', 'Strength — Attack power')}
           ${traitCell('RES', a.traits.resilience.baseMaxHp.toFixed(0), a.traits.resilience.baseMaxHp, 'EE', 'Resilience — Base max health')}
           ${traitCell('VIG', a.traits.vigor.baseMaxEnergy.toFixed(0), a.traits.vigor.baseMaxEnergy, 'CC', 'Vigor — Base max energy')}
           ${traitCell('LON', (a.traits.longevity.maxAgeMs / 1000).toFixed(0) + 's', a.traits.longevity.maxAgeMs, 'BB', 'Longevity — Max lifespan')}
@@ -675,7 +683,7 @@ export class UIManager {
           ${traitCell('RCL', a.traits.recall.memorySlots.toFixed(0), a.traits.recall.memorySlots, 'MM', 'Recall — Resource memory slots')}
           ${traitCell('CHR', a.traits.charisma.relationshipSlots.toFixed(0), a.traits.charisma.relationshipSlots, 'NN', 'Charisma — Max relationship slots')}
           ${traitCell('END', a.traits.endurance.inventoryCapacity.toFixed(0), a.traits.endurance.inventoryCapacity, 'RR', 'Endurance — Inventory capacity')}
-          ${traitCell('MAT', (a.traits.maturity.babyDurationMs / 1000).toFixed(0) + 's', a.traits.maturity.babyDurationMs, 'QQ', 'Maturity — Baby stage duration (lower = matures faster)')}
+          ${traitCell('MAT', (a.traits.maturity.juvenileMs / 1000).toFixed(0) + 's', a.traits.maturity.juvenileMs, 'QQ', 'Maturity — Juvenile stage duration (lower = matures faster)')}
           ${traitCell('GRD', a.traits.greed.hoardProbability.toFixed(2), a.traits.greed.hoardProbability, 'UU', 'Greed — Probability of opportunistic resource hoarding')}
           ${traitCell('MTN', a.traits.maternity.feedProbability.toFixed(2), a.traits.maternity.feedProbability, 'VV', 'Maternity — Probability of feeding nearby babies')}
           ${a.traits.parthenogenesis.canSelfReproduce ? '<div title="Parthenogenesis — Can reproduce without a partner" style="color:#f9a8d4;cursor:help">ASEXUAL</div>' : ''}
@@ -685,8 +693,8 @@ export class UIManager {
         <div style="color:var(--muted);margin-bottom:4px;font-weight:600">RELATIONSHIPS (${a.relationships.size}/${a.relationships.maxSlots})</div>
         ${a.relationships.size > 0
           ? `<div style="font-size:10px;max-height:80px;overflow-y:auto">${
-              Array.from(a.relationships.entries()).map(([rid, val]) => {
-                const other = world.agentsById.get(rid);
+              Array.from(a.relationships.entries()).map(([rid, val]: [string, number]) => {
+                const other = world.organismsById.get(rid);
                 const name = other ? other.name : rid.slice(0, 6);
                 const barColor = val >= 0 ? '#22c55e' : '#ef4444';
                 const pct = Math.abs(val) * 50;
@@ -705,10 +713,10 @@ export class UIManager {
       </div>
       <div style="font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border)">
         <div style="color:var(--muted);margin-bottom:4px;font-weight:600">MEMORY</div>
-        ${(['food', 'water', 'wood'] as const).map(type => {
-          const entries = a.resourceMemory.get(type) || [];
+        ${(['plantFood', 'water', 'wood'] as const).map(type => {
+          const entries = a.memory.recall(type) || [];
           const maxSlots = a.traits.recall.memorySlots;
-          const icon = type === 'food' ? '\u{1F356}' : type === 'water' ? '\u{1F4A7}' : '\u{1FAB5}';
+          const icon = type === 'plantFood' ? '\u{1F356}' : type === 'water' ? '\u{1F4A7}' : '\u{1FAB5}';
           return `<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:2px 0">${icon} <span style="color:var(--muted);font-size:9px">${entries.length}/${maxSlots}</span>${entries.map(e =>
                 `<span style="display:inline-block;padding:1px 5px;border-radius:4px;background:rgba(255,255,255,0.06);border:1px solid var(--border);font-size:9px;font-family:monospace">${e.x},${e.y}</span>`
               ).join('')}</div>`;
@@ -716,7 +724,7 @@ export class UIManager {
       </div>`;
   }
 
-  static showNotification(agent: Agent): void {
+  static showNotification(agent: Organism): void {
     const el = document.getElementById('eventNotification');
     const body = document.getElementById('notificationBody');
     if (!el || !body || !agent) return;

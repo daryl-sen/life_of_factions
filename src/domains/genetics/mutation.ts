@@ -1,18 +1,12 @@
-const MIN_DNA_LENGTH = 100;
-const MAX_DNA_LENGTH = 250;
-const MUTATION_RATE = 0.005;       // 0.5% per character
-const GENE_DUP_CHANCE = 0.01;     // 1% per reproduction
-const GENE_DEL_CHANCE = 0.01;     // 1% per reproduction
+import { TUNE } from '../../core/tuning';
 
 const UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const LOWER = 'abcdefghijklmnopqrstuvwxyz';
 const DIGITS = '0123456789';
 
 function randomChar(position: number): string {
-  // Positions 0,1 in a gene (mod 5) are letters; 2,3,4 are digits
   const posInGene = position % 5;
   if (posInGene < 2) {
-    // Random letter (upper or lower)
     const allLetters = UPPER + LOWER;
     return allLetters[Math.floor(Math.random() * allLetters.length)];
   }
@@ -21,48 +15,50 @@ function randomChar(position: number): string {
 
 /**
  * Apply mutations to a DNA string.
+ * Rate is now a parameter (driven by parent Volatility trait) instead of a constant.
+ * Default = TUNE.mutation.baseRate (0.5%) when called without a rate argument.
  *
- * - Per-character: 0.5% chance of substitution (letter or digit depending on position)
- * - 1% chance of gene duplication (random 5-char gene copied and appended)
- * - 1% chance of gene deletion (random 5-char segment removed)
- * - Length clamped to [100, 250] (rounded to multiple of 5)
+ * - Per-character substitution at `mutationRate`
+ * - Gene duplication (1% chance)
+ * - Gene deletion (1% chance)
+ * - Length clamped to [minDnaLength, maxDnaLength], multiple of 5
  */
-export function mutate(dna: string): string {
+export function mutate(dna: string, mutationRate: number = TUNE.mutation.baseRate): string {
   const chars = dna.split('');
 
-  // Per-character mutation
   for (let i = 0; i < chars.length; i++) {
-    if (Math.random() < MUTATION_RATE) {
+    if (Math.random() < mutationRate) {
       chars[i] = randomChar(i);
     }
   }
 
   let result = chars.join('');
 
-  // Gene duplication (1% chance)
-  if (Math.random() < GENE_DUP_CHANCE && result.length >= 5) {
+  // Gene duplication
+  if (Math.random() < TUNE.mutation.geneDupChance && result.length >= 5) {
     const geneCount = Math.floor(result.length / 5);
     const idx = Math.floor(Math.random() * geneCount) * 5;
     const gene = result.substring(idx, idx + 5);
     result = result + gene;
   }
 
-  // Gene deletion (1% chance)
-  if (Math.random() < GENE_DEL_CHANCE && result.length > 5) {
+  // Gene deletion
+  if (Math.random() < TUNE.mutation.geneDelChance && result.length > 5) {
     const geneCount = Math.floor(result.length / 5);
     const idx = Math.floor(Math.random() * geneCount) * 5;
     result = result.substring(0, idx) + result.substring(idx + 5);
   }
 
-  // Clamp length to [MIN, MAX] and ensure multiple of 5
-  if (result.length > MAX_DNA_LENGTH) {
-    result = result.substring(0, MAX_DNA_LENGTH);
+  // Clamp to maxDnaLength
+  if (result.length > TUNE.mutation.maxDnaLength) {
+    result = result.substring(0, TUNE.mutation.maxDnaLength);
   }
+
   // Trim to multiple of 5
   result = result.substring(0, Math.floor(result.length / 5) * 5);
 
-  // If too short, pad with non-coding genes
-  while (result.length < MIN_DNA_LENGTH) {
+  // Pad if too short
+  while (result.length < TUNE.mutation.minDnaLength) {
     const c0 = UPPER[Math.floor(Math.random() * 26)];
     const c1 = LOWER[Math.floor(Math.random() * 26)];
     const mag = String(Math.floor(Math.random() * 1000)).padStart(3, '0');

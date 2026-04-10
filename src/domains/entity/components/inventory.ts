@@ -1,20 +1,23 @@
-import type { ResourceType } from '../../../core/types';
+import type { ResourceType, IInventory } from '../../../core/types';
 
+/** v5 Inventory supports plant food, meat food, water, and wood separately */
 export class Inventory {
-  food: number;
+  plantFood: number;
+  meatFood: number;
   water: number;
   wood: number;
   readonly capacity: number;
 
-  constructor(capacity: number, food = 0, water = 0, wood = 0) {
-    this.capacity = capacity;
-    this.food = food;
-    this.water = water;
-    this.wood = wood;
+  constructor(capacity: number, init?: Partial<IInventory>) {
+    this.capacity  = capacity;
+    this.plantFood = init?.plantFood ?? 0;
+    this.meatFood  = init?.meatFood  ?? 0;
+    this.water     = init?.water     ?? 0;
+    this.wood      = init?.wood      ?? 0;
   }
 
   total(): number {
-    return this.food + this.water + this.wood;
+    return this.plantFood + this.meatFood + this.water + this.wood;
   }
 
   isFull(): boolean {
@@ -22,15 +25,15 @@ export class Inventory {
   }
 
   add(type: ResourceType, amount: number): number {
-    const space = this.capacity - this.total();
-    const actual = Math.min(amount, space);
-    this[type] += actual;
+    const space  = this.capacity - this.total();
+    const actual = Math.min(amount, Math.max(0, space));
+    this[type]  += actual;
     return actual;
   }
 
   remove(type: ResourceType, amount: number): number {
     const actual = Math.min(this[type], amount);
-    this[type] -= actual;
+    this[type]  -= actual;
     return actual;
   }
 }

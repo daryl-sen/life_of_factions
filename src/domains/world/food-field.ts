@@ -39,7 +39,7 @@ export class FoodField {
       if (grid.farms.has(k)) return true;
       if (grid.flagCells.has(k)) return true;
       if (grid.waterBlocks.has(k)) return true;
-      if (grid.treeBlocks.has(k)) return true;
+      if (grid.corpseBlocks.has(k)) return true;
       return false;
     };
     const qx = new Int16Array(N);

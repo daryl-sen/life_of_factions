@@ -1,14 +1,17 @@
 import { TICK_MS, CELL_PX } from './core/constants';
 
-const VERSION = '4.1.4';
+const VERSION = '5.0.0';
 import { World } from './domains/world';
 import { Camera } from './domains/rendering/camera';
 import { Renderer } from './domains/rendering/renderer';
 import { UIManager } from './domains/ui/ui-manager';
 import { InputHandler } from './domains/ui/input-handler';
 import { Controls } from './domains/ui/controls';
-import { SimulationEngine } from './domains/simulation';
+import { SimulationEngine, OrganismUpdater } from './domains/simulation';
+import { DecisionEngine, SimplifiedTick } from './domains/decision';
+import { OrganismFactory } from './domains/entity';
 import { PersistenceManager } from './domains/persistence';
+import { IndicatorConfigPanel } from './domains/ui/indicator-config';
 
 document.addEventListener('DOMContentLoaded', () => {
   document.title = `Emoji Life — v${VERSION}`;
@@ -58,15 +61,32 @@ document.addEventListener('DOMContentLoaded', () => {
   refreshCanvasSize();
   window.addEventListener('resize', refreshCanvasSize);
 
+  // v5 simulation wiring
+  const factory = new OrganismFactory(world.events);
+  const decisionEngine = new DecisionEngine();
+  const simplifiedTick = new SimplifiedTick(world.events, factory);
+  const organismUpdater = new OrganismUpdater(decisionEngine, simplifiedTick, world.events, factory);
+  const simEngine = new SimulationEngine(organismUpdater, factory);
+
+  // Indicator config panel
+  const indicatorConfigContainer = document.getElementById('indicatorConfigPanel');
+  if (indicatorConfigContainer) {
+    new IndicatorConfigPanel(renderer.indicatorRenderer).mount(indicatorConfigContainer);
+  }
+
   // Wire input + controls
   InputHandler.setup(canvas, camera, world, dom);
-  Controls.wire(world, dom, doRenderLog, refreshCanvasSize);
+  Controls.wire(world, factory, dom, doRenderLog, refreshCanvasSize);
 
   // Restore autosave if available
   const autosaveData = PersistenceManager.loadAutosave();
   if (autosaveData) {
     try {
-      PersistenceManager.restore(world, autosaveData, { doRenderLog, dom });
+      PersistenceManager.restore(world, autosaveData, {
+        doRenderLog,
+        dom,
+        onRestored: () => UIManager._rebuildOrganismOptions?.(),
+      });
       // Set button states so user can resume the restored session
       if (dom.buttons.btnStart) dom.buttons.btnStart.disabled = true;
       if (dom.buttons.btnPause) dom.buttons.btnPause.disabled = true;
@@ -84,7 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (dom.factionSortEl) {
     dom.factionSortEl.addEventListener('change', () => {
       world.factionSort = dom.factionSortEl!.value as 'members' | 'created' | 'name' | 'level';
-      world._lastFactionsSig = ''; // force rebuild
+      UIManager._lastFactionsSig = ''; // force rebuild
     });
   }
 
@@ -101,8 +121,8 @@ document.addEventListener('DOMContentLoaded', () => {
     dom.inspector.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
       if (target.dataset['action'] === 'center-agent' && world.selectedId) {
-        const agent = world.agentsById.get(world.selectedId);
-        if (agent) camera.centerOn(agent.cellX, agent.cellY, CELL_PX);
+        const organism = world.organismsById.get(world.selectedId);
+        if (organism) camera.centerOn(organism.cellX, organism.cellY, CELL_PX);
       }
     });
   }
@@ -197,7 +217,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (document.hidden) pauseForBlur('tab hidden');
   });
 
-  // Track selected agent for notification
+  // Track selected organism for notification
   let lastSelectedId: string | null = null;
 
   // Periodic UI refresh
@@ -205,11 +225,8 @@ document.addEventListener('DOMContentLoaded', () => {
     UIManager.updateInspector(world, dom.inspector);
     UIManager.renderHUD(world, dom.hud, statsWithFps);
     doRenderLog();
-    if (world._rebuildAgentOptions) {
-      if (world._lastAgentCount !== world.agents.length) {
-        world._rebuildAgentOptions();
-        world._lastAgentCount = world.agents.length;
-      }
+    if (UIManager._rebuildOrganismOptions) {
+      UIManager._rebuildOrganismOptions();
     }
     UIManager.rebuildFactionsListIfNeeded(world, factionsList);
     UIManager.rebuildFamiliesListIfNeeded(world, familiesList);
@@ -222,8 +239,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (world.selectedId && world.selectedId !== lastSelectedId) {
-      const agent = world.agentsById.get(world.selectedId);
-      if (agent) UIManager.showNotification(agent);
+      const organism = world.organismsById.get(world.selectedId);
+      if (organism) UIManager.showNotification(organism);
     }
     lastSelectedId = world.selectedId;
   }, 400);
@@ -247,7 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
       let steps = 0;
       while (acc >= effTick && steps < MAX_STEPS) {
         const t0 = performance.now();
-        SimulationEngine.tick(world);
+        simEngine.tick(world);
         tickProfiler.record(performance.now() - t0);
         acc -= effTick;
         steps++;
@@ -255,20 +272,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (steps === MAX_STEPS) acc = 0;
       if (steps > 0) PersistenceManager.maybeAutosave(world);
       const lerpDelta = dt / (TICK_MS / (world.speedPct / 100));
-      for (const a of world.agents) {
+      for (const a of world.organisms) {
         if (a.lerpT < 1) {
           a.lerpT = Math.min(1, a.lerpT + lerpDelta);
         }
       }
     }
 
-    // Tick down death markers
-    for (let i = world.deadMarkers.length - 1; i >= 0; i--) {
-      world.deadMarkers[i].msRemaining -= dt;
-      if (world.deadMarkers[i].msRemaining <= 0) {
-        world.deadMarkers.splice(i, 1);
-      }
-    }
     const rt0 = performance.now();
     renderer.render(world, ctx, canvas, camera);
     renderProfiler.record(performance.now() - rt0);

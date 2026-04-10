@@ -1,32 +1,30 @@
 import { TICK_MS } from '../../core/constants';
-import { key, uuid, log } from '../../core/utils';
+import { key, log } from '../../core/utils';
 import type { World } from '../world/world';
-import type { DeathCause } from '../world/types';
+import type { OrganismFactory } from '../entity/organism-factory';
 import { FactionManager } from '../faction';
 import { Spawner } from './spawner';
 import { WorldUpdater } from './world-updater';
-import { AgentUpdater } from './agent-updater';
-
-// ── Inlined TUNE constants ──
+import { OrganismUpdater } from './organism-updater';
 
 const HEAL_AURA_RADIUS = 4;
 const HEAL_AURA_PER_TICK = 3.75;
-const LOOT_BAG_DECAY_MS = 30000;
-
 const DISEASE_SPREAD_CHANCE = 0.03;
 const DISEASE_SPREAD_BLOCK_THRESHOLD = 60;
 
 export class SimulationEngine {
 
-  // ── Re-exports for backward compatibility ──
-  // These delegate to the decomposed modules so existing callers still work.
+  constructor(
+    private readonly organismUpdater: OrganismUpdater,
+    private readonly factory: OrganismFactory,
+  ) {}
+
+  // ── Static seed helpers (delegate to Spawner) ──
 
   static seedInitialFood(world: World, count: number): void { Spawner.seedInitialFood(world, count); }
   static seedInitialWater(world: World, count: number): void { Spawner.seedInitialWater(world, count); }
-  static seedInitialTrees(world: World, count: number): void { Spawner.seedInitialTrees(world, count); }
   static seedInitialSaltWater(world: World, count: number): void { Spawner.seedInitialSaltWater(world, count); }
   static addCrop(world: World, x: number, y: number): boolean { return Spawner.addCrop(world, x, y); }
-  static addTree(world: World): boolean { return Spawner.addTree(world); }
   static spawnWaterBlock(world: World, x: number, y: number, size: 'small' | 'large'): boolean {
     return Spawner.spawnWaterBlock(world, x, y, size);
   }
@@ -36,111 +34,44 @@ export class SimulationEngine {
 
   // ── Post-tick: Flag healing aura ──
 
-  private static _applyFlagHealing(world: World): void {
-    for (const agent of world.agents) {
-      if (!agent.factionId) continue;
-      const flag = world.flags.get(agent.factionId);
+  private _applyFlagHealing(world: World): void {
+    for (const organism of world.organisms) {
+      if (!organism.factionId) continue;
+      const flag = world.flags.get(organism.factionId);
       if (!flag) continue;
-      const d = Math.abs(agent.cellX - flag.x) + Math.abs(agent.cellY - flag.y);
-      if (d <= HEAL_AURA_RADIUS) agent.healBy(HEAL_AURA_PER_TICK);
+      const d = Math.abs(organism.cellX - flag.x) + Math.abs(organism.cellY - flag.y);
+      if (d <= HEAL_AURA_RADIUS) organism.healBy(HEAL_AURA_PER_TICK);
     }
   }
 
   // ── Post-tick: Disease spread ──
 
-  private static _tickDiseaseSpread(world: World): void {
-    for (const agent of world.agents) {
-      if (!agent.diseased) continue;
+  private _tickDiseaseSpread(world: World): void {
+    for (const organism of world.organisms) {
+      if (!organism.diseased) continue;
       const adj: [number, number][] = [
-        [agent.cellX + 1, agent.cellY], [agent.cellX - 1, agent.cellY],
-        [agent.cellX, agent.cellY + 1], [agent.cellX, agent.cellY - 1],
+        [organism.cellX + 1, organism.cellY], [organism.cellX - 1, organism.cellY],
+        [organism.cellX, organism.cellY + 1], [organism.cellX, organism.cellY - 1],
       ];
       for (const [nx, ny] of adj) {
-        const id = world.agentsByCell.get(key(nx, ny));
+        const id = world.grid.organismsByCell.get(key(nx, ny));
         if (!id) continue;
-        const target = world.agentsById.get(id);
+        const target = world.organismsById.get(id);
         if (!target || target.diseased) continue;
-        if (target.hygiene > DISEASE_SPREAD_BLOCK_THRESHOLD) continue;
+        if (organism.hasHygiene && target.needs.hygiene > DISEASE_SPREAD_BLOCK_THRESHOLD) continue;
         if (Math.random() < DISEASE_SPREAD_CHANCE) {
           target.diseased = true;
-          log(world, 'hygiene', `${agent.name} spread disease to ${target.name}`, agent.id, { to: target.id });
+          log(world, 'hygiene', `${organism.name} spread disease to ${target.name}`, organism.id, { to: target.id });
         }
       }
     }
   }
 
-  // ── Post-tick: Clean dead agents and destroyed obstacles ──
+  // ── Post-tick: Clean dead organisms and destroyed obstacles ──
 
-  private static _cleanDead(world: World): void {
-    const removedIds: string[] = [];
-    const now = performance.now();
-    world.agents = world.agents.filter((a) => {
-      if (a.health <= 0) {
-        // Inline loot bag drop on death
-        if (a.inventoryTotal() > 0) {
-          const inv = { food: a.inventory.food, water: a.inventory.water, wood: a.inventory.wood };
-          const lk = key(a.cellX, a.cellY);
-          const existing = world.lootBags.get(lk);
-          if (existing) {
-            existing.inventory.food += inv.food;
-            existing.inventory.water += inv.water;
-            existing.inventory.wood += inv.wood;
-            existing.decayMs = LOOT_BAG_DECAY_MS;
-          } else {
-            world.lootBags.set(lk, {
-              id: uuid(), x: a.cellX, y: a.cellY,
-              inventory: inv,
-              decayMs: LOOT_BAG_DECAY_MS,
-            });
-          }
-          log(world, 'loot', `${a.name} dropped a loot bag`, a.id, { x: a.cellX, y: a.cellY });
-        }
-        world.agentsByCell.delete(key(a.cellX, a.cellY));
-        world.agentsById.delete(a.id);
-        removedIds.push(a.id);
-        if (a.factionId && world.factions.has(a.factionId)) {
-          world.factions.get(a.factionId)!.members.delete(a.id);
-        }
-        world.totalDeaths++;
-        world.deathTimestamps.push(now);
+  private _cleanDead(world: World): void {
+    world.removeDeadOrganisms();
 
-        // Register death in family registry
-        const ageMs = a.ageTicks * TICK_MS;
-        world.familyRegistry.registerDeath(a.familyName, ageMs);
-
-        let cause: DeathCause = 'killed';
-        if (a.ageTicks >= a.maxAgeTicks) {
-          cause = 'old_age';
-        } else if (a.fullness <= 0) {
-          cause = 'hunger';
-        } else if (a.diseased) {
-          cause = 'disease';
-        }
-        world.deadMarkers.push({
-          cellX: a.cellX, cellY: a.cellY,
-          cause, msRemaining: 10000,
-        });
-
-        log(world, 'death', `${a.name} died`, a.id, {});
-        return false;
-      }
-      return true;
-    });
-    if (removedIds.length) {
-      for (const a of world.agents) {
-        for (const rid of removedIds) a.relationships.delete(rid);
-      }
-    }
-    for (const a of world.agents) {
-      for (const [rid] of a.relationships.entries()) {
-        if (!world.agentsById.has(rid)) a.relationships.delete(rid);
-      }
-    }
-    for (const [fid, f] of [...world.factions]) {
-      let aliveCount = 0;
-      for (const id of f.members) if (world.agentsById.has(id)) aliveCount++;
-      if (aliveCount <= 1) FactionManager.disband(world, fid, 'no members');
-    }
     const obstaclesToDelete: string[] = [];
     for (const [k, o] of world.obstacles) {
       if (o.hp <= 0) obstaclesToDelete.push(k);
@@ -154,11 +85,13 @@ export class SimulationEngine {
 
   // ── Main tick ──
 
-  static tick(world: World): void {
+  tick(world: World): void {
     world.tick++;
 
+    const organisms = world.organisms;
+
     // ── Path budget + whitelist ──
-    const scarcity = world.foodBlocks.size / Math.max(1, world.agents.length);
+    const scarcity = world.foodBlocks.size / Math.max(1, organisms.length);
     const budgetThisTick =
       scarcity < 0.25
         ? Math.max(6, Math.floor(world.pathBudgetMax * 0.5))
@@ -166,19 +99,12 @@ export class SimulationEngine {
     world.pathBudget = budgetThisTick;
     world._pathWhitelist.clear();
 
-    const n = world.agents.length;
-    if (n > 0) {
-      const eligible = world.agents.filter(
-        (a) =>
-          (a.lockMsRemaining || 0) <= 0 &&
-          (!a.path || a.pathIdx >= a.path.length) &&
-          !a.action
+    const mobile = organisms.filter(o => !o.isImmobile);
+    if (mobile.length > 0) {
+      const eligible = mobile.filter(
+        o => (o.lockMsRemaining || 0) <= 0 && (!o.path || o.pathIdx >= o.path.length) && !o.action
       );
-      let pool: typeof world.agents;
-      if (eligible.length) {
-        eligible.sort((a, b) => a.energy - b.energy);
-        pool = eligible;
-      } else pool = world.agents;
+      const pool = eligible.length ? eligible.sort((a, b) => a.energy - b.energy) : mobile;
       const k = Math.min(budgetThisTick || 30, pool.length);
       for (let i = 0; i < k; i++) {
         const idx = (world._pathRR + i) % pool.length;
@@ -187,30 +113,21 @@ export class SimulationEngine {
       world._pathRR = (world._pathRR + k) % pool.length;
     }
 
-    // ── World updates (water decay, terrain, tree aging, block decay) ──
+    // ── World updates ──
     WorldUpdater.update(world);
 
-    // ── Spawner (crops, seedlings, trees, clouds, eggs) ──
-    Spawner.tick(world);
+    // ── Spawner (crops, clouds, eggs) ──
+    Spawner.tick(world, this.factory);
 
-    // ── Mark _underAttack flags ──
-    for (const b of world.agents) b._underAttack = false;
-    for (const b of world.agents) {
-      if (b.action && b.action.type === 'attack' && b.action.payload?.targetId) {
-        const t = world.agentsById.get(b.action.payload.targetId);
-        if (t) t._underAttack = true;
-      }
-    }
-
-    // ── Per-agent update ──
-    for (const agent of world.agents) {
-      AgentUpdater.update(world, agent);
+    // ── Per-organism update ──
+    for (const organism of [...organisms]) {
+      this.organismUpdater.update(organism, world, TICK_MS);
     }
 
     // ── Post-tick ──
     if (world.tick % 4 === 0) FactionManager.reconcile(world);
-    SimulationEngine._applyFlagHealing(world);
-    SimulationEngine._tickDiseaseSpread(world);
-    SimulationEngine._cleanDead(world);
+    this._applyFlagHealing(world);
+    this._tickDiseaseSpread(world);
+    this._cleanDead(world);
   }
 }
