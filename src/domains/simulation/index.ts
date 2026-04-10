@@ -1,4 +1,4 @@
 export { SimulationEngine } from './simulation-engine';
-export { AgentUpdater } from './agent-updater';
+export { OrganismUpdater } from './organism-updater';
 export { Spawner } from './spawner';
 export { WorldUpdater } from './world-updater';

@@ -1,13 +1,22 @@
-import { CELL_PX, GRID_SIZE, COLORS, AGENT_EMOJIS, IDLE_EMOJIS, WORLD_EMOJIS, FOOD_EMOJIS } from '../../core/constants';
-import { getIdleEmoji } from '../../core/utils';
+import { CELL_PX, GRID_SIZE } from '../../core/constants';
 import type { TerrainField } from '../world/terrain-field';
 import type { World } from '../world';
-import type { DeathCause } from '../world/types';
-import type { Agent } from '../entity/agent';
-import { evaluateNeeds } from '../decision/need-evaluator';
-import { computeMood } from '../decision/mood-evaluator';
+import type { Organism } from '../entity/organism';
 import { Camera } from './camera';
 import { EmojiCache } from './emoji-cache';
+
+// Inlined world emojis (previously from WORLD_EMOJIS constant)
+const EMOJI_WATER    = '\u{1F4A7}';  // 💧
+const EMOJI_EGG      = '\u{1F95A}';  // 🥚
+const EMOJI_POOP     = '\u{1F4A9}';  // 💩
+const EMOJI_LOOT_BAG = '\u{1F45D}';  // 👝
+const EMOJI_FARM     = '\u{1FAB4}';  // 🪴
+const EMOJI_FLAG     = '\u{1F6A9}';  // 🚩
+const EMOJI_CLOUD    = '\u{1F327}\uFE0F';  // 🌧️
+const EMOJI_FOOD_FB  = '\u{1F33F}';  // 🌿 (fallback food emoji)
+
+// Grid line color
+const COLORS_GRID = 'rgba(0,0,0,0.2)';
 
 // Inline constants that were in TUNE
 const POOP_DECAY_MS = 30000;
@@ -20,24 +29,11 @@ interface ViewBounds {
   maxY: number;
 }
 
-const DEATH_CAUSE_EMOJI: Record<DeathCause, string> = {
-  hunger: '\u{1F9B4}',   // 🦴
-  killed: '\u{1FA78}',   // 🩸
-  disease: '\u{1F9A0}',  // 🦠
-  old_age: '\u{1F550}',  // 🕐
-  tree: '\u{1FABE}',     // 🪾
-};
-
 /** Below this camera scale, world entities render as colored rectangles instead of emojis. */
 const LOD_SCALE = 0.55;
 
-const DRY_TREE_FILTER = 'saturate(0.3) sepia(0.6) brightness(0.9)';
-
 // LOD fallback colors
 const LOD_WATER   = '#4488cc';
-const LOD_TREE_WET = '#3d6b2e';
-const LOD_TREE_DRY = '#8B7355';
-const LOD_SEEDLING = '#7ab648';
 const LOD_EGG     = '#f5e6c8';
 const LOD_POOP    = '#6b4226';
 const LOD_FOOD    = '#c88040';
@@ -54,10 +50,7 @@ export class Renderer {
   private _cachedTerrainVersion = -1;
   private _cachedSaltCount = -1;
 
-  // --- Tree near-water cache ---
-  private _treeNearWater = new Set<string>();
-  private _cachedTreeCount = -1;
-  private _cachedWaterCount = -1;
+  // (tree near-water cache removed in v5)
 
   render(world: World, ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, camera: Camera): void {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -95,8 +88,7 @@ export class Renderer {
 
     if (world.drawGrid) this._drawGrid(ctx, camera, vb);
     this._drawWaterBlocks(ctx, world, vb, lod);
-    this._drawTreeBlocks(ctx, world, vb, lod);
-    this._drawSeedlings(ctx, world, vb, lod);
+    this._drawCorpseBlocks(ctx, world, vb, lod);
     this._drawEggs(ctx, world, vb, lod);
     this._drawPoopBlocks(ctx, world, vb, lod);
     this._drawFoodBlocks(ctx, world, vb, lod);
@@ -105,10 +97,9 @@ export class Renderer {
     this._drawObstacles(ctx, world, vb, lod);
     this._drawFlags(ctx, world, vb, lod);
 
-    const pendingAttackLines: [Agent, Agent][] = [];
-    const pendingHarvestLines: [Agent, { x: number; y: number }][] = [];
+    const pendingAttackLines: [Organism, Organism][] = [];
+    const pendingHarvestLines: [Organism, { x: number; y: number }][] = [];
     this._drawAgents(ctx, world, pendingAttackLines, pendingHarvestLines, vb);
-    this._drawDeadMarkers(ctx, world, vb, lod);
     this._drawAttackLines(ctx, camera, pendingAttackLines);
     this._drawHarvestLines(ctx, pendingHarvestLines);
     this._drawSelectedAgentPath(ctx, world);
@@ -227,7 +218,7 @@ export class Renderer {
 
   private _drawGrid(ctx: CanvasRenderingContext2D, camera: Camera, vb: ViewBounds): void {
     ctx.save();
-    ctx.strokeStyle = COLORS.grid;
+    ctx.strokeStyle = COLORS_GRID;
     ctx.lineWidth = 1 / camera.scale;
     ctx.beginPath();
     for (let i = vb.minY; i <= vb.maxY + 1; i++) {
@@ -293,63 +284,25 @@ export class Renderer {
         if (lod) {
           this._fillCell(ctx, c.x, c.y, LOD_WATER, 0);
         } else {
-          this._drawCellEmoji(ctx, c.x, c.y, WORLD_EMOJIS.water);
+          this._drawCellEmoji(ctx, c.x, c.y, EMOJI_WATER);
         }
       }
       ctx.globalAlpha = 1;
     }
   }
 
-  private _drawTreeBlocks(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
-    // Rebuild near-water lookup when tree or water counts change
-    const treeCount = world.treeBlocks.size;
-    const waterCount = world.waterBlocks.size;
-    if (treeCount !== this._cachedTreeCount || waterCount !== this._cachedWaterCount) {
-      this._cachedTreeCount = treeCount;
-      this._cachedWaterCount = waterCount;
-      this._treeNearWater.clear();
-      for (const tree of world.treeBlocks.values()) {
-        for (const wb of world.waterBlocks.values()) {
-          if (Math.abs(tree.x - wb.x) + Math.abs(tree.y - wb.y) <= 5) {
-            this._treeNearWater.add(`${tree.x},${tree.y}`);
-            break;
-          }
-        }
-      }
-    }
-
-    for (const tree of world.treeBlocks.values()) {
-      if (!this._inView(tree.x, tree.y, vb)) continue;
-      const pct = tree.units / tree.maxUnits;
+  private _drawCorpseBlocks(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
+    const LOD_CORPSE = '#7a5f3e';
+    for (const corpse of world.corpseBlocks.values()) {
+      if (!this._inView(corpse.x, corpse.y, vb)) continue;
+      const pct = corpse.remainingResources / corpse.totalResources;
       ctx.globalAlpha = 0.4 + 0.6 * pct;
-      const nearWater = this._treeNearWater.has(`${tree.x},${tree.y}`);
       if (lod) {
-        this._fillCell(ctx, tree.x, tree.y, nearWater ? LOD_TREE_WET : LOD_TREE_DRY, 1);
-      } else if (nearWater) {
-        this._drawCellEmoji(ctx, tree.x, tree.y, tree.emoji);
+        this._fillCell(ctx, corpse.x, corpse.y, LOD_CORPSE, 2);
       } else {
-        // Pre-cached filtered emoji — no per-frame ctx.filter
-        const { canvas: ec, w, h } = this._emojiCache.getFiltered(tree.emoji, DRY_TREE_FILTER);
-        const size = CELL_PX - 2;
-        const scale = Math.min(size / w, size / h);
-        const dw = w * scale;
-        const dh = h * scale;
-        const x = tree.x * CELL_PX;
-        const y = tree.y * CELL_PX;
-        ctx.drawImage(ec, x + (CELL_PX - dw) / 2, y + (CELL_PX - dh) / 2, dw, dh);
+        this._drawCellEmoji(ctx, corpse.x, corpse.y, corpse.emoji);
       }
       ctx.globalAlpha = 1;
-    }
-  }
-
-  private _drawSeedlings(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
-    for (const s of world.seedlings.values()) {
-      if (!this._inView(s.x, s.y, vb)) continue;
-      if (lod) {
-        this._fillCell(ctx, s.x, s.y, LOD_SEEDLING, 4);
-      } else {
-        this._drawCellEmoji(ctx, s.x, s.y, WORLD_EMOJIS.seedling, CELL_PX / 2);
-      }
     }
   }
 
@@ -359,7 +312,7 @@ export class Renderer {
       if (lod) {
         this._fillCell(ctx, egg.x, egg.y, LOD_EGG, 3);
       } else {
-        this._drawCellEmoji(ctx, egg.x, egg.y, WORLD_EMOJIS.egg);
+        this._drawCellEmoji(ctx, egg.x, egg.y, EMOJI_EGG);
       }
     }
   }
@@ -372,7 +325,7 @@ export class Renderer {
       if (lod) {
         this._fillCell(ctx, poop.x, poop.y, LOD_POOP, 4);
       } else {
-        this._drawCellEmoji(ctx, poop.x, poop.y, WORLD_EMOJIS.poop, CELL_PX / 2);
+        this._drawCellEmoji(ctx, poop.x, poop.y, EMOJI_POOP, CELL_PX / 2);
       }
       ctx.globalAlpha = 1;
     }
@@ -386,7 +339,7 @@ export class Renderer {
       if (lod) {
         this._fillCell(ctx, fb.x, fb.y, LOD_FOOD, 4);
       } else {
-        this._drawCellEmoji(ctx, fb.x, fb.y, fb.emoji || FOOD_EMOJIS.lq[0], CELL_PX / 2);
+        this._drawCellEmoji(ctx, fb.x, fb.y, fb.emoji || EMOJI_FOOD_FB, CELL_PX / 2);
       }
       ctx.globalAlpha = 1;
     }
@@ -400,7 +353,7 @@ export class Renderer {
       if (lod) {
         this._fillCell(ctx, bag.x, bag.y, LOD_LOOT, 3);
       } else {
-        this._drawCellEmoji(ctx, bag.x, bag.y, WORLD_EMOJIS.lootBag);
+        this._drawCellEmoji(ctx, bag.x, bag.y, EMOJI_LOOT_BAG);
       }
       ctx.globalAlpha = 1;
     }
@@ -412,7 +365,7 @@ export class Renderer {
       if (lod) {
         this._fillCell(ctx, f.x, f.y, LOD_FARM, 1);
       } else {
-        this._drawCellEmoji(ctx, f.x, f.y, WORLD_EMOJIS.farm);
+        this._drawCellEmoji(ctx, f.x, f.y, EMOJI_FARM);
       }
     }
   }
@@ -461,7 +414,7 @@ export class Renderer {
       if (lod) {
         this._fillCell(ctx, f.x, f.y, col, 2);
       } else {
-        const { canvas: ec, w, h } = this._emojiCache.getTinted(WORLD_EMOJIS.flag, col);
+        const { canvas: ec, w, h } = this._emojiCache.getTinted(EMOJI_FLAG, col);
         const scale = Math.min((CELL_PX - 2) / w, (CELL_PX - 2) / h);
         const dw = w * scale;
         const dh = h * scale;
@@ -479,9 +432,9 @@ export class Renderer {
     return `hsl(${hue}, 85%, 50%)`;
   }
 
-  private _drawAgents(ctx: CanvasRenderingContext2D, world: World, attackLines: [Agent, Agent][], harvestLines: [Agent, { x: number; y: number }][], vb: ViewBounds): void {
+  private _drawAgents(ctx: CanvasRenderingContext2D, world: World, attackLines: [Organism, Organism][], harvestLines: [Organism, { x: number; y: number }][], vb: ViewBounds): void {
     const now = performance.now();
-    for (const agent of world.agents) {
+    for (const agent of world.organisms) {
       if (!this._inView(agent.cellX, agent.cellY, vb) &&
           !this._inView(agent.prevCellX ?? agent.cellX, agent.prevCellY ?? agent.cellY, vb)) continue;
 
@@ -498,17 +451,7 @@ export class Renderer {
       const hpRatio = agent.maxHealth > 0 ? Math.max(0, Math.min(1, agent.health / agent.maxHealth)) : 0;
       const ringColor = this._hpToColor(hpRatio);
       const actionType = agent.action?.type;
-      let emoji: string;
-      if (agent.babyMsRemaining > 0 && (actionType === 'eat' || actionType === 'wash')) {
-        emoji = IDLE_EMOJIS.babyEating;
-      } else if (AGENT_EMOJIS[actionType as string]) {
-        emoji = AGENT_EMOJIS[actionType as string];
-      } else if (agent.matingTargetId) {
-        emoji = AGENT_EMOJIS['seek_mate'] || '\u{1F495}';
-      } else {
-        const mood = computeMood(evaluateNeeds(agent));
-        emoji = getIdleEmoji(agent, mood);
-      }
+      const emoji = agent.currentEmoji;
 
       let offX = 0, offY = 0, angle = 0, sx = 1, sy = 1;
 
@@ -548,8 +491,8 @@ export class Renderer {
       ctx.restore();
 
       // Pregnancy visual: egg above head
-      if (agent.pregnancy.active) {
-        const { canvas: eggC, w: ew, h: eh } = this._emojiCache.get('\u{1F95A}'); // 🥚
+      if (agent.pregnancy?.active) {
+        const { canvas: eggC, w: ew, h: eh } = this._emojiCache.get(EMOJI_EGG); // 🥚
         const eggSize = CELL_PX / 2.5;
         const eScale = Math.min(eggSize / ew, eggSize / eh);
         const edw = ew * eScale;
@@ -562,7 +505,7 @@ export class Renderer {
       if (agent.factionId) {
         const faction = world.factions.get(agent.factionId);
         if (faction) {
-          const { canvas: fc, w: fw, h: fh } = this._emojiCache.getTinted(WORLD_EMOJIS.flag, faction.color);
+          const { canvas: fc, w: fw, h: fh } = this._emojiCache.getTinted(EMOJI_FLAG, faction.color);
           const flagSize = CELL_PX / 3;
           const fScale = Math.min(flagSize / fw, flagSize / fh);
           const fdw = fw * fScale;
@@ -572,7 +515,7 @@ export class Renderer {
       }
 
       if (agent.action?.type === 'attack' && agent.action.payload?.targetId) {
-        const t2 = world.agentsById.get(agent.action.payload.targetId);
+        const t2 = world.organismsById.get(agent.action.payload.targetId);
         if (t2) attackLines.push([agent, t2]);
       }
 
@@ -625,46 +568,9 @@ export class Renderer {
     ctx.restore();
   }
 
-  // --- Death markers ---
-
-  private _drawDeadMarkers(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
-    for (const marker of world.deadMarkers) {
-      if (!this._inView(marker.cellX, marker.cellY, vb)) continue;
-      const x = marker.cellX * CELL_PX;
-      const y = marker.cellY * CELL_PX;
-      const fade = Math.min(1, marker.msRemaining / 3000);
-      ctx.globalAlpha = fade;
-
-      if (lod) {
-        ctx.fillStyle = '#cc2222';
-        ctx.fillRect(x + 4, y + 4, CELL_PX - 8, CELL_PX - 8);
-      } else if (marker.cause === 'tree') {
-        const stumpEmoji = DEATH_CAUSE_EMOJI.tree;
-        const { canvas: sc, w: sw, h: sh } = this._emojiCache.get(stumpEmoji);
-        const drawSize = CELL_PX - 2;
-        const scale = Math.min(drawSize / sw, drawSize / sh);
-        ctx.drawImage(sc, x + (CELL_PX - sw * scale) / 2, y + (CELL_PX - sh * scale) / 2, sw * scale, sh * scale);
-      } else {
-        const deadEmoji = '\u{1F635}'; // 😵
-        const { canvas: ec, w, h } = this._emojiCache.get(deadEmoji);
-        const drawSize = CELL_PX - 4;
-        const scale = Math.min(drawSize / w, drawSize / h);
-        ctx.drawImage(ec, x + (CELL_PX - w * scale) / 2, y + (CELL_PX - h * scale) / 2, w * scale, h * scale);
-
-        const causeEmoji = DEATH_CAUSE_EMOJI[marker.cause];
-        const { canvas: cc, w: cw, h: ch } = this._emojiCache.get(causeEmoji);
-        const causeSize = CELL_PX / 4;
-        const cScale = Math.min(causeSize / cw, causeSize / ch);
-        ctx.drawImage(cc, x + CELL_PX - cw * cScale - 1, y + 1, cw * cScale, ch * cScale);
-      }
-
-      ctx.globalAlpha = 1;
-    }
-  }
-
   // --- Attack lines ---
 
-  private _drawAttackLines(ctx: CanvasRenderingContext2D, _camera: Camera, lines: [Agent, Agent][]): void {
+  private _drawAttackLines(ctx: CanvasRenderingContext2D, _camera: Camera, lines: [Organism, Organism][]): void {
     const daggerEmoji = '\uD83D\uDDE1\uFE0F'; // 🗡️
     const { canvas: ec, w, h } = this._emojiCache.get(daggerEmoji);
     const daggerSize = CELL_PX - 2;
@@ -695,7 +601,7 @@ export class Renderer {
 
   // --- Harvest lines ---
 
-  private _drawHarvestLines(ctx: CanvasRenderingContext2D, lines: [Agent, { x: number; y: number }][]): void {
+  private _drawHarvestLines(ctx: CanvasRenderingContext2D, lines: [Organism, { x: number; y: number }][]): void {
     if (lines.length === 0) return;
     const handEmoji = '\u{1F91A}'; // 🤚
     const { canvas: ec, w, h } = this._emojiCache.get(handEmoji);
@@ -754,7 +660,7 @@ export class Renderer {
       else alpha = (1 - progress) / 0.25;
 
       const maxAlpha = cloud.decorative ? 0.55 : 0.65;
-      const emoji = cloud.decorative ? '\u2601\uFE0F' : WORLD_EMOJIS.cloud; // ☁️ vs 🌧️
+      const emoji = cloud.decorative ? '\u2601\uFE0F' : EMOJI_CLOUD; // ☁️ vs 🌧️
 
       if (lod) {
         // Simplified cloud: single semi-transparent rectangle
@@ -784,7 +690,7 @@ export class Renderer {
     }
   }
 
-  private _drawCloudAt(ctx: CanvasRenderingContext2D, xF: number, y: number, size: number, emoji: string = WORLD_EMOJIS.cloud): void {
+  private _drawCloudAt(ctx: CanvasRenderingContext2D, xF: number, y: number, size: number, emoji: string = EMOJI_CLOUD): void {
     const { canvas: ec, w, h } = this._emojiCache.get(emoji);
     const scale = Math.min(size / w, size / h);
     const dw = w * scale;
@@ -798,7 +704,7 @@ export class Renderer {
 
   private _drawSelectedAgentPath(ctx: CanvasRenderingContext2D, world: World): void {
     if (!world.selectedId) return;
-    const agent = world.agentsById.get(world.selectedId);
+    const agent = world.organismsById.get(world.selectedId);
     if (!agent || !agent.path || agent.path.length === 0) return;
     const remaining = agent.path.slice(agent.pathIdx);
     if (remaining.length === 0) return;

@@ -2,12 +2,15 @@ export type ActionType =
   | 'talk'
   | 'quarrel'
   | 'attack'
+  | 'hunt'
   | 'heal'
   | 'share'
   | 'reproduce'
   | 'sleep'
   | 'harvest'
   | 'eat'
+  | 'drink'
+  | 'drink_saltwater'
   | 'wash'
   | 'deposit'
   | 'withdraw'
@@ -17,28 +20,36 @@ export type ActionType =
   | 'play'
   | 'build_farm'
   | 'seek_mate'
-  | 'await_mate';
+  | 'await_mate'
+  | 'photosynthesize'
+  | 'idle';
 
 export enum ActionTag {
-  COMBAT = 'combat',
-  SOCIAL = 'social',
-  HELPFUL = 'helpful',
+  COMBAT   = 'combat',
+  SOCIAL   = 'social',
+  HELPFUL  = 'helpful',
   SURVIVAL = 'survival',
   RESOURCE = 'resource',
-  BUILD = 'build',
-  HYGIENE = 'hygiene',
-  LEISURE = 'leisure',
-  FACTION = 'faction',
+  BUILD    = 'build',
+  HYGIENE  = 'hygiene',
+  LEISURE  = 'leisure',
+  FACTION  = 'faction',
 }
+
+export type ActionTargetType = 'self' | 'external_cell' | 'area' | 'none';
 
 export interface ActionDef {
   readonly type: ActionType;
   readonly tags: ReadonlySet<ActionTag>;
-  readonly energyCost: number;
+  /** Base cost; actual per-organism cost computed via cost-functions.ts */
+  readonly baseEnergyCost: number;
   readonly durationRange: readonly [number, number];
   readonly requiresTarget: boolean;
+  readonly targetType: ActionTargetType;
   readonly targetRange: number;
   readonly interruptible: boolean;
+  /** Tool emoji displayed between organism and target (only for external_cell targets) */
+  readonly tool: string | null;
 }
 
 export interface IActionState {
@@ -48,6 +59,7 @@ export interface IActionState {
   payload: IActionPayload | null;
   startedAtMs: number;
   totalMs: number;
+  target?: { x: number; y: number } | null;
 }
 
 export interface IActionPayload {
@@ -61,6 +73,7 @@ export type LogCategory =
   | 'talk'
   | 'quarrel'
   | 'attack'
+  | 'hunt'
   | 'heal'
   | 'share'
   | 'reproduce'

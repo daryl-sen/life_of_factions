@@ -1,4 +1,5 @@
-import { CELL_PX, GRID_SIZE, OBSTACLE_EMOJIS } from '../../core/constants';
+import { CELL_PX, GRID_SIZE } from '../../core/constants';
+const OBSTACLE_EMOJIS = ['\u{1FAA8}', '\u{1F335}', '\u{1F333}', '\u{1F332}', '\u{1F5FF}', '\u26F0\uFE0F'];
 import { key, log, uuid } from '../../core/utils';
 import type { World } from '../world';
 import type { Camera } from '../rendering/camera';
@@ -59,9 +60,7 @@ export class InputHandler {
           !world.flagCells.has(k) &&
           !world.foodBlocks.has(k) &&
           !world.waterBlocks.has(k) &&
-          !world.treeBlocks.has(k) &&
-          !world.seedlings.has(k) &&
-          !world.agentsByCell.has(k)
+          !world.grid.organismsByCell.has(k)
         ) {
           const emoji = OBSTACLE_EMOJIS[Math.floor(Math.random() * OBSTACLE_EMOJIS.length)];
           world.obstacles.set(k, { id: uuid(), x, y, emoji, hp: 12, maxHp: 12 });
@@ -73,12 +72,11 @@ export class InputHandler {
           log(world, 'destroy', `Obstacle @${x},${y} removed (user)`, null, { x, y });
         }
       } else if (world.paintMode === 'paintSaltWater') {
-        if (!world.saltWaterBlocks.has(k) && !world.waterBlocks.has(k) && !world.agentsByCell.has(k)) {
+        if (!world.saltWaterBlocks.has(k) && !world.waterBlocks.has(k) && !world.grid.organismsByCell.has(k)) {
           // Remove anything else occupying this cell
           world.obstacles.delete(k);
           world.foodBlocks.delete(k);
-          world.treeBlocks.delete(k);
-          world.seedlings.delete(k);
+          world.corpseBlocks.delete(k);
           world.farms.delete(k);
           world.poopBlocks.delete(k);
           world.lootBags.delete(k);
@@ -251,24 +249,24 @@ export class InputHandler {
       const x = Math.floor(wpos.x / CELL_PX);
       const y = Math.floor(wpos.y / CELL_PX);
       if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) return;
-      const id = world.agentsByCell.get(key(x, y));
+      const id = world.grid.organismsByCell.get(key(x, y));
 
       if (world.paintMode === 'replenish' && id) {
-        const agent = world.agentsById.get(id);
-        if (agent) {
-          agent.health = agent.maxHealth;
-          agent.energy = agent.maxEnergy;
-          agent.fullness = 100;
-          agent.hygiene = 100;
-          agent.social = 100;
-          agent.inspiration = 100;
-          agent.diseased = false;
+        const organism = world.organismsById.get(id);
+        if (organism) {
+          organism.health = organism.maxHealth;
+          organism.energy = organism.maxEnergy;
+          organism.needs.fullness = 100;
+          organism.needs.hygiene = 100;
+          organism.needs.social = 100;
+          organism.needs.inspiration = 100;
+          organism.diseased = false;
         }
         return;
       }
 
       world.selectedId = id || null;
-      world.activeLogAgentId = id || null;
+      world.activeLogOrganismId = id || null;
       // Sync the agent filter dropdown
       const agentSelect = document.getElementById('agentFilterSelect') as HTMLSelectElement | null;
       if (agentSelect) agentSelect.value = id || '';

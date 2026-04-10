@@ -1,8 +1,6 @@
 import { manhattan, log } from '../../../core/utils';
-import type { Agent } from '../../entity/agent';
+import type { Organism } from '../../entity/organism';
 import type { World } from '../../world/world';
-import { AgentFactory } from '../../entity/agent-factory';
-import { FactionManager } from '../../faction/faction-manager';
 import { crossover } from '../../genetics/crossover';
 import { mutate } from '../../genetics/mutation';
 import { Genome } from '../../genetics/genome';
@@ -12,93 +10,89 @@ import { isViable } from '../../genetics/viability';
 const REPRODUCE_ENERGY_COST = 12;
 const FULLNESS_DONATE_RANGE: [number, number] = [15, 25];
 
-export function onReproduceComplete(world: World, agent: Agent, target: Agent | undefined): void {
+export function onReproduceComplete(world: World, organism: Organism, target: Organism | undefined): void {
+  if (!organism.pregnancy) return; // No pregnancy trait
+
   // Asexual reproduction (parthenogenesis)
-  if (agent.traits.parthenogenesis.canSelfReproduce && !target) {
-    reproduceAsexual(world, agent);
+  if (organism.traits.parthenogenesis.canSelfReproduce && !target) {
+    reproduceAsexual(world, organism);
     return;
   }
 
   if (!target || target.health <= 0) return;
-  if (manhattan(agent.cellX, agent.cellY, target.cellX, target.cellY) !== 1) return;
-
-  const spots: [number, number][] = [
-    [agent.cellX + 1, agent.cellY],
-    [agent.cellX - 1, agent.cellY],
-    [agent.cellX, agent.cellY + 1],
-    [agent.cellX, agent.cellY - 1],
-  ];
-  const free = spots.find(([x, y]) => !world.grid.isBlocked(x, y));
-  if (!free) return;
+  if (manhattan(organism.cellX, organism.cellY, target.cellX, target.cellY) !== 1) return;
 
   // Energy + fullness costs
-  agent.drainEnergy(REPRODUCE_ENERGY_COST);
+  organism.drainEnergy(REPRODUCE_ENERGY_COST);
   target.drainEnergy(REPRODUCE_ENERGY_COST);
 
-  const p1Donate = Math.min(agent.fullness, FULLNESS_DONATE_RANGE[0] + Math.random() * (FULLNESS_DONATE_RANGE[1] - FULLNESS_DONATE_RANGE[0]));
-  const p2Donate = Math.min(target.fullness, FULLNESS_DONATE_RANGE[0] + Math.random() * (FULLNESS_DONATE_RANGE[1] - FULLNESS_DONATE_RANGE[0]));
-  agent.drainFullness(p1Donate);
+  const rndDonate = (): number =>
+    FULLNESS_DONATE_RANGE[0] + Math.random() * (FULLNESS_DONATE_RANGE[1] - FULLNESS_DONATE_RANGE[0]);
+
+  const p1Donate = Math.min(organism.needs.fullness, rndDonate());
+  const p2Donate = Math.min(target.needs.fullness, rndDonate());
+  organism.drainFullness(p1Donate);
   target.drainFullness(p2Donate);
 
   // DNA: crossover then mutate
-  const childDna = mutate(crossover(agent.genome.dna, target.genome.dna));
+  const rate     = (organism.traits.volatility.mutationRate + target.traits.volatility.mutationRate) / 2;
+  const childDna = mutate(crossover(organism.genome.dna, target.genome.dna), rate);
 
   // Check viability
   const childGenome = new Genome(childDna);
-  if (!isViable(childGenome.traits, childGenome.genes)) {
-    log(world, 'reproduce', `${agent.name} had a stillborn child`, agent.id, {});
-    world.events.emit('agent:stillborn', { parentId: agent.id });
+  if (!isViable(childGenome.traits, childDna)) {
+    log(world, 'reproduce', `${organism.name} had a stillborn child`, organism.id, {});
+    world.events.emit('organism:stillborn', { parentId: organism.id });
     return;
   }
 
-  // Initiator is the carrier and lineage holder
-  const familyName = agent.familyName;
-  const [x, y] = free;
-
   // Faction: inherit from initiator, or 50/50 if both have factions
-  let factionId: string | null = null;
-  const pa = agent.factionId || null;
+  const pa = organism.factionId || null;
   const pb = target.factionId || null;
+  let factionId: string | null = null;
   if (pa && pb) factionId = Math.random() < 0.5 ? pa : pb;
   else factionId = pa || pb;
 
-  // Start pregnancy on the initiator
-  const babyDuration = childGenome.traits.maturity.babyDurationMs;
-  const pregnancyDuration = babyDuration * 0.5;
-  const totalDonated = p1Donate + p2Donate;
-  agent.pregnancy.start(childDna, pregnancyDuration, familyName, factionId, target.id, totalDonated);
+  organism.pregnancy.start({
+    childDna,
+    childFamilyName: organism.familyName,
+    childFactionId: factionId,
+    partnerId: target.id,
+    transferRate: organism.traits.metabolism.fullnessDecay,
+    startTick: world.tick,
+  });
 
-  world.events.emit('pregnancy:started', { agentId: agent.id, duration: pregnancyDuration });
-  log(world, 'reproduce', `${agent.name} & ${target.name} are expecting`, agent.id, { targetId: target.id });
+  world.events.emit('pregnancy:started', { agentId: organism.id });
+  log(world, 'reproduce', `${organism.name} & ${target.name} are expecting`, organism.id, { targetId: target.id });
 }
 
-function reproduceAsexual(world: World, agent: Agent): void {
-  const spots: [number, number][] = [
-    [agent.cellX + 1, agent.cellY],
-    [agent.cellX - 1, agent.cellY],
-    [agent.cellX, agent.cellY + 1],
-    [agent.cellX, agent.cellY - 1],
-  ];
-  const free = spots.find(([x, y]) => !world.grid.isBlocked(x, y));
-  if (!free) return;
+function reproduceAsexual(world: World, organism: Organism): void {
+  if (!organism.pregnancy) return;
 
-  agent.drainEnergy(REPRODUCE_ENERGY_COST);
-  const p1Donate = Math.min(agent.fullness, FULLNESS_DONATE_RANGE[0] + Math.random() * (FULLNESS_DONATE_RANGE[1] - FULLNESS_DONATE_RANGE[0]));
-  agent.drainFullness(p1Donate);
+  organism.drainEnergy(REPRODUCE_ENERGY_COST);
+  const rndDonate = (): number =>
+    FULLNESS_DONATE_RANGE[0] + Math.random() * (FULLNESS_DONATE_RANGE[1] - FULLNESS_DONATE_RANGE[0]);
+  const p1Donate = Math.min(organism.needs.fullness, rndDonate());
+  organism.drainFullness(p1Donate);
 
-  // No crossover, just mutate
-  const childDna = mutate(agent.genome.dna);
+  const rate     = organism.traits.volatility.mutationRate;
+  const childDna = mutate(organism.genome.dna, rate);
   const childGenome = new Genome(childDna);
-  if (!isViable(childGenome.traits, childGenome.genes)) {
-    log(world, 'reproduce', `${agent.name} had a stillborn child`, agent.id, {});
-    world.events.emit('agent:stillborn', { parentId: agent.id });
+  if (!isViable(childGenome.traits, childDna)) {
+    log(world, 'reproduce', `${organism.name} had a stillborn child`, organism.id, {});
+    world.events.emit('organism:stillborn', { parentId: organism.id });
     return;
   }
 
-  const babyDuration = childGenome.traits.maturity.babyDurationMs;
-  const pregnancyDuration = babyDuration * 0.5;
-  agent.pregnancy.start(childDna, pregnancyDuration, agent.familyName, agent.factionId, null, p1Donate);
+  organism.pregnancy.start({
+    childDna,
+    childFamilyName: organism.familyName,
+    childFactionId: organism.factionId,
+    partnerId: null,
+    transferRate: organism.traits.metabolism.fullnessDecay,
+    startTick: world.tick,
+  });
 
-  world.events.emit('pregnancy:started', { agentId: agent.id, duration: pregnancyDuration });
-  log(world, 'reproduce', `${agent.name} is expecting (asexual)`, agent.id, {});
+  world.events.emit('pregnancy:started', { agentId: organism.id });
+  log(world, 'reproduce', `${organism.name} is expecting (asexual)`, organism.id, {});
 }

@@ -1,5 +1,6 @@
 export * from './types';
 export { DecisionEngine } from './decision-engine';
+export { SimplifiedTick } from './simplified-tick';
 export { ContextBuilder } from './context-builder';
 export { scoreAction } from './action-scorer';
 export { evaluateNeeds } from './need-evaluator';

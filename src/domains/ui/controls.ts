@@ -1,8 +1,13 @@
 import { key, rndi, uuid, RingLog } from '../../core/utils';
-import { GRID_SIZE, LOG_CATS, OBSTACLE_EMOJIS, setGridSize } from '../../core/constants';
+import { GRID_SIZE } from '../../core/constants';
 import type { World } from '../world';
-import { AgentFactory } from '../entity/agent-factory';
+import { OrganismFactory } from '../entity/organism-factory';
 import { SimulationEngine } from '../simulation';
+
+const OBSTACLE_EMOJIS = ['\u{1FAA8}', '\u{1F335}', '\u{1F333}', '\u{1F332}', '\u{1F5FF}', '\u26F0\uFE0F'];
+const LOG_CATS_ALL = ['talk', 'quarrel', 'attack', 'hunt', 'heal', 'share', 'reproduce',
+  'build', 'destroy', 'death', 'faction', 'level', 'spawn', 'info', 'sleep', 'eat',
+  'harvest', 'loot', 'hygiene'] as const;
 import { PersistenceManager } from '../persistence';
 import type { DomRefs } from './ui-manager';
 import { UIManager } from './ui-manager';
@@ -50,7 +55,6 @@ function seedEnvironment(world: World): void {
     }
   }
   SimulationEngine.seedInitialSaltWater(world, rndi(SALT_WATER_SPAWN_RANGE[0], SALT_WATER_SPAWN_RANGE[1]));
-  SimulationEngine.seedInitialTrees(world, rndi(8, 15));
   SimulationEngine.seedInitialWater(world, rndi(3, 6));
   SimulationEngine.seedInitialFood(world, rndi(5, 10));
   world.terrainField.recomputeAll(world.grid);
@@ -58,17 +62,16 @@ function seedEnvironment(world: World): void {
 }
 
 export class Controls {
-  static wire(world: World, dom: DomRefs, doRenderLog: () => void, onWorldResize?: () => void): void {
+  static wire(world: World, factory: OrganismFactory, dom: DomRefs, doRenderLog: () => void, onWorldResize?: () => void): void {
     const { buttons, ranges, labels, nums } = dom;
 
     function spawnAgents(n: number): void {
       for (let i = 0; i < n; i++) {
         const { x, y } = world.grid.randomFreeCell();
-        const agent = AgentFactory.create(x, y);
-        world.agents.push(agent);
-        world.agentsById.set(agent.id, agent);
-        world.agentsByCell.set(key(x, y), agent.id);
-        world.familyRegistry.registerBirth(agent.familyName);
+        const organism = factory.create({ cellX: x, cellY: y });
+        if (!organism) continue;
+        world.addOrganism(organism);
+        world.familyRegistry.registerBirth(organism.familyName);
       }
     }
 
@@ -124,19 +127,19 @@ export class Controls {
     buttons.btnStart?.addEventListener('click', () => {
       if (world.running) return;
       world.grid.clear();
-      world.agents.length = 0;
-      world.agentsById.clear();
+      world.organisms.length = 0;
+      world.organismsById.clear();
       world.factions.clear();
       world.log = new RingLog(200);
       world.tick = 0;
       world.totalBirths = 0;
       world.totalDeaths = 0;
       world.selectedId = null;
-      world.activeLogCats = new Set(LOG_CATS);
+      world.activeLogCats.clear();
+      for (const c of LOG_CATS_ALL) world.activeLogCats.add(c);
       UIManager.setupLogFilters(world, dom.logFilters, doRenderLog);
       // Apply world size before seeding
       const worldSize = Number(ranges.rngWorldSize?.value || 62);
-      setGridSize(worldSize);
       world.grid.size = worldSize;
       world.terrainField.resize(worldSize);
 
@@ -190,9 +193,8 @@ export class Controls {
       // Stop simulation and clear all state
       world.running = false;
       world.grid.clear();
-      world.agents.length = 0;
-      world.agentsById.clear();
-      world.agentsByCell.clear();
+      world.organisms.length = 0;
+      world.organismsById.clear();
       world.factions.clear();
       world.familyRegistry.clear();
       world.flags.clear();
@@ -201,8 +203,7 @@ export class Controls {
       world.farms.clear();
       world.foodBlocks.clear();
       world.waterBlocks.clear();
-      world.treeBlocks.clear();
-      world.seedlings.clear();
+      world.corpseBlocks.clear();
       world.lootBags.clear();
       world.poopBlocks.clear();
       world.saltWaterBlocks.clear();
@@ -214,7 +215,8 @@ export class Controls {
       world.totalDeaths = 0;
       world.selectedId = null;
       world.log = new RingLog(200);
-      world.activeLogCats = new Set(LOG_CATS);
+      world.activeLogCats.clear();
+      for (const c of LOG_CATS_ALL) world.activeLogCats.add(c);
       UIManager.setupLogFilters(world, dom.logFilters, doRenderLog);
       // Clear autosave so page refresh also starts fresh
       PersistenceManager.clearAutosave();
@@ -232,10 +234,6 @@ export class Controls {
     buttons.btnSpawnCrop?.addEventListener('click', () => {
       const { x, y } = world.grid.randomFreeCell();
       SimulationEngine.addCrop(world, x, y);
-    });
-
-    buttons.btnSpawnTree?.addEventListener('click', () => {
-      SimulationEngine.addTree(world);
     });
 
     buttons.btnSpawnCloud?.addEventListener('click', () => {

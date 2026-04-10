@@ -1,43 +1,51 @@
 import { GRID_SIZE } from '../../core/constants';
-import { rndi, key } from '../../core/utils';
-import type { Agent } from '../entity/agent';
-import { ENTITY_CLASSES } from '../entity/entity-class';
+import { rndi } from '../../core/utils';
+import type { Organism } from '../entity/organism';
+import type { World } from '../world/world';
 import { ACTION_REGISTRY } from '../action/action-registry';
 import type { ActionType } from '../action/types';
 import { Mood } from '../entity/types';
+import { LifecycleStage } from '../phenotype/types';
 import { shouldFlee } from './flee-evaluator';
 import { scoreAction } from './action-scorer';
-import type { DecisionContext, ActionCandidate } from './types';
+import { ContextBuilder } from './context-builder';
+import { ActionProcessor } from '../action/action-processor';
+import type { ActionCandidate, DecisionContext } from './types';
 
-/**
- * The decision engine replaces the old InteractionEngine's if-chain
- * with scored action selection.
- */
 export class DecisionEngine {
-  static decide(agent: Agent, context: DecisionContext): ActionCandidate | null {
-    // Flee check (new behavior from Courage gene)
-    if (shouldFlee(agent, context)) {
-      return fleeCandidate(agent, context);
+  /** Called each tick for mobile organisms */
+  tick(organism: Organism, world: World, tickMs: number): void {
+    // Process existing action
+    if (organism.action) {
+      ActionProcessor.process(world, organism, tickMs);
+      return;
     }
 
-    // Get available actions from entity class
-    const classDef = ENTITY_CLASSES[agent.entityClass];
-    const available = classDef.availableActions;
+    // Build context and decide next action
+    const context = ContextBuilder.build(world, organism);
 
-    // Score each available action
+    if (shouldFlee(organism, context)) {
+      const candidate = fleeCandidate(organism, context);
+      if (candidate?.targetPos) {
+        organism.goal = candidate.targetPos;
+      }
+      return;
+    }
+
+    // Get available actions based on lifecycle stage
+    const available = getAvailableActions(organism);
+
     const candidates: ActionCandidate[] = [];
     for (const actionType of available) {
       const def = ACTION_REGISTRY.get(actionType);
       if (!def) continue;
 
-      // Quick requirement filters
-      if (!passesRequirements(actionType, agent, context)) continue;
+      if (!passesRequirements(actionType, organism, context)) continue;
 
-      const score = scoreAction(def, agent, context);
+      const score = scoreAction(def, organism, context);
       if (score <= -Infinity) continue;
 
-      // Resolve target for scored candidate
-      const target = resolveTarget(actionType, agent, context);
+      const target = resolveTarget(actionType, organism, context);
       candidates.push({
         actionType,
         targetId: target?.targetId,
@@ -48,17 +56,18 @@ export class DecisionEngine {
     }
 
     if (candidates.length === 0) {
-      return roamCandidate(agent);
+      const roam = roamCandidate(organism);
+      organism.goal = roam.targetPos ?? null;
+      return;
     }
 
-    // Select highest-scored action
     candidates.sort((a, b) => b.score - a.score);
 
-    // If top score is Infinity (hard override), take it
-    if (candidates[0].score === Infinity) return candidates[0];
+    if (candidates[0].score === Infinity) {
+      applyCandidate(organism, candidates[0]);
+      return;
+    }
 
-    // Otherwise pick from top candidates with some stochasticity
-    // Take top 3, weighted random
     const topN = candidates.slice(0, Math.min(3, candidates.length));
     const minScore = Math.min(...topN.map(c => c.score));
     const weights = topN.map(c => Math.max(c.score - minScore + 1, 0.1));
@@ -66,18 +75,57 @@ export class DecisionEngine {
     let roll = Math.random() * totalWeight;
     for (let i = 0; i < topN.length; i++) {
       roll -= weights[i];
-      if (roll <= 0) return topN[i];
+      if (roll <= 0) { applyCandidate(organism, topN[i]); return; }
     }
-    return topN[0];
+    applyCandidate(organism, topN[0]);
   }
 }
 
-function passesRequirements(type: ActionType, agent: Agent, ctx: DecisionContext): boolean {
+function getAvailableActions(organism: Organism): ActionType[] {
+  // Juveniles have a limited action set
+  if (organism.lifecycleStage === LifecycleStage.Juvenile) {
+    return ['sleep', 'eat', 'drink', 'talk', 'harvest', 'pickup'];
+  }
+  // Elders can't reproduce
+  if (organism.lifecycleStage === LifecycleStage.Elder) {
+    return ['sleep', 'eat', 'drink', 'attack', 'heal', 'share', 'talk', 'quarrel',
+      'harvest', 'pickup', 'deposit', 'withdraw', 'poop', 'clean', 'play', 'build_farm'];
+  }
+  return ['sleep', 'eat', 'drink', 'attack', 'heal', 'share', 'talk', 'quarrel',
+    'reproduce', 'seek_mate', 'await_mate', 'harvest', 'pickup', 'deposit', 'withdraw',
+    'poop', 'clean', 'play', 'build_farm'];
+}
+
+function applyCandidate(organism: Organism, candidate: ActionCandidate): void {
+  if (candidate.targetPos && !candidate.targetId) {
+    organism.goal = candidate.targetPos;
+    return;
+  }
+  const def = ACTION_REGISTRY.get(candidate.actionType);
+  if (!def) return;
+  const [minMs, maxMs] = def.durationRange;
+  const durationMs = minMs + Math.random() * (maxMs - minMs);
+  const now = performance.now();
+  organism.action = {
+    type: candidate.actionType,
+    remainingMs: durationMs,
+    tickCounterMs: 0,
+    startedAtMs: now,
+    totalMs: durationMs,
+    payload: {
+      targetId: candidate.targetId,
+      targetPos: candidate.targetPos,
+      resourceType: candidate.resourceType,
+    },
+  };
+}
+
+function passesRequirements(type: ActionType, organism: Organism, ctx: DecisionContext): boolean {
   switch (type) {
     case 'eat':
-      return agent.inventory.food > 0;
-    case 'wash':
-      return agent.inventory.water > 0;
+      return organism.inventory.plantFood > 0 || organism.inventory.meatFood > 0;
+    case 'drink':
+      return organism.inventory.water > 0;
     case 'sleep':
       return true;
     case 'attack': {
@@ -92,64 +140,50 @@ function passesRequirements(type: ActionType, agent: Agent, ctx: DecisionContext
       return adj.length > 0;
     }
     case 'reproduce': {
-      if (agent.pregnancy.active) return false;
-      if (agent.entityClass === 'elder') return false;
-      // Parthenogenesis: no partner needed
-      if (agent.traits.parthenogenesis.canSelfReproduce) return true;
-      // Need adjacent partner with sufficient relationship, not diseased
+      if (!organism.pregnancy || organism.pregnancy.active) return false;
+      if (organism.traits.parthenogenesis.canSelfReproduce) return true;
       const partners = ctx.nearbyAgents.filter(
-        n => n.dist === 1 &&
-          n.relationship >= 0.4 &&
-          !n.agent.diseased && !agent.diseased
+        n => n.dist === 1 && n.relationship >= 0.4 && !n.agent.diseased && !organism.diseased
       );
       return partners.length > 0;
     }
     case 'seek_mate': {
-      if (agent.traits.parthenogenesis.canSelfReproduce) return false;
-      if (agent.pregnancy.active) return false;
-      if (agent.entityClass === 'elder') return false;
-      if (agent.matingTargetId) return false;
+      if (organism.traits.parthenogenesis.canSelfReproduce) return false;
+      if (!organism.pregnancy || organism.pregnancy.active) return false;
+      if (organism.lifecycleStage === LifecycleStage.Elder) return false;
+      if (organism.matingTargetId) return false;
       if (ctx.mood !== Mood.HAPPY) return false;
       const seekPartners = ctx.nearbyAgents.filter(
-        n => n.dist > 1 &&
-          n.relationship >= 0.4 &&
-          !n.agent.diseased && !agent.diseased &&
-          !n.agent.pregnancy.active &&
-          n.agent.entityClass !== 'elder' &&
-          n.agent.entityClass !== 'baby'
+        n => n.dist > 1 && n.relationship >= 0.4 && !n.agent.diseased && !organism.diseased &&
+          !(n.agent.pregnancy?.active) && n.agent.lifecycleStage !== LifecycleStage.Juvenile &&
+          n.agent.lifecycleStage !== LifecycleStage.Elder
       );
       return seekPartners.length > 0;
     }
     case 'harvest': {
-      if (agent.inventoryFull()) return false;
+      if (organism.inventory.isFull()) return false;
       const adjRes = ctx.nearbyResources.filter(r => r.dist <= 1);
       return adjRes.length > 0;
     }
     case 'pickup': {
-      if (agent.inventoryFull()) return false;
+      if (organism.inventory.isFull()) return false;
       const loot = ctx.nearbyBlocks.filter(b => b.type === 'lootBag' && b.dist <= 1);
       return loot.length > 0;
     }
-    case 'deposit': {
-      return ctx.nearOwnFlag && agent.inventoryTotal() >= 3;
-    }
-    case 'withdraw': {
-      return ctx.nearOwnFlag && !agent.inventoryFull();
-    }
-    case 'poop':
-      return agent.poopTimerMs > 0 && Math.random() < 0.10;
+    case 'deposit':
+      return ctx.nearOwnFlag && organism.inventory.total() >= 3;
+    case 'withdraw':
+      return ctx.nearOwnFlag && !organism.inventory.isFull();
     case 'clean': {
       const poop = ctx.nearbyBlocks.filter(b => b.type === 'poop' && b.dist <= 1);
-      return poop.length > 0 && agent.inspiration < 60;
+      return poop.length > 0 && organism.needs.inspiration < 60;
     }
     case 'play': {
-      // Need adjacent interactable (tree, obstacle, etc.)
-      const trees = ctx.nearbyResources.filter(r => r.type === 'wood' && r.dist <= 1);
-      return trees.length > 0 && agent.inspiration < 40;
+      const adjRes = ctx.nearbyResources.filter(r => r.dist <= 1);
+      return adjRes.length > 0 && organism.needs.inspiration < 40;
     }
-    case 'build_farm': {
-      return agent.inventory.wood >= 3 && agent.energy >= 6;
-    }
+    case 'build_farm':
+      return organism.inventory.wood >= 3 && organism.energy >= 6;
     default:
       return true;
   }
@@ -157,12 +191,11 @@ function passesRequirements(type: ActionType, agent: Agent, ctx: DecisionContext
 
 function resolveTarget(
   type: ActionType,
-  agent: Agent,
+  organism: Organism,
   ctx: DecisionContext
-): { targetId?: string; targetPos?: { x: number; y: number } } | null {
+): { targetId?: string; targetPos?: { x: number; y: number }; resourceType?: string } | null {
   switch (type) {
     case 'attack': {
-      // Prefer enemies, then low-relationship agents
       const inRange = ctx.nearbyAgents.filter(n => n.dist <= 2);
       if (!inRange.length) return null;
       inRange.sort((a, b) => {
@@ -174,7 +207,6 @@ function resolveTarget(
     }
     case 'heal': {
       const adj = ctx.nearbyAgents.filter(n => n.dist === 1);
-      // Pick weakest
       adj.sort((a, b) => (a.agent.health / a.agent.maxHealth) - (b.agent.health / b.agent.maxHealth));
       return adj.length ? { targetId: adj[0].agent.id } : null;
     }
@@ -183,27 +215,18 @@ function resolveTarget(
     case 'quarrel': {
       const adj = ctx.nearbyAgents.filter(n => n.dist === 1);
       if (!adj.length) return null;
-      // For share: pick faction-mate or lowest relationship
-      // For talk/quarrel: random neighbor
-      const pick = adj[rndi(0, adj.length - 1)];
-      return { targetId: pick.agent.id };
+      return { targetId: adj[rndi(0, adj.length - 1)].agent.id };
     }
     case 'reproduce': {
-      if (agent.traits.parthenogenesis.canSelfReproduce) return {};
+      if (organism.traits.parthenogenesis.canSelfReproduce) return {};
       const partners = ctx.nearbyAgents.filter(
         n => n.dist === 1 && n.relationship >= 0.4 && !n.agent.diseased
       );
-      if (!partners.length) return null;
-      return { targetId: partners[0].agent.id };
+      return partners.length ? { targetId: partners[0].agent.id } : null;
     }
     case 'seek_mate': {
       const seekPartners = ctx.nearbyAgents.filter(
-        n => n.dist > 1 &&
-          n.relationship >= 0.4 &&
-          !n.agent.diseased &&
-          !n.agent.pregnancy.active &&
-          n.agent.entityClass !== 'elder' &&
-          n.agent.entityClass !== 'baby'
+        n => n.dist > 1 && n.relationship >= 0.4 && !n.agent.diseased && !(n.agent.pregnancy?.active)
       );
       if (!seekPartners.length) return null;
       seekPartners.sort((a, b) => b.relationship - a.relationship);
@@ -213,64 +236,51 @@ function resolveTarget(
       const adjRes = ctx.nearbyResources.filter(r => r.dist <= 1);
       if (!adjRes.length) return null;
       const r = adjRes[0];
-      const resourceType = r.type === 'food' ? 'food_lq' : r.type;
-      return { targetPos: { x: r.pos.x, y: r.pos.y }, resourceType } as { targetPos: { x: number; y: number }; resourceType: string } & { targetId?: string };
+      return { targetPos: { x: r.pos.x, y: r.pos.y }, resourceType: r.type };
     }
     case 'pickup': {
       const loot = ctx.nearbyBlocks.filter(b => b.type === 'lootBag' && b.dist <= 1);
-      if (!loot.length) return null;
-      return { targetPos: { x: loot[0].pos.x, y: loot[0].pos.y } };
+      return loot.length ? { targetPos: { x: loot[0].pos.x, y: loot[0].pos.y } } : null;
     }
     case 'clean': {
       const poop = ctx.nearbyBlocks.filter(b => b.type === 'poop' && b.dist <= 1);
-      if (!poop.length) return null;
-      return { targetPos: { x: poop[0].pos.x, y: poop[0].pos.y } };
+      return poop.length ? { targetPos: { x: poop[0].pos.x, y: poop[0].pos.y } } : null;
     }
     case 'play': {
-      const trees = ctx.nearbyResources.filter(r => r.type === 'wood' && r.dist <= 1);
-      if (!trees.length) return null;
-      return { targetPos: { x: trees[0].pos.x, y: trees[0].pos.y } };
+      const adjRes = ctx.nearbyResources.filter(r => r.dist <= 1);
+      return adjRes.length ? { targetPos: { x: adjRes[0].pos.x, y: adjRes[0].pos.y } } : null;
     }
     case 'deposit': {
-      const { food, water, wood } = agent.inventory;
-      if (food + water + wood <= 0) return null;
-      const rt = food >= water && food >= wood ? 'food'
+      const { plantFood, meatFood, water, wood } = organism.inventory;
+      const food = plantFood + meatFood;
+      const rt = food >= water && food >= wood ? (plantFood >= meatFood ? 'plantFood' : 'meatFood')
         : water >= wood ? 'water' : 'wood';
-      return { resourceType: rt } as { resourceType: string } & { targetId?: string; targetPos?: { x: number; y: number } };
+      return { resourceType: rt };
     }
     case 'withdraw': {
-      const rt = agent.fullness <= agent.hygiene ? 'food' : 'water';
-      return { resourceType: rt } as { resourceType: string } & { targetId?: string; targetPos?: { x: number; y: number } };
+      const rt = organism.needs.fullness <= organism.needs.hygiene ? 'plantFood' : 'water';
+      return { resourceType: rt };
     }
     default:
       return {};
   }
 }
 
-function fleeCandidate(agent: Agent, context: DecisionContext): ActionCandidate | null {
-  // Find the attacker and flee in the opposite direction
+function fleeCandidate(organism: Organism, context: DecisionContext): ActionCandidate | null {
   const attacker = context.nearbyAgents.find(n => n.dist <= 2 && n.relationship < 0);
-  if (!attacker) return roamCandidate(agent);
+  if (!attacker) return roamCandidate(organism);
 
-  const dx = agent.cellX - attacker.agent.cellX;
-  const dy = agent.cellY - attacker.agent.cellY;
-  const fleeX = Math.max(0, Math.min(GRID_SIZE - 1, agent.cellX + dx * 4 + rndi(-2, 2)));
-  const fleeY = Math.max(0, Math.min(GRID_SIZE - 1, agent.cellY + dy * 4 + rndi(-2, 2)));
+  const dx = organism.cellX - attacker.agent.cellX;
+  const dy = organism.cellY - attacker.agent.cellY;
+  const fleeX = Math.max(0, Math.min(GRID_SIZE - 1, organism.cellX + dx * 4 + rndi(-2, 2)));
+  const fleeY = Math.max(0, Math.min(GRID_SIZE - 1, organism.cellY + dy * 4 + rndi(-2, 2)));
 
-  return {
-    actionType: 'sleep', // Placeholder — simulation handles flee as pathfinding
-    targetPos: { x: fleeX, y: fleeY },
-    score: 2000,
-  };
+  return { actionType: 'sleep', targetPos: { x: fleeX, y: fleeY }, score: 2000 };
 }
 
-function roamCandidate(agent: Agent): ActionCandidate {
+function roamCandidate(organism: Organism): ActionCandidate {
   const range = 6;
-  const tx = Math.max(0, Math.min(GRID_SIZE - 1, agent.cellX + rndi(-range, range)));
-  const ty = Math.max(0, Math.min(GRID_SIZE - 1, agent.cellY + rndi(-range, range)));
-  return {
-    actionType: 'sleep', // Placeholder — simulation interprets as pathfind-to
-    targetPos: { x: tx, y: ty },
-    score: -100,
-  };
+  const tx = Math.max(0, Math.min(GRID_SIZE - 1, organism.cellX + rndi(-range, range)));
+  const ty = Math.max(0, Math.min(GRID_SIZE - 1, organism.cellY + rndi(-range, range)));
+  return { actionType: 'sleep', targetPos: { x: tx, y: ty }, score: -100 };
 }

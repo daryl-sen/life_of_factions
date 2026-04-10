@@ -1,23 +1,11 @@
 import type { TraitSet } from '../../genetics/types';
 import { NeedBand } from '../types';
+import { TUNE } from '../../../core/tuning';
 
 export type NeedName = 'fullness' | 'hygiene' | 'social' | 'inspiration';
 
-/**
- * Compute the band boundaries for a need based on genetic thresholds.
- *
- * The seekThreshold (boundary between LOW and NORMAL) comes from genetics.
- * Other boundaries are derived:
- *   critical = seekThreshold * 0.5
- *   low      = seekThreshold
- *   normal   = seekThreshold + (100 - seekThreshold) * 0.4
- *   high     = seekThreshold + (100 - seekThreshold) * 0.75
- */
 function getBandBoundaries(seekThreshold: number): {
-  critical: number;
-  low: number;
-  normal: number;
-  high: number;
+  critical: number; low: number; normal: number; high: number;
 } {
   return {
     critical: seekThreshold * 0.5,
@@ -27,19 +15,17 @@ function getBandBoundaries(seekThreshold: number): {
   };
 }
 
-/** Get the seek threshold for a specific need from traits */
 function getSeekThreshold(need: NeedName, traits: TraitSet): number {
   switch (need) {
     case 'fullness':
-      return traits.appetite.seekThreshold;
+      // v5: seekThreshold is 0..1, scale to 0..100
+      return traits.appetite.seekThreshold * 100;
     case 'hygiene':
-      return 40; // No gene for hygiene yet, use default
+      return 40;
     case 'social':
-      // Gregariousness: higher decay = higher thresholds (needs interaction more)
-      // Scale: socialDecay 0.002-0.025, default 0.01 -> seekThreshold 20-60, default 40
-      return 20 + (traits.gregariousness.socialDecay - 0.002) / (0.025 - 0.002) * 40;
+      return TUNE.functionalMin.sociality > 0 ? 40 : 0;
     case 'inspiration':
-      return 40; // No gene yet, use default
+      return 40;
   }
 }
 
@@ -49,19 +35,13 @@ export class NeedSet {
   social: number;
   inspiration: number;
 
-  constructor(
-    fullness = 50,
-    hygiene = 50,
-    social = 50,
-    inspiration = 50
-  ) {
-    this.fullness = fullness;
-    this.hygiene = hygiene;
-    this.social = social;
-    this.inspiration = inspiration;
+  constructor(init: { fullness: number; hygiene: number; social: number; inspiration: number }) {
+    this.fullness    = init.fullness;
+    this.hygiene     = init.hygiene;
+    this.social      = init.social;
+    this.inspiration = init.inspiration;
   }
 
-  /** Get the band for a given need using the agent's genetic thresholds */
   getBand(need: NeedName, traits: TraitSet): NeedBand {
     const value = this[need];
     const seekThreshold = getSeekThreshold(need, traits);
@@ -75,9 +55,9 @@ export class NeedSet {
   }
 
   clamp(): void {
-    this.fullness = Math.max(0, Math.min(100, this.fullness));
-    this.hygiene = Math.max(0, Math.min(100, this.hygiene));
-    this.social = Math.max(0, Math.min(100, this.social));
+    this.fullness    = Math.max(0, Math.min(100, this.fullness));
+    this.hygiene     = Math.max(0, Math.min(100, this.hygiene));
+    this.social      = Math.max(0, Math.min(100, this.social));
     this.inspiration = Math.max(0, Math.min(100, this.inspiration));
   }
 }

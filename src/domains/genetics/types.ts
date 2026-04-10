@@ -1,52 +1,70 @@
 /** A single parsed gene from a DNA string */
 export interface RawGeneEntry {
-  /** 2-char identifier (e.g., "AA", "aa") */
   readonly code: string;
-  /** 0-999 magnitude */
   readonly magnitude: number;
-  /** Index in DNA string (0, 5, 10, ...) */
   readonly position: number;
-  /** Whether this gene maps to a known trait */
   readonly coding: boolean;
 }
 
-/** Complete set of expressed traits derived from a genome */
+/** Complete set of expressed traits derived from a genome (v5) */
 export interface TraitSet {
-  // Essential traits
-  readonly strength: { readonly baseAttack: number; readonly perLevel: number };
-  readonly longevity: { readonly maxAgeMs: number };
-  readonly vigor: { readonly baseMaxEnergy: number; readonly perLevel: number };
-  readonly metabolism: { readonly fullnessDecay: number; readonly actionDurationMult: number };
-  readonly resilience: { readonly baseMaxHp: number; readonly perLevel: number };
+  // Essential
+  readonly longevity:          { readonly maxAgeMs: number };
+  readonly metabolism:         { readonly fullnessDecay: number; readonly actionDurationMult: number };
 
-  // Non-essential traits
-  readonly immunity: { readonly contractionChance: number };
-  readonly agility: { readonly speedMult: number };
-  readonly aptitude: { readonly xpPerLevel: number };
-  readonly cooperation: { readonly baseProbability: number };
-  readonly aggression: { readonly baseProbability: number };
-  readonly courage: { readonly fleeHpRatio: number };
-  readonly fertility: { readonly energyThreshold: number; readonly urgencyAge: number };
-  readonly parthenogenesis: { readonly canSelfReproduce: boolean };
-  readonly recall: { readonly memorySlots: number };
-  readonly charisma: { readonly relationshipSlots: number };
-  readonly gregariousness: { readonly socialDecay: number };
-  readonly appetite: { readonly seekThreshold: number; readonly criticalThreshold: number };
-  readonly maturity: { readonly babyDurationMs: number };
-  readonly endurance: { readonly inventoryCapacity: number };
-  readonly fidelity: { readonly leaveProbability: number };
-  readonly greed: { readonly hoardProbability: number };
-  readonly maternity: { readonly feedProbability: number };
+  // Body & Physiology
+  readonly strength:           { readonly value: number };
+  readonly vigor:              { readonly baseMaxEnergy: number; readonly perLevel: number };
+  readonly resilience:         { readonly baseMaxHp: number; readonly perLevel: number };
+  readonly immunity:           { readonly contractionChance: number };
+  readonly agility:            { readonly speedMult: number };
+  readonly size:               { readonly value: number };
+  readonly regeneration:       { readonly hpPerTick: number };
+  readonly endurance:          { readonly inventoryCapacity: number };
+
+  // Mobility, Senses & Diet
+  readonly aquatic:            { readonly value: number };
+  readonly saltwaterTolerance: { readonly extractionRate: number };
+  readonly photosynthesis:     { readonly value: number };
+  readonly carnivory:          { readonly value: number };
+  readonly perception:         { readonly radius: number };
+
+  // Mind & Behavior
+  readonly emotion:            { readonly value: number };
+  readonly aptitude:           { readonly xpPerLevel: number };
+  readonly courage:            { readonly fleeHpRatio: number };
+  readonly aggression:         { readonly baseProbability: number };
+  readonly recall:             { readonly memorySlots: number };
+
+  // Social
+  readonly sociality:          { readonly value: number };
+  readonly charisma:           { readonly relationshipSlots: number };
+  readonly cooperation:        { readonly baseProbability: number };
+  readonly fidelity:           { readonly leaveProbability: number };
+
+  // Reproduction & Lifecycle
+  readonly fertility:          { readonly energyThreshold: number; readonly urgencyAge: number };
+  readonly pregnancy:          { readonly gestationMs: number };
+  readonly parthenogenesis:    { readonly canSelfReproduce: boolean };
+  readonly maternity:          { readonly feedProbability: number };
+  readonly maturity:           { readonly juvenileMs: number };
+  readonly harvestable:        { readonly value: number };
+  readonly volatility:         { readonly mutationRate: number };
+
+  // Resource Behavior
+  readonly appetite:           { readonly seekThreshold: number; readonly criticalThreshold: number };
+  readonly greed:              { readonly hoardProbability: number };
 }
 
-/** Definition of a single trait component's scaling */
+/**
+ * Definition of a single trait component's scaling.
+ * NOTE: No `max` field in v5 — traits are unbounded above; cost functions limit them naturally.
+ */
 export interface TraitComponentDef {
   readonly key: string;
-  readonly min: number;
   readonly default: number;
-  readonly max: number;
   readonly scale: number;
-  /** true = positive genes reduce the value (e.g., metabolism decay, immunity contraction) */
+  readonly floor: number;
   readonly inverted: boolean;
 }
 

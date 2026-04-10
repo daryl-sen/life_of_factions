@@ -1,5 +1,5 @@
 import { rnd } from '../../core/utils';
-import type { Agent } from '../entity/agent';
+import type { Organism } from '../entity/organism';
 import { ACTION_REGISTRY } from './action-registry';
 import type { ActionType, IActionState, IActionPayload } from './types';
 
@@ -11,7 +11,7 @@ import type { ActionType, IActionState, IActionPayload } from './types';
 export class ActionFactory {
   static create(
     type: ActionType,
-    agent: Agent,
+    organism: Organism,
     payload?: IActionPayload
   ): IActionState {
     const def = ACTION_REGISTRY.get(type);
@@ -21,13 +21,13 @@ export class ActionFactory {
     let duration = rnd(def.durationRange[0], def.durationRange[1]);
 
     // Scale by metabolism trait
-    const metaMult = agent.traits.metabolism.actionDurationMult;
+    const metaMult = organism.traits.metabolism.actionDurationMult;
     if (metaMult > 0) {
-      duration /= metaMult; // Higher metabolism = shorter duration
+      duration /= metaMult;
     }
 
-    // Scale by inspiration (v3 behavior: low insp = +50%, high insp = -25%)
-    const insp = agent.inspiration;
+    // Scale by inspiration
+    const insp = organism.needs.inspiration;
     if (insp < 20) {
       duration *= 1.5;
     } else if (insp > 70) {

@@ -1,8 +1,7 @@
-import { LOG_CATS, PATH_BUDGET_PER_TICK } from '../../core/constants';
 import { RingLog } from '../../core/utils';
 import { EventBus } from '../../core/event-bus';
 import type { LogCategory } from '../action/types';
-import type { Agent } from '../entity/agent';
+import type { Organism } from '../entity/organism';
 import type { Faction } from '../faction/faction';
 import { FamilyRegistry } from '../entity/family-registry';
 import { Grid } from './grid';
@@ -10,7 +9,7 @@ import { FoodField } from './food-field';
 import { WaterField } from './water-field';
 import { TerrainField } from './terrain-field';
 import { BlockManager } from './block-manager';
-import type { PaintMode, ICloud, DeadAgentMarker } from './types';
+import type { PaintMode, ICloud } from './types';
 
 export class World {
   // Core infrastructure
@@ -22,15 +21,19 @@ export class World {
   readonly blockManager: BlockManager = new BlockManager(this.grid, this.events);
   readonly familyRegistry: FamilyRegistry = new FamilyRegistry();
 
-  // Entity collections
-  agents: Agent[] = [];
-  readonly agentsById: Map<string, Agent> = new Map();
+  // Entity collections (v5: unified organisms — replaces agents + trees)
+  organisms: Organism[] = [];
+  readonly organismsById: Map<string, Organism> = new Map();
   readonly factions: Map<string, Faction> = new Map();
 
   // Logging
   log: RingLog = new RingLog(200);
-  activeLogCats: Set<LogCategory> = new Set(LOG_CATS);
-  activeLogAgentId: string | null = null;
+  readonly activeLogCats: Set<LogCategory> = new Set<LogCategory>([
+    'talk', 'quarrel', 'attack', 'hunt', 'heal', 'share', 'reproduce',
+    'build', 'destroy', 'death', 'faction', 'level', 'spawn', 'info',
+    'sleep', 'eat', 'harvest', 'loot', 'hygiene',
+  ]);
+  activeLogOrganismId: string | null = null;
 
   // Simulation state
   tick = 0;
@@ -40,10 +43,7 @@ export class World {
   speedPct = 100;
   cloudSpawnRate = 1;
 
-  // Death animation markers
-  deadMarkers: DeadAgentMarker[] = [];
-
-  // Birth/death timestamps for per-minute rate tracking
+  // Birth/death rate tracking
   birthTimestamps: number[] = [];
   deathTimestamps: number[] = [];
 
@@ -54,37 +54,45 @@ export class World {
   drawGrid = false;
   factionSort: 'members' | 'created' | 'name' | 'level' = 'members';
   familySort: 'alive' | 'total' | 'name' | 'lifespan' | 'generation' = 'alive';
-  starredStats: string[] = ['agents', 'factions', 'crops'];
 
   // Pathfinding budget
-  pathBudgetMax: number = PATH_BUDGET_PER_TICK;
+  pathBudgetMax = 30;
   pathBudget = 0;
   _pathRR = 0;
   readonly _pathWhitelist: Set<string> = new Set();
 
-  // UI callbacks
-  _lastFactionsDomAt = 0;
-  _lastAgentCount = 0;
-  _rebuildAgentOptions: (() => void) | null = null;
-  _lastFactionsSig = '';
-
-  // Ephemeral cloud state (not persisted)
+  // Ephemeral cloud state
   clouds: ICloud[] = [];
   _nextCloudSpawnMs = 0;
 
-  // Convenience accessors that delegate to grid (backward compat)
-  get obstacles() { return this.grid.obstacles; }
-  get foodBlocks() { return this.grid.foodBlocks; }
-  get crops() { return this.grid.foodBlocks; }
-  get farms() { return this.grid.farms; }
-  get flags() { return this.grid.flags; }
-  get flagCells() { return this.grid.flagCells; }
-  get agentsByCell() { return this.grid.agentsByCell; }
-  get waterBlocks() { return this.grid.waterBlocks; }
-  get treeBlocks() { return this.grid.treeBlocks; }
-  get seedlings() { return this.grid.seedlings; }
-  get lootBags() { return this.grid.lootBags; }
-  get poopBlocks() { return this.grid.poopBlocks; }
-  get eggs() { return this.grid.eggs; }
-  get saltWaterBlocks() { return this.grid.saltWaterBlocks; }
+  // Convenience accessors
+  get obstacles()      { return this.grid.obstacles; }
+  get foodBlocks()     { return this.grid.foodBlocks; }
+  get farms()          { return this.grid.farms; }
+  get flags()          { return this.grid.flags; }
+  get flagCells()      { return this.grid.flagCells; }
+  get waterBlocks()    { return this.grid.waterBlocks; }
+  get lootBags()       { return this.grid.lootBags; }
+  get poopBlocks()     { return this.grid.poopBlocks; }
+  get eggs()           { return this.grid.eggs; }
+  get saltWaterBlocks(){ return this.grid.saltWaterBlocks; }
+  get corpseBlocks()   { return this.grid.corpseBlocks; }
+
+  addOrganism(o: Organism): void {
+    this.organisms.push(o);
+    this.organismsById.set(o.id, o);
+    this.grid.setOccupied(o.cellX, o.cellY, o.id);
+  }
+
+  removeOrganism(o: Organism): void {
+    const idx = this.organisms.indexOf(o);
+    if (idx >= 0) this.organisms.splice(idx, 1);
+    this.organismsById.delete(o.id);
+    this.grid.clearOccupied(o.cellX, o.cellY, o.id);
+  }
+
+  removeDeadOrganisms(): void {
+    const dead = this.organisms.filter(o => o.isDead);
+    for (const o of dead) this.removeOrganism(o);
+  }
 }

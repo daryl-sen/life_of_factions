@@ -1,27 +1,19 @@
-import { GRID_SIZE, TICK_MS, FOOD_EMOJIS, TREE_EMOJIS } from '../../core/constants';
+import { GRID_SIZE, TICK_MS } from '../../core/constants';
 import { key, manhattan, rndi, log, uuid } from '../../core/utils';
 import type { World } from '../world/world';
-import { AgentFactory } from '../entity/agent-factory';
+import type { OrganismFactory } from '../entity/organism-factory';
+
+// ── Inlined food emojis ──
+const FOOD_EMOJIS_LQ = ['🌽', '🍅', '🍓', '🫐', '🍇', '🥕'];
+const FOOD_EMOJIS_HQ = ['🍎', '🍊', '🍋', '🍑', '🍒', '🥝'];
 
 // ── Inlined TUNE constants ──
-
 const FOOD_HQ_UNITS: [number, number] = [2, 4];
 const FOOD_LQ_UNITS: [number, number] = [1, 2];
 
 const WATER_SMALL_UNITS = 5;
 const WATER_LARGE_UNITS = 20;
 const WATER_SHRINK_THRESHOLD = 0.25;
-
-const TREE_UNIT_RANGE: [number, number] = [3, 6];
-const TREE_MAX_AGE_RANGE: [number, number] = [780000, 1020000];
-const TREE_SEEDLING_PASSIVE_CHANCE = 0.002;
-const TREE_FOOD_PASSIVE_CHANCE = 0.01;
-const TREE_SEEDLING_RADIUS = 5;
-const TREE_SEEDLING_GROWTH_RANGE: [number, number] = [31500, 63000];
-const TREE_FOOD_RADIUS = 3;
-const TREE_WATER_REQUIRED_FOR_SEEDLING = 5;
-const TREE_POOP_BOOST_SEEDLING_RADIUS = 3;
-const TREE_SEEDLING_NEAR_WATER_CHANCE = 0.0005;
 
 const EGG_HATCH_TIME_MS = 60000;
 const EGG_SPAWN_CHANCE_PER_LARGE_WATER = 0.0002;
@@ -40,12 +32,8 @@ const SALT_WATER_BODY_SIZE: [number, number] = [60, 150];
 // ── Helpers ──
 
 function randomFoodEmoji(quality: 'hq' | 'lq'): string {
-  const arr = FOOD_EMOJIS[quality];
+  const arr = quality === 'hq' ? FOOD_EMOJIS_HQ : FOOD_EMOJIS_LQ;
   return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function randomTreeEmoji(): string {
-  return TREE_EMOJIS[Math.floor(Math.random() * TREE_EMOJIS.length)];
 }
 
 // ── Public API ──
@@ -193,128 +181,6 @@ export class Spawner {
     }
   }
 
-  // ── Tree spawning ──
-
-  static addTree(world: World): boolean {
-    for (let attempt = 0; attempt < 500; attempt++) {
-      const x = rndi(0, GRID_SIZE - 1);
-      const y = rndi(0, GRID_SIZE - 1);
-      if (world.grid.isCellOccupied(x, y)) continue;
-      const units = rndi(TREE_UNIT_RANGE[0], TREE_UNIT_RANGE[1]);
-      const maxAgeMs = rndi(TREE_MAX_AGE_RANGE[0], TREE_MAX_AGE_RANGE[1]);
-      world.treeBlocks.set(key(x, y), {
-        id: uuid(), x, y,
-        emoji: randomTreeEmoji(),
-        units, maxUnits: units,
-        ageTotalMs: 0, maxAgeMs,
-      });
-      log(world, 'spawn', `tree @${x},${y}`, null, { x, y });
-      return true;
-    }
-    return false;
-  }
-
-  static seedInitialTrees(world: World, count: number): void {
-    for (let i = 0; i < count; i++) {
-      Spawner.addTree(world);
-    }
-  }
-
-  // ── Seedling / tree passive spawns ──
-
-  static trySpawnSeedling(world: World, originX: number, originY: number): boolean {
-    let nearWater = false;
-    for (const wb of world.waterBlocks.values()) {
-      if (manhattan(originX, originY, wb.x, wb.y) <= TREE_WATER_REQUIRED_FOR_SEEDLING) {
-        nearWater = true;
-        break;
-      }
-    }
-    if (!nearWater) return false;
-
-    const r = TREE_SEEDLING_RADIUS;
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const x = originX + rndi(-r, r);
-      const y = originY + rndi(-r, r);
-      if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) continue;
-      if (world.grid.isCellOccupied(x, y)) continue;
-      const dur = rndi(TREE_SEEDLING_GROWTH_RANGE[0], TREE_SEEDLING_GROWTH_RANGE[1]);
-      world.seedlings.set(key(x, y), {
-        id: uuid(), x, y,
-        plantedAtTick: world.tick,
-        growthDurationMs: dur,
-        growthElapsedMs: 0,
-      });
-      return true;
-    }
-    return false;
-  }
-
-  static trySpawnFoodNearTree(world: World, treeX: number, treeY: number): boolean {
-    const r = TREE_FOOD_RADIUS;
-    for (let attempt = 0; attempt < 10; attempt++) {
-      const x = treeX + rndi(-r, r);
-      const y = treeY + rndi(-r, r);
-      if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) continue;
-      if (world.grid.isCellOccupied(x, y)) continue;
-      return Spawner.addCrop(world, x, y);
-    }
-    return false;
-  }
-
-  static tickSeedlings(world: World): void {
-    const toConvert: string[] = [];
-    for (const [k, s] of world.seedlings) {
-      let nearWater = false;
-      for (const wb of world.waterBlocks.values()) {
-        if (manhattan(s.x, s.y, wb.x, wb.y) <= 5) { nearWater = true; break; }
-      }
-      s.growthElapsedMs += nearWater ? TICK_MS : TICK_MS / 100;
-      if (s.growthElapsedMs >= s.growthDurationMs) {
-        toConvert.push(k);
-      }
-    }
-    for (const k of toConvert) {
-      const s = world.seedlings.get(k)!;
-      world.seedlings.delete(k);
-      const units = rndi(TREE_UNIT_RANGE[0], TREE_UNIT_RANGE[1]);
-      const maxAgeMs = rndi(TREE_MAX_AGE_RANGE[0], TREE_MAX_AGE_RANGE[1]);
-      world.treeBlocks.set(k, {
-        id: uuid(), x: s.x, y: s.y,
-        emoji: randomTreeEmoji(),
-        units, maxUnits: units,
-        ageTotalMs: 0, maxAgeMs,
-      });
-      log(world, 'spawn', `seedling grew into tree @${s.x},${s.y}`, null, { x: s.x, y: s.y });
-    }
-  }
-
-  // ── Seedling near water ──
-
-  static tickSeedlingNearWater(world: World): void {
-    const seen = new Set<string>();
-    for (const wb of world.waterBlocks.values()) {
-      if (seen.has(wb.id)) continue;
-      seen.add(wb.id);
-      if (Math.random() < TREE_SEEDLING_NEAR_WATER_CHANCE) {
-        for (let attempt = 0; attempt < 10; attempt++) {
-          const x = wb.x + rndi(-3, 3);
-          const y = wb.y + rndi(-3, 3);
-          if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) continue;
-          if (world.grid.isCellOccupied(x, y)) continue;
-          const dur = rndi(TREE_SEEDLING_GROWTH_RANGE[0], TREE_SEEDLING_GROWTH_RANGE[1]);
-          world.seedlings.set(key(x, y), {
-            id: uuid(), x, y,
-            plantedAtTick: world.tick,
-            growthDurationMs: dur,
-            growthElapsedMs: 0,
-          });
-          break;
-        }
-      }
-    }
-  }
-
   // ── Poop proximity utility ──
 
   static hasPoopNearby(world: World, x: number, y: number, radius: number): boolean {
@@ -322,24 +188,6 @@ export class Spawner {
       if (manhattan(x, y, poop.x, poop.y) <= radius) return true;
     }
     return false;
-  }
-
-  // ── Tree passive spawns ──
-
-  static tickTreePassiveSpawns(world: World): void {
-    for (const tree of world.treeBlocks.values()) {
-      if (tree.units <= 0) continue;
-      const nearPoop = Spawner.hasPoopNearby(world, tree.x, tree.y, TREE_POOP_BOOST_SEEDLING_RADIUS);
-      const hydrated = Spawner.hasWaterNearby(world, tree.x, tree.y, TREE_WATER_REQUIRED_FOR_SEEDLING);
-      let seedlingChance = TREE_SEEDLING_PASSIVE_CHANCE;
-      if (hydrated) seedlingChance *= 3;
-      if (nearPoop) seedlingChance *= 2;
-      if (Math.random() < seedlingChance) {
-        Spawner.trySpawnSeedling(world, tree.x, tree.y);
-      } else if (nearPoop && Math.random() < TREE_FOOD_PASSIVE_CHANCE) {
-        Spawner.trySpawnFoodNearTree(world, tree.x, tree.y);
-      }
-    }
   }
 
   static hasWaterNearby(world: World, x: number, y: number, radius: number): boolean {
@@ -397,7 +245,6 @@ export class Spawner {
     const target = CLOUD_TARGET_WATER_COVERAGE;
     const dynamicMultiplier = Math.max(0.1, Math.min(4, (target / Math.max(0.001, currentCoverage))));
 
-    // Spawn new rain cloud
     if (world.cloudSpawnRate > 0) {
       world._nextCloudSpawnMs -= TICK_MS;
       if (world._nextCloudSpawnMs <= 0) {
@@ -416,7 +263,6 @@ export class Spawner {
       }
     }
 
-    // Decorative clouds
     if (Math.random() < 0.025) {
       const x = rndi(-2, GRID_SIZE - 1);
       const y = rndi(0, GRID_SIZE - 1);
@@ -431,7 +277,6 @@ export class Spawner {
       });
     }
 
-    // Update existing clouds
     const remaining: typeof world.clouds = [];
     for (const cloud of world.clouds) {
       cloud.lifetimeMs -= TICK_MS;
@@ -445,7 +290,6 @@ export class Spawner {
       }
       cloud.xF = (cloud.xF ?? cloud.x) + speed;
 
-      // Rain at mid-life (rain clouds only)
       if (!cloud.rained && cloud.lifetimeMs < (cloud.totalLifetimeMs * 0.5)) {
         cloud.rained = true;
         const isLarge = Math.random() >= CLOUD_SMALL_CHANCE;
@@ -457,19 +301,14 @@ export class Spawner {
         }
       }
 
-      if (cloud.lifetimeMs > 0) {
-        remaining.push(cloud);
-      }
+      if (cloud.lifetimeMs > 0) remaining.push(cloud);
     }
     world.clouds = remaining;
   }
 
   // ── Egg spawning and hatching ──
-  // Eggs spawn from large water blocks (0.0002 chance/tick/large block), continuously,
-  // regardless of agent count.
 
-  static tickEggs(world: World): void {
-    // Spawn eggs from large water blocks
+  static tickEggs(world: World, factory: OrganismFactory): void {
     const seenWater = new Set<string>();
     for (const wb of world.waterBlocks.values()) {
       if (seenWater.has(wb.id)) continue;
@@ -477,7 +316,6 @@ export class Spawner {
       if (wb.size !== 'large') continue;
       if (Math.random() >= EGG_SPAWN_CHANCE_PER_LARGE_WATER) continue;
 
-      // Place egg adjacent to a water cell
       for (const cell of wb.cells) {
         const adj: [number, number][] = [
           [cell.x + 1, cell.y], [cell.x - 1, cell.y],
@@ -499,7 +337,6 @@ export class Spawner {
       }
     }
 
-    // Hatch eggs
     const toHatch: string[] = [];
     for (const [k, egg] of world.eggs) {
       egg.hatchTimerMs -= TICK_MS;
@@ -508,25 +345,21 @@ export class Spawner {
     for (const k of toHatch) {
       const egg = world.eggs.get(k)!;
       world.eggs.delete(k);
-      const agent = AgentFactory.createFromEgg(egg.x, egg.y);
-      world.agents.push(agent);
-      world.agentsById.set(agent.id, agent);
-      world.agentsByCell.set(key(egg.x, egg.y), agent.id);
+      const organism = factory.create({ cellX: egg.x, cellY: egg.y });
+      if (!organism) continue;
+      world.addOrganism(organism);
       world.totalBirths++;
       world.birthTimestamps.push(performance.now());
-      world.familyRegistry.registerBirth(agent.familyName);
-      log(world, 'spawn', `Egg hatched into ${agent.name} @${egg.x},${egg.y}`, agent.id, {});
+      world.familyRegistry.registerBirth(organism.familyName);
+      log(world, 'spawn', `Egg hatched into ${organism.name} @${egg.x},${egg.y}`, organism.id, {});
     }
   }
 
   // ── Combined tick ──
 
-  static tick(world: World): void {
+  static tick(world: World, factory?: OrganismFactory): void {
     Spawner.maybeSpawnCrops(world);
-    Spawner.tickSeedlings(world);
-    Spawner.tickTreePassiveSpawns(world);
     Spawner.tickClouds(world);
-    Spawner.tickSeedlingNearWater(world);
-    Spawner.tickEggs(world);
+    if (factory) Spawner.tickEggs(world, factory);
   }
 }

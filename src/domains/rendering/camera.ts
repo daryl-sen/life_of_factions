@@ -1,4 +1,4 @@
-import { WORLD_PX } from '../../core/constants';
+import { WORLD_PX, CELL_PX } from '../../core/constants';
 import { clamp } from '../../core/utils';
 import type { ICameraState } from '../../core/types';
 
@@ -13,6 +13,13 @@ export class Camera implements ICameraState {
 
   screenToWorld(sx: number, sy: number): { x: number; y: number } {
     return { x: sx / this.scale + this.x, y: sy / this.scale + this.y };
+  }
+
+  worldToScreen(cellX: number, cellY: number): { sx: number; sy: number } {
+    return {
+      sx: (cellX * CELL_PX - this.x) * this.scale,
+      sy: (cellY * CELL_PX - this.y) * this.scale,
+    };
   }
 
   zoomAt(sx: number, sy: number, factor: number): void {

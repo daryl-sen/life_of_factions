@@ -2,24 +2,22 @@ import type { IPosition, IInventory } from '../../core/types';
 import type { Genome } from '../genetics';
 import type { IActionState } from '../action/types';
 
-export type EntityClassName = 'baby' | 'adult' | 'elder';
-
 export enum NeedBand {
   CRITICAL = 'critical',
-  LOW = 'low',
-  NORMAL = 'normal',
-  HIGH = 'high',
-  FULL = 'full',
+  LOW      = 'low',
+  NORMAL   = 'normal',
+  HIGH     = 'high',
+  FULL     = 'full',
 }
 
 export enum Mood {
   FRUSTRATED = 'frustrated',
-  UNHAPPY = 'unhappy',
-  CONTENT = 'content',
-  HAPPY = 'happy',
+  UNHAPPY    = 'unhappy',
+  CONTENT    = 'content',
+  HAPPY      = 'happy',
 }
 
-export interface AgentOpts {
+export interface OrganismOpts {
   id: string;
   name: string;
   cellX: number;
@@ -27,7 +25,7 @@ export interface AgentOpts {
   genome: Genome;
   familyName: string;
 
-  // Optional overrides (used for save/load)
+  // Optional overrides
   health?: number;
   energy?: number;
   level?: number;
@@ -46,11 +44,8 @@ export interface AgentOpts {
   hygiene?: number;
   social?: number;
   inspiration?: number;
-  inventory?: IInventory;
-  poopTimerMs?: number;
+  inventory?: Partial<IInventory>;
   diseased?: boolean;
-  babyMsRemaining?: number;
-  entityClass?: EntityClassName;
   generation?: number;
   matingTargetId?: string | null;
   parentIds?: string[];

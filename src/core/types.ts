@@ -3,15 +3,17 @@ export interface IPosition {
   readonly y: number;
 }
 
+export type FoodType = 'plant' | 'meat';
+
 export interface IInventory {
-  food: number;
+  plantFood: number;
+  meatFood: number;
   water: number;
   wood: number;
 }
 
-export type ResourceType = 'food' | 'water' | 'wood';
-
-export type ResourceMemoryType = 'food' | 'water' | 'wood';
+export type ResourceType = keyof IInventory;
+export type ResourceMemoryType = 'plantFood' | 'meatFood' | 'water' | 'wood' | 'corpse';
 
 export interface IResourceMemoryEntry {
   x: number;

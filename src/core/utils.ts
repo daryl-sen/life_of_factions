@@ -1,5 +1,4 @@
 import type { LogCategory, ILogEntry } from '../domains/action/types';
-import { IDLE_EMOJIS } from './constants';
 
 export const rnd = (a: number, b: number): number => Math.random() * (b - a) + a;
 export const rndi = (a: number, b: number): number => Math.floor(rnd(a, b + 1));
@@ -62,15 +61,6 @@ export class RingLog {
   }
 }
 
-export const getIdleEmoji = (a: {
-  diseased?: boolean;
-  babyMsRemaining?: number;
-}, mood?: string): string => {
-  if (a.babyMsRemaining && a.babyMsRemaining > 0) return IDLE_EMOJIS.baby;
-  if (a.diseased) return IDLE_EMOJIS.diseased;
-  if (mood && mood in IDLE_EMOJIS) return IDLE_EMOJIS[mood as keyof typeof IDLE_EMOJIS];
-  return IDLE_EMOJIS.default;
-};
 
 export const log = (
   world: { log: RingLog },

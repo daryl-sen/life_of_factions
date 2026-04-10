@@ -1,10 +1,10 @@
-import type { IPosition } from '../../core/types';
-import type { Agent } from '../entity/agent';
+import type { IPosition, ResourceMemoryType } from '../../core/types';
+import type { Organism } from '../entity/organism';
 import type { ActionType } from '../action/types';
 import type { NeedBand, Mood } from '../entity/types';
 
 export interface NearbyAgent {
-  readonly agent: Agent;
+  readonly agent: Organism;
   readonly dist: number;
   readonly relationship: number;
   readonly sameFaction: boolean;
@@ -12,20 +12,20 @@ export interface NearbyAgent {
 }
 
 export interface NearbyResource {
-  readonly type: 'food' | 'water' | 'wood' | 'seedling';
+  readonly type: ResourceMemoryType;
   readonly pos: IPosition;
   readonly dist: number;
 }
 
 export interface NearbyBlock {
-  readonly type: 'poop' | 'lootBag' | 'flag' | 'farm' | 'obstacle' | 'tree';
+  readonly type: 'poop' | 'lootBag' | 'flag' | 'farm' | 'obstacle' | 'corpse';
   readonly pos: IPosition;
   readonly dist: number;
   readonly id?: string;
 }
 
 export interface DecisionContext {
-  readonly agent: Agent;
+  readonly agent: Organism;
   readonly nearbyAgents: NearbyAgent[];
   readonly nearbyResources: NearbyResource[];
   readonly nearbyBlocks: NearbyBlock[];
