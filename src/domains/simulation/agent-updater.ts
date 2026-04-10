@@ -52,7 +52,6 @@ const FARM_WOOD_COST = 3;
 const FARM_ENERGY_COST = 6;
 
 const MANDATORY_SLEEP_THRESHOLD = 20;
-const CRITICAL_HEALTH_PCT = 0.3;
 const CRITICAL_FULLNESS_THRESHOLD = 20;
 const CRITICAL_HYGIENE_THRESHOLD = 20;
 
@@ -140,18 +139,7 @@ function interactionConsider(world: World, agent: Agent): void {
 
   // 2. Under attack — handled by DecisionEngine (flee/retaliate)
 
-  // 3. Critical health — seek faction flag for aura healing
-  if (agent.health < agent.maxHealth * CRITICAL_HEALTH_PCT) {
-    if (agent.factionId) {
-      const flag = world.flags.get(agent.factionId);
-      if (flag && manhattan(agent.cellX, agent.cellY, flag.x, flag.y) > 2) {
-        agentPlanPath(world, agent, flag.x, flag.y);
-        if (agent.path && agent.path.length > 0) return;
-      }
-    }
-  }
-
-  // 4. Critical fullness
+  // 3. Critical fullness
   if (agent.fullness < CRITICAL_FULLNESS_THRESHOLD) {
     if (agent.inventory.food > 0) {
       tryStartAction(agent, 'eat');

@@ -9,8 +9,6 @@ import { AgentUpdater } from './agent-updater';
 
 // ── Inlined TUNE constants ──
 
-const HEAL_AURA_RADIUS = 4;
-const HEAL_AURA_PER_TICK = 3.75;
 const LOOT_BAG_DECAY_MS = 30000;
 
 const DISEASE_SPREAD_CHANCE = 0.03;
@@ -32,18 +30,6 @@ export class SimulationEngine {
   }
   static hasPoopNearby(world: World, x: number, y: number, radius: number): boolean {
     return Spawner.hasPoopNearby(world, x, y, radius);
-  }
-
-  // ── Post-tick: Flag healing aura ──
-
-  private static _applyFlagHealing(world: World): void {
-    for (const agent of world.agents) {
-      if (!agent.factionId) continue;
-      const flag = world.flags.get(agent.factionId);
-      if (!flag) continue;
-      const d = Math.abs(agent.cellX - flag.x) + Math.abs(agent.cellY - flag.y);
-      if (d <= HEAL_AURA_RADIUS) agent.healBy(HEAL_AURA_PER_TICK);
-    }
   }
 
   // ── Post-tick: Disease spread ──
@@ -75,7 +61,7 @@ export class SimulationEngine {
     const removedIds: string[] = [];
     const now = performance.now();
     world.agents = world.agents.filter((a) => {
-      if (a.health <= 0) {
+      if (a.health <= 0 || a.ageTicks >= a.maxAgeTicks) {
         // Inline loot bag drop on death
         if (a.inventoryTotal() > 0) {
           const inv = { food: a.inventory.food, water: a.inventory.water, wood: a.inventory.wood };
@@ -209,7 +195,6 @@ export class SimulationEngine {
 
     // ── Post-tick ──
     if (world.tick % 4 === 0) FactionManager.reconcile(world);
-    SimulationEngine._applyFlagHealing(world);
     SimulationEngine._tickDiseaseSpread(world);
     SimulationEngine._cleanDead(world);
   }
