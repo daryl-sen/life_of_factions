@@ -11,6 +11,7 @@ import { SimulationEngine, OrganismUpdater } from './domains/simulation';
 import { DecisionEngine, SimplifiedTick } from './domains/decision';
 import { OrganismFactory } from './domains/entity';
 import { PersistenceManager } from './domains/persistence';
+import { IndicatorConfigPanel } from './domains/ui/indicator-config';
 
 document.addEventListener('DOMContentLoaded', () => {
   document.title = `Emoji Life — v${VERSION}`;
@@ -66,6 +67,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const simplifiedTick = new SimplifiedTick(world.events, factory);
   const organismUpdater = new OrganismUpdater(decisionEngine, simplifiedTick, world.events, factory);
   const simEngine = new SimulationEngine(organismUpdater, factory);
+
+  // Indicator config panel
+  const indicatorConfigContainer = document.getElementById('indicatorConfigPanel');
+  if (indicatorConfigContainer) {
+    new IndicatorConfigPanel(renderer.indicatorRenderer).mount(indicatorConfigContainer);
+  }
 
   // Wire input + controls
   InputHandler.setup(canvas, camera, world, dom);

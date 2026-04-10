@@ -22,7 +22,7 @@ export class OrganismRenderer {
     ctx: CanvasRenderingContext2D,
     organism: Organism,
     camera: Camera,
-    factions: Map<string, { flag?: string }>,
+    factions: Map<string, { color: string }>,
     showHealthBars: boolean,
   ): void {
     const { sx, sy } = camera.worldToScreen(organism.cellX, organism.cellY);
@@ -41,7 +41,7 @@ export class OrganismRenderer {
     ctx.restore();
 
     // 3. Indicators
-    this.indicatorRenderer.render(ctx, organism, sx, sy, camera.scale, factions);
+    this.indicatorRenderer.render(ctx, organism, sx, sy, camera, factions);
 
     // 4. Tool (directional, only for external_cell actions)
     if (organism.action?.target) {

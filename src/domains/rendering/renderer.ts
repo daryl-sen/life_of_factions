@@ -4,6 +4,7 @@ import type { World } from '../world';
 import type { Organism } from '../entity/organism';
 import { Camera } from './camera';
 import { EmojiCache } from './emoji-cache';
+import { IndicatorRenderer } from './indicator-renderer';
 
 // Inlined world emojis (previously from WORLD_EMOJIS constant)
 const EMOJI_WATER    = '\u{1F4A7}';  // 💧
@@ -43,6 +44,11 @@ const LOD_OBSTACLE = '#888888';
 
 export class Renderer {
   private readonly _emojiCache = new EmojiCache();
+  readonly indicatorRenderer = new IndicatorRenderer(this._emojiCache, {
+    topLeft:   { source: 'faction_flag' },
+    topRight:  { source: 'pregnancy' },
+    topMiddle: { source: 'none' },
+  });
 
   // --- Terrain cache ---
   private _terrainCanvas: HTMLCanvasElement | null = null;
@@ -99,7 +105,7 @@ export class Renderer {
 
     const pendingAttackLines: [Organism, Organism][] = [];
     const pendingHarvestLines: [Organism, { x: number; y: number }][] = [];
-    this._drawAgents(ctx, world, pendingAttackLines, pendingHarvestLines, vb);
+    this._drawAgents(ctx, world, camera, pendingAttackLines, pendingHarvestLines, vb);
     this._drawAttackLines(ctx, camera, pendingAttackLines);
     this._drawHarvestLines(ctx, pendingHarvestLines);
     this._drawSelectedAgentPath(ctx, world);
@@ -432,7 +438,7 @@ export class Renderer {
     return `hsl(${hue}, 85%, 50%)`;
   }
 
-  private _drawAgents(ctx: CanvasRenderingContext2D, world: World, attackLines: [Organism, Organism][], harvestLines: [Organism, { x: number; y: number }][], vb: ViewBounds): void {
+  private _drawAgents(ctx: CanvasRenderingContext2D, world: World, camera: Camera, attackLines: [Organism, Organism][], harvestLines: [Organism, { x: number; y: number }][], vb: ViewBounds): void {
     const now = performance.now();
     for (const agent of world.organisms) {
       if (!this._inView(agent.cellX, agent.cellY, vb) &&
@@ -490,29 +496,8 @@ export class Renderer {
       this._drawAgentEmoji(ctx, x, y, CELL_PX / 2 - 3, ringColor, emoji);
       ctx.restore();
 
-      // Pregnancy visual: egg above head
-      if (agent.pregnancy?.active) {
-        const { canvas: eggC, w: ew, h: eh } = this._emojiCache.get(EMOJI_EGG); // 🥚
-        const eggSize = CELL_PX / 2.5;
-        const eScale = Math.min(eggSize / ew, eggSize / eh);
-        const edw = ew * eScale;
-        const edh = eh * eScale;
-        // Bob gently up and down
-        const bob = Math.sin(performance.now() * 0.004) * 1.5;
-        ctx.drawImage(eggC, x + (CELL_PX - edw) / 2, y - edh + bob, edw, edh);
-      }
-
-      if (agent.factionId) {
-        const faction = world.factions.get(agent.factionId);
-        if (faction) {
-          const { canvas: fc, w: fw, h: fh } = this._emojiCache.getTinted(EMOJI_FLAG, faction.color);
-          const flagSize = CELL_PX / 3;
-          const fScale = Math.min(flagSize / fw, flagSize / fh);
-          const fdw = fw * fScale;
-          const fdh = fh * fScale;
-          ctx.drawImage(fc, x + CELL_PX - fdw, y, fdw, fdh);
-        }
-      }
+      // Indicator slots (faction flag, pregnancy, etc.) — configurable via IndicatorConfigPanel
+      this.indicatorRenderer.render(ctx, agent, cx, cy, camera, world.factions);
 
       if (agent.action?.type === 'attack' && agent.action.payload?.targetId) {
         const t2 = world.organismsById.get(agent.action.payload.targetId);
