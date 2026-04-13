@@ -235,7 +235,8 @@ export class Controls {
           PersistenceManager.restore(world, data, { doRenderLog, dom });
           if (buttons.btnPause) buttons.btnPause.disabled = true;
           if (buttons.btnResume) buttons.btnResume.disabled = false;
-          if (buttons.btnStart) buttons.btnStart.disabled = true;
+          if (buttons.btnStart) buttons.btnStart.style.display = 'none';
+          if (buttons.btnReset) buttons.btnReset.style.display = '';
           if (ranges.rngAgents) ranges.rngAgents.disabled = true;
           if (nums.numAgents) nums.numAgents.disabled = true;
         } catch (err) {
