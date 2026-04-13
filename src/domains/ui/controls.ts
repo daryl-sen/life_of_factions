@@ -1,61 +1,15 @@
 import { key, rndi, uuid, RingLog } from '../../core/utils';
-import { GRID_SIZE, LOG_CATS, OBSTACLE_EMOJIS, setGridSize } from '../../core/constants';
+import { GRID_SIZE, LOG_CATS, setGridSize } from '../../core/constants';
 import type { World } from '../world';
 import { AgentFactory } from '../entity/agent-factory';
 import { SimulationEngine } from '../simulation';
 import { PersistenceManager } from '../persistence';
 import type { DomRefs } from './ui-manager';
 import { UIManager } from './ui-manager';
+import { WorldGenerator } from '../world/world-generator';
 
-// Inlined TUNE constants
-const SALT_WATER_SPAWN_RANGE: [number, number] = [1, 3];
 const CLOUD_LIFETIME_RANGE: [number, number] = [5000, 10000];
-
-function seedEnvironment(world: World): void {
-  for (let i = 0; i < 4; i++) {
-    const x = rndi(5, GRID_SIZE -6);
-    const y = rndi(5, GRID_SIZE -6);
-    world.farms.set(key(x, y), { id: uuid(), x, y, spawnsRemaining: 12, spawnTimerMs: rndi(15000, 25000) });
-  }
-  // Scatter random obstacles — mix of 1x1 and 2x2
-  const obstacleCount = rndi(30, 50);
-  for (let i = 0; i < obstacleCount; i++) {
-    const emoji = OBSTACLE_EMOJIS[Math.floor(Math.random() * OBSTACLE_EMOJIS.length)];
-    if (Math.random() < 0.4) {
-      // Try 2x2 placement — one shared obstacle object across all 4 cells
-      let placed = false;
-      for (let attempt = 0; attempt < 50; attempt++) {
-        const x = rndi(1, GRID_SIZE -3);
-        const y = rndi(1, GRID_SIZE -3);
-        if (!world.grid.isCellOccupied(x, y) &&
-            !world.grid.isCellOccupied(x + 1, y) &&
-            !world.grid.isCellOccupied(x, y + 1) &&
-            !world.grid.isCellOccupied(x + 1, y + 1)) {
-          const obs = { id: uuid(), x, y, emoji, hp: 24, maxHp: 24, size: '2x2' as const };
-          world.obstacles.set(key(x, y),         obs);
-          world.obstacles.set(key(x + 1, y),     obs);
-          world.obstacles.set(key(x, y + 1),     obs);
-          world.obstacles.set(key(x + 1, y + 1), obs);
-          placed = true;
-          break;
-        }
-      }
-      if (!placed) {
-        const { x, y } = world.grid.randomFreeCell();
-        world.obstacles.set(key(x, y), { id: uuid(), x, y, emoji, hp: 12, maxHp: 12 });
-      }
-    } else {
-      const { x, y } = world.grid.randomFreeCell();
-      world.obstacles.set(key(x, y), { id: uuid(), x, y, emoji, hp: 12, maxHp: 12 });
-    }
-  }
-  SimulationEngine.seedInitialSaltWater(world, rndi(SALT_WATER_SPAWN_RANGE[0], SALT_WATER_SPAWN_RANGE[1]));
-  SimulationEngine.seedInitialTrees(world, rndi(8, 15));
-  SimulationEngine.seedInitialWater(world, rndi(3, 6));
-  SimulationEngine.seedInitialFood(world, rndi(5, 10));
-  world.terrainField.recomputeAll(world.grid);
-  world.terrainField.snapDisplay();
-}
+const _worldGenerator = new WorldGenerator();
 
 export class Controls {
   static wire(world: World, dom: DomRefs, doRenderLog: () => void, onWorldResize?: () => void): void {
@@ -142,7 +96,7 @@ export class Controls {
 
       world.speedPct = Number(ranges.rngSpeed?.value || 100);
       world.cloudSpawnRate = Number(ranges.rngCloudRate?.value || 1);
-      seedEnvironment(world);
+      _worldGenerator.seed(world);
       spawnAgents(Number(ranges.rngAgents?.value || 20));
       world.running = true;
       if (buttons.btnStart) buttons.btnStart.style.display = 'none';

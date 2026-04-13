@@ -63,6 +63,9 @@ export class Renderer {
     this._toolRenderer = new ToolRenderer(this._emojiCache);
   }
 
+  get indicatorRenderer(): IndicatorRenderer { return this._indicatorRenderer; }
+  get animationRunner(): AnimationRunner { return this._animationRunner; }
+
   // --- Terrain cache ---
   private _terrainCanvas: HTMLCanvasElement | null = null;
   private _terrainCtx: CanvasRenderingContext2D | null = null;

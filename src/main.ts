@@ -1,12 +1,13 @@
 import { TICK_MS, CELL_PX } from './core/constants';
 
-const VERSION = '4.1.4';
+const VERSION = '4.2.0';
 import { World } from './domains/world';
 import { Camera } from './domains/rendering/camera';
 import { Renderer } from './domains/rendering/renderer';
 import { UIManager } from './domains/ui/ui-manager';
 import { InputHandler } from './domains/ui/input-handler';
 import { Controls } from './domains/ui/controls';
+import { IndicatorConfigPanel } from './domains/ui/indicator-config';
 import { SimulationEngine } from './domains/simulation';
 import { PersistenceManager } from './domains/persistence';
 
@@ -61,6 +62,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // Wire input + controls
   InputHandler.setup(canvas, camera, world, dom);
   Controls.wire(world, dom, doRenderLog, refreshCanvasSize);
+
+  // Indicator config panel
+  const indicatorMount = document.querySelector<HTMLElement>('#indicatorConfigMount');
+  if (indicatorMount) {
+    new IndicatorConfigPanel(renderer.indicatorRenderer).mount(indicatorMount);
+  }
 
   // Restore autosave if available
   const autosaveData = PersistenceManager.loadAutosave();
