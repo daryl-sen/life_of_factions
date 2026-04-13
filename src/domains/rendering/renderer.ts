@@ -4,10 +4,14 @@ import type { TerrainField } from '../world/terrain-field';
 import type { World } from '../world';
 import type { DeathCause } from '../world/types';
 import type { Agent } from '../entity/agent';
+import type { IActionState } from '../action/types';
 import { evaluateNeeds } from '../decision/need-evaluator';
 import { computeMood } from '../decision/mood-evaluator';
 import { Camera } from './camera';
 import { EmojiCache } from './emoji-cache';
+import { AnimationRunner } from './animation-runner';
+import { IndicatorRenderer } from './indicator-renderer';
+import { ToolRenderer } from './tool-renderer';
 
 // Inline constants that were in TUNE
 const POOP_DECAY_MS = 30000;
@@ -47,6 +51,17 @@ const LOD_OBSTACLE = '#888888';
 
 export class Renderer {
   private readonly _emojiCache = new EmojiCache();
+  private readonly _animationRunner = new AnimationRunner();
+  private readonly _indicatorRenderer: IndicatorRenderer;
+  private readonly _toolRenderer: ToolRenderer;
+
+  constructor() {
+    this._indicatorRenderer = new IndicatorRenderer(
+      { topLeft: { source: 'faction_flag' }, topRight: { source: 'pregnancy' }, topMiddle: { source: 'health_band' } },
+      this._emojiCache
+    );
+    this._toolRenderer = new ToolRenderer(this._emojiCache);
+  }
 
   // --- Terrain cache ---
   private _terrainCanvas: HTMLCanvasElement | null = null;
@@ -105,12 +120,10 @@ export class Renderer {
     this._drawObstacles(ctx, world, vb, lod);
     this._drawFlags(ctx, world, vb, lod);
 
-    const pendingAttackLines: [Agent, Agent][] = [];
-    const pendingHarvestLines: [Agent, { x: number; y: number }][] = [];
-    this._drawAgents(ctx, world, pendingAttackLines, pendingHarvestLines, vb);
+    const pendingToolLines: Array<{ agent: Agent; action: IActionState }> = [];
+    this._drawAgents(ctx, world, pendingToolLines, vb);
     this._drawDeadMarkers(ctx, world, vb, lod);
-    this._drawAttackLines(ctx, camera, pendingAttackLines);
-    this._drawHarvestLines(ctx, pendingHarvestLines);
+    this._toolRenderer.renderAll(ctx, pendingToolLines, world);
     this._drawSelectedAgentPath(ctx, world);
 
     this._drawClouds(ctx, world, camera, vb, lod);
@@ -479,7 +492,7 @@ export class Renderer {
     return `hsl(${hue}, 85%, 50%)`;
   }
 
-  private _drawAgents(ctx: CanvasRenderingContext2D, world: World, attackLines: [Agent, Agent][], harvestLines: [Agent, { x: number; y: number }][], vb: ViewBounds): void {
+  private _drawAgents(ctx: CanvasRenderingContext2D, world: World, toolLines: Array<{ agent: Agent; action: IActionState }>, vb: ViewBounds): void {
     const now = performance.now();
     for (const agent of world.agents) {
       if (!this._inView(agent.cellX, agent.cellY, vb) &&
@@ -510,75 +523,27 @@ export class Renderer {
         emoji = getIdleEmoji(agent, mood);
       }
 
-      let offX = 0, offY = 0, angle = 0, sx = 1, sy = 1;
-
-      if (actionType === 'attack') {
-        offX = Math.sin(now * 0.038) * 2.5;
-      } else if (actionType === 'harvest') {
-        offY = -Math.abs(Math.sin(now * 0.007)) * 3;
-      } else if (actionType === 'poop') {
-        const elapsed = now - (agent.action!.startedAtMs ?? now);
-        const progress = Math.min(1, elapsed / (agent.action!.totalMs || 1500));
-        if (progress < 0.7) {
-          const eased = Math.sin((progress / 0.7) * Math.PI / 2);
-          sy = 1 - 0.38 * eased;
-        } else {
-          const eased = Math.sin(((progress - 0.7) / 0.3) * Math.PI / 2);
-          sy = 0.62 + 0.38 * eased;
-        }
-        offY = (1 - sy) * (CELL_PX / 2);
-      } else if (actionType === 'share') {
-        offX = Math.sin(now * 0.005) * 2;
-      }
-
+      const transform = this._animationRunner.getTransform(agent);
+      let rotation = transform.rotation;
       const isMoving = t < 1 && (agent.prevCellX !== agent.cellX || agent.prevCellY !== agent.cellY);
       if (isMoving) {
         const ddx = agent.cellX - (agent.prevCellX ?? agent.cellX);
         const ddy = agent.cellY - (agent.prevCellY ?? agent.cellY);
         const tilt = 0.25;
-        angle = Math.atan2(ddy, ddx) + Math.PI / 2 + Math.sin(now * 0.015) * tilt;
+        rotation = Math.atan2(ddy, ddx) + Math.PI / 2 + Math.sin(now * 0.015) * tilt;
       }
 
       ctx.save();
-      ctx.translate(cx + offX, cy + offY);
-      if (angle !== 0) ctx.rotate(angle);
-      if (sx !== 1 || sy !== 1) ctx.scale(sx, sy);
+      ctx.translate(cx + transform.dx, cy + transform.dy);
+      if (rotation !== 0) ctx.rotate(rotation);
+      if (transform.scale !== 1) ctx.scale(transform.scale, transform.scale);
       ctx.translate(-cx, -cy);
       this._drawAgentEmoji(ctx, x, y, CELL_PX / 2 - 3, ringColor, emoji);
       ctx.restore();
 
-      // Pregnancy visual: egg above head
-      if (agent.pregnancy.active) {
-        const { canvas: eggC, w: ew, h: eh } = this._emojiCache.get('\u{1F95A}'); // 🥚
-        const eggSize = CELL_PX / 2.5;
-        const eScale = Math.min(eggSize / ew, eggSize / eh);
-        const edw = ew * eScale;
-        const edh = eh * eScale;
-        // Bob gently up and down
-        const bob = Math.sin(performance.now() * 0.004) * 1.5;
-        ctx.drawImage(eggC, x + (CELL_PX - edw) / 2, y - edh + bob, edw, edh);
-      }
+      this._indicatorRenderer.render(ctx, agent, x, y, world);
 
-      if (agent.factionId) {
-        const faction = world.factions.get(agent.factionId);
-        if (faction) {
-          const { canvas: fc, w: fw, h: fh } = this._emojiCache.getTinted(WORLD_EMOJIS.flag, faction.color);
-          const flagSize = CELL_PX / 3;
-          const fScale = Math.min(flagSize / fw, flagSize / fh);
-          const fdw = fw * fScale;
-          const fdh = fh * fScale;
-          ctx.drawImage(fc, x + CELL_PX - fdw, y, fdw, fdh);
-        }
-      }
-
-      if (agent.action?.type === 'attack' && agent.action.payload?.targetId) {
-        const t2 = world.agentsById.get(agent.action.payload.targetId);
-        if (t2) attackLines.push([agent, t2]);
-      }
-
-      if (agent.action?.type === 'harvest' && agent.action.payload?.targetPos) {
-        harvestLines.push([agent, agent.action.payload.targetPos]);
-      }
+      if (agent.action) toolLines.push({ agent, action: agent.action });
 
       if (world.selectedId === agent.id) this._drawStar(ctx, x + CELL_PX / 2, y - 16);
     }
@@ -659,68 +624,6 @@ export class Renderer {
       }
 
       ctx.globalAlpha = 1;
-    }
-  }
-
-  // --- Attack lines ---
-
-  private _drawAttackLines(ctx: CanvasRenderingContext2D, _camera: Camera, lines: [Agent, Agent][]): void {
-    const daggerEmoji = '\uD83D\uDDE1\uFE0F'; // 🗡️
-    const { canvas: ec, w, h } = this._emojiCache.get(daggerEmoji);
-    const daggerSize = CELL_PX - 2;
-    const scale = Math.min(daggerSize / w, daggerSize / h);
-    const dw = w * scale;
-    const dh = h * scale;
-
-    for (const [att, tgt] of lines) {
-      const at = att.lerpT != null ? att.lerpT : 1;
-      const ax = ((att.prevCellX ?? att.cellX) + (att.cellX - (att.prevCellX ?? att.cellX)) * at) * CELL_PX + CELL_PX / 2;
-      const ay = ((att.prevCellY ?? att.cellY) + (att.cellY - (att.prevCellY ?? att.cellY)) * at) * CELL_PX + CELL_PX / 2;
-      const tt = tgt.lerpT != null ? tgt.lerpT : 1;
-      const tx = ((tgt.prevCellX ?? tgt.cellX) + (tgt.cellX - (tgt.prevCellX ?? tgt.cellX)) * tt) * CELL_PX + CELL_PX / 2;
-      const ty = ((tgt.prevCellY ?? tgt.cellY) + (tgt.cellY - (tgt.prevCellY ?? tgt.cellY)) * tt) * CELL_PX + CELL_PX / 2;
-
-      const mx = (ax + tx) / 2;
-      const my = (ay + ty) / 2;
-      const angle = Math.atan2(ty - ay, tx - ax) + Math.PI * 1.25;
-
-      ctx.save();
-      ctx.globalAlpha = 0.9;
-      ctx.translate(mx, my);
-      ctx.rotate(angle);
-      ctx.drawImage(ec, -dw / 2, -dh / 2, dw, dh);
-      ctx.restore();
-    }
-  }
-
-  // --- Harvest lines ---
-
-  private _drawHarvestLines(ctx: CanvasRenderingContext2D, lines: [Agent, { x: number; y: number }][]): void {
-    if (lines.length === 0) return;
-    const handEmoji = '\u{1F91A}'; // 🤚
-    const { canvas: ec, w, h } = this._emojiCache.get(handEmoji);
-    const handSize = CELL_PX - 4;
-    const scale = Math.min(handSize / w, handSize / h);
-    const dw = w * scale;
-    const dh = h * scale;
-
-    for (const [agent, targetPos] of lines) {
-      const at = agent.lerpT != null ? agent.lerpT : 1;
-      const ax = ((agent.prevCellX ?? agent.cellX) + (agent.cellX - (agent.prevCellX ?? agent.cellX)) * at) * CELL_PX + CELL_PX / 2;
-      const ay = ((agent.prevCellY ?? agent.cellY) + (agent.cellY - (agent.prevCellY ?? agent.cellY)) * at) * CELL_PX + CELL_PX / 2;
-      const tx = targetPos.x * CELL_PX + CELL_PX / 2;
-      const ty = targetPos.y * CELL_PX + CELL_PX / 2;
-
-      const mx = (ax + tx) / 2;
-      const my = (ay + ty) / 2;
-      const angle = Math.atan2(ty - ay, tx - ax) + Math.PI / 2;
-
-      ctx.save();
-      ctx.globalAlpha = 0.85;
-      ctx.translate(mx, my);
-      ctx.rotate(angle);
-      ctx.drawImage(ec, -dw / 2, -dh / 2, dw, dh);
-      ctx.restore();
     }
   }
 
