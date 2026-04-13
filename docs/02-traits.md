@@ -1,142 +1,92 @@
-# Agent Traits
+# Agent Traits (v4.2)
 
-Traits are personality attributes that influence agent behavior. Each agent has two primary traits: **aggression** and **cooperation**, both ranging from 0 to 1.
+Traits are per-agent numeric values derived from the agent's **DNA** at birth. Each agent carries an immutable `Genome` (a string of 5-character gene codes). At creation, `expressGenome(dna)` converts the DNA into a `TraitSet` — the agent's definitive stats for its entire lifetime.
 
-## Aggression
+## Trait Expression
 
-**Range:** 0.0 to 1.0 (randomly assigned at creation)
-
-**Influence:** Determines likelihood of attacking nearby agents.
-
-### Attack Decision Formula
-
-When considering attacking a nearby agent:
+Each gene code maps to a gene definition in the gene registry. Multiple genes of the same code stack additively. Expression uses the **continuous** formula:
 
 ```
-baseProbability = aggression + (hasEnemyNearby ? 0.25 : 0) - relationshipPenalty
-
-relationshipPenalty = max(0, bestRelationship) * 0.6
-
-finalProbability = clamp(baseProbability, 0, 1)
+value = Math.max(comp.min, comp.default + (direction * rawSum) / comp.scale)
 ```
 
-### Behavioral Effects
+Unlike v4.0, there is **no hard upper ceiling** — traits with high gene counts can exceed the default range. This enables genetic specialization (e.g. an agent with 5× aggression genes becomes truly dangerous).
 
-| Aggression | Behavior |
-|------------|----------|
-| 0.0-0.3 | Rarely attacks, prefers peaceful interactions |
-| 0.3-0.7 | Moderately aggressive, attacks when provoked |
-| 0.7-1.0 | Highly aggressive, frequently initiates combat |
+## Trait Categories
 
-### Target Selection
+### Core Combat Traits
 
-When attacking, agents sort potential targets by:
+| Gene | Trait | Key | Range | Effect |
+|------|-------|-----|-------|--------|
+| `AA` | Strength | `attack` | ≥ 0.5 | Attack damage per tick |
+| `BB` | Longevity | `maxAgeTicks` | ≥ 500 | Lifespan in ticks |
+| `BB` | Longevity | `maxHealth` | ≥ 10 | Maximum HP |
+| `CC` | Vigor | `maxEnergy` | ≥ 20 | Maximum energy |
 
-1. **Relationship value** (lower = more likely target)
-2. **Faction membership** (different faction = -0.5 bonus)
-3. **Avoidance of friends** (85% chance to skip targets with relationship > 0.5)
+### Metabolism & Movement
 
-## Cooperation
+| Gene | Trait | Key | Range | Effect |
+|------|-------|-----|-------|--------|
+| `DD` | Metabolism | `actionDurationMult` | ≥ 0.3 | Action speed multiplier |
+| `DD` | Metabolism | `fullnessDecayRate` | ≥ 0.01 | Fullness loss per tick |
+| `FF` | Agility | `moveCost` | ≥ 0.05 | Energy per move (lower = cheaper) |
+| `FF` | Agility | `speed` | ≥ 0.5 | Movement speed multiplier |
 
-**Range:** 0.0 to 1.0 (randomly assigned at creation)
+### Social Traits
 
-**Influence:** Determines likelihood of helping/healing nearby agents.
+| Gene | Trait | Key | Range | Effect |
+|------|-------|-----|-------|--------|
+| `GG` | Charisma | `relationshipSlots` | ≥ 2 | Max tracked relationships |
+| `HH` | Empathy | `healAmount` | ≥ 1 | HP restored per heal tick |
+| `AD` | Sociality | `socialDecay` | ≥ 0.002 | Social need drain per tick |
 
-### Help Decision Formula
+> **Note**: The older `OO` (Gregariousness) gene maps to the same `socialDecay` behavior as `AD`. Both are recognized by the gene registry; `AD` is the canonical v4.2 name.
 
-```
-baseProbability = cooperation + (sameFactionNearby ? 0.25 : 0)
-finalProbability = clamp(baseProbability, 0, 1)
-```
+### Reproductive Traits
 
-### Help Target Selection
+| Gene | Trait | Key | Range | Effect |
+|------|-------|-----|-------|--------|
+| `JJ` | Fertility | `energyThreshold` | ≥ 20 | Min energy to reproduce |
+| `JJ` | Fertility | `urgencyAge` | ≥ 100 | Tick age at which urgency kicks in |
+| `TT` | Parthenogenesis | `canSelfReproduce` | boolean | Enables asexual reproduction |
+| `AG` | Pregnancy | `gestationMs` | ≥ 0 | Transfer-mechanic gestation duration (ms); 0 = instant birth |
 
-When helping, agents prioritize targets by:
+### Genetic Variability
 
-1. **Same faction** (-0.3 bonus, higher priority)
-2. **Health need** (lower health percentage = -0.2 bonus)
+| Gene | Trait | Key | Range | Effect |
+|------|-------|-----|-------|--------|
+| `AP` | Volatility | `mutationRate` | ≥ 0.001 | Per-character mutation probability for offspring |
 
-### Action Choice: Heal vs Help
+Agents with high `AP` produce more varied children — useful for exploring trait space but risky in stable environments. The `mutationRate` for a sexual offspring is the average of both parents' rates; for asexual offspring it is the agent's own rate.
 
-```javascript
-if (target.health < target.maxHealth * 0.85) {
-  action = "heal"  // Restores 2 HP per tick
-} else {
-  action = "help"  // Transfers energy (10-20% of donor's energy)
-}
-```
+### Survivability
 
-## Travel Preference
+| Gene | Trait | Key | Range | Effect |
+|------|-------|-----|-------|--------|
+| `EE` | Resilience | `diseaseResistance` | ≥ 0.0 | Chance to resist disease spread |
+| `EE` | Resilience | `healRate` | ≥ 0.1 | Passive HP recovery per tick |
+| `KK` | Recall | `memorySlots` | ≥ 1 | Resource memory capacity |
 
-While not strictly a "trait," travel preference is a fixed personality attribute assigned at birth.
+## Action Energy Costs (v4.2)
 
-### Values
+Action energy costs are **per-agent** and computed at action creation via `computeActionCost()`. The formula combines:
 
-| Value | Behavior |
-|-------|----------|
-| `"near"` | Stays close to faction flag or world center |
-| `"far"` | Explores distant areas from flag/center |
-| `"wander"` | Random movement, no preference |
+- **Base cost** (`TUNE.actionBaseCost[type]`)
+- **Trait scaling** (e.g. attack cost scales with `strength`, move cost scales with `agility`)
+- **Level multiplier** (each level adds `TUNE.cost.levelEnergyMultPerLevel` to the cost factor)
 
-### Near Behavior
+This means a high-level, high-strength agent pays significantly more energy per attack than a rookie.
 
-Agents with `travelPref = "near"`:
+## DNA Length Bounds
 
-1. Prefer destinations ~4 cells from faction flag
-2. Avoid crowded areas (faction members within radius 2)
-3. Without faction: gravitate toward world center (31, 31)
+Viable DNA must be 100–250 characters. Shorter DNA lacks enough gene copies; longer DNA is unstable. These bounds are checked at birth via `isViable(traitSet, genome, dna)`.
 
-### Far Behavior
+## Trait Inheritance (v4)
 
-Agents with `travelPref = "far"`:
+v4+ uses **DNA crossover and mutation** rather than trait averaging:
 
-1. Actively move away from faction flag
-2. Without faction: move toward world edges
+1. Child DNA starts as a copy of the initiator's DNA
+2. Each 5-char gene position has 50% chance of swapping with the partner's gene
+3. Mutation is applied with probability from the parent's `volatility.mutationRate`
 
-### Wander Behavior
-
-Agents with `travelPref = "wander"`:
-
-1. Choose random destinations within range 6
-2. No bias toward or away from any location
-
-## Trait Inheritance
-
-When agents reproduce, offspring inherit traits:
-
-```javascript
-child.aggression = clamp((parent1.aggression + parent2.aggression) / 2, 0, 1)
-child.cooperation = clamp((parent1.cooperation + parent2.cooperation) / 2, 0, 1)
-child.travelPref = (Math.random() < 0.5) ? parent1.travelPref : parent2.travelPref
-```
-
-## Interaction with Relationships
-
-Traits work in tandem with the relationship system:
-
-- **High aggression + negative relationship** = likely attack
-- **High aggression + positive relationship** = unlikely attack (85% skip if rel > 0.5)
-- **High cooperation + same faction** = likely to help/heal
-- **Low cooperation** = rarely initiates help, may still talk
-
-## Practical Examples
-
-### The Peacemaker
-- Aggression: 0.1, Cooperation: 0.9
-- Rarely attacks, frequently helps faction members
-- Ideal for maintaining faction cohesion
-
-### The Lone Wolf
-- Aggression: 0.8, Cooperation: 0.2
-- Frequently attacks, rarely helps
-- Likely to leave factions or form solo groups
-
-### The Protector
-- Aggression: 0.6, Cooperation: 0.8
-- Defends faction (attacks outsiders) while supporting allies
-- Balanced faction member
-
-### The Drifter
-- Aggression: 0.3, Cooperation: 0.3, travelPref: "wander"
-- Low engagement, explores randomly
-- Unlikely to form strong relationships
+See `docs/10-reproduction.md` for full details.
