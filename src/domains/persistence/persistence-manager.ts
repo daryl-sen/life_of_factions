@@ -105,6 +105,7 @@ export class PersistenceManager {
             remainingMs: a.action.remainingMs,
             tickCounterMs: a.action.tickCounterMs,
             payload: a.action.payload || null,
+            energyCostPerTick: a.action.energyCostPerTick ?? 0,
           }
         : null,
       lockMsRemaining: a.lockMsRemaining,

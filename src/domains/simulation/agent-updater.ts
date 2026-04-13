@@ -1,5 +1,6 @@
 import { GRID_SIZE, TICK_MS } from '../../core/constants';
 import { TUNE } from '../../core/tuning';
+import { moveEnergyCost, passiveEnergyDrainPerTick } from '../genetics/cost-functions';
 import type { ResourceMemoryType } from '../../core/types';
 import { key, manhattan, rndi, log } from '../../core/utils';
 import { findPath, findNearest, planPath } from '../../core/pathfinding';
@@ -617,7 +618,8 @@ export class AgentUpdater {
     agent.ageTicks++;
 
     // Passive drains (pregnancy increases fullness decay by 50%)
-    agent.energy -= TUNE.decay.baseEnergyPerTick;
+    // v4.2: energy drain is trait-scaled (Recall slots add brain overhead)
+    agent.energy -= passiveEnergyDrainPerTick(agent.traits);
     agent.drainFullness(TUNE.decay.baseFullnessPerTick * agent.fullnessDecayMult);
     agent.inspiration = Math.max(0, agent.inspiration - TUNE.decay.baseInspirationPerTick);
     agent.social = Math.max(0, agent.social - TUNE.decay.baseSocialPerTick);
@@ -783,7 +785,8 @@ export class AgentUpdater {
                 }
                 agent.pathIdx++;
                 agent.moveCredit -= 1;
-                agent.energy -= TUNE.actionBaseCost.move;
+                // v4.2: movement energy is trait-scaled (Agility increases cost)
+                agent.energy -= moveEnergyCost(agent.traits);
                 agent.drainFullness(TUNE.decay.moveFullnessDecay);
                 agent.hygiene = Math.max(0, agent.hygiene - TUNE.decay.moveHygieneDecay);
                 if (world.poopBlocks.has(key(agent.cellX, agent.cellY))) {
@@ -993,7 +996,7 @@ export class AgentUpdater {
 
     // ── Disease effects ──
     if (agent.diseased) {
-      agent.energy -= TUNE.decay.baseEnergyPerTick; // 2x drain (disease doubles energy drain)
+      agent.energy -= passiveEnergyDrainPerTick(agent.traits); // 2x drain (disease doubles energy drain)
       agent.health -= (DISEASE_HP_DRAIN_PER_SEC * TICK_MS) / 1000;
       if (agent.hygiene > DISEASE_CURE_HYGIENE_THRESHOLD) {
         agent.diseased = false;

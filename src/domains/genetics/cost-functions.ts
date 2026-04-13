@@ -53,7 +53,7 @@ export function computeActionCost(traits: TraitSet, level: number, def: ActionDe
       base = attackEnergyCost(traits);
       break;
     default:
-      base = def.energyCost;
+      base = def.baseEnergyCost;
       break;
   }
   return base * levelEnergyMultiplier(level);
