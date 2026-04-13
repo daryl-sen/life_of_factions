@@ -7,7 +7,7 @@ import { Agent } from '../entity/agent';
 import { Genome } from '../genetics';
 import { Faction, FactionManager } from '../faction';
 
-const VERSION = '4.1.4';
+const VERSION = '4.2.0';
 
 // Inlined TUNE constants
 const FARM_MAX_SPAWNS = 12;
@@ -131,15 +131,21 @@ export class PersistenceManager {
         ['wood', a.resourceMemory.get('wood') ?? []],
       ],
       pregnancy: a.pregnancy.active ? {
-        remainingMs: a.pregnancy.remainingMs,
-        childDna: a.pregnancy.childDna,
-        childFamilyName: a.pregnancy.childFamilyName,
-        childFactionId: a.pregnancy.childFactionId,
-        partnerId: a.pregnancy.partnerId,
-        donatedFullness: a.pregnancy.donatedFullness,
+        remainingMs:         a.pregnancy.remainingMs,
+        childDna:            a.pregnancy.childDna,
+        childFamilyName:     a.pregnancy.childFamilyName,
+        childFactionId:      a.pregnancy.childFactionId,
+        partnerId:           a.pregnancy.partnerId,
+        donatedFullness:     a.pregnancy.donatedFullness,
+        // v4.2 transfer mechanic fields
+        useTransferMechanic: a.pregnancy.useTransferMechanic,
+        childNeeds:          a.pregnancy.useTransferMechanic ? { ...a.pregnancy.childNeeds } : null,
+        transferRate:        a.pregnancy.transferRate,
+        gestationStartTick:  a.pregnancy.gestationStartTick,
       } : null,
     }));
     return {
+      version: 'v4.2',
       meta: { version: VERSION, savedAt: Date.now() },
       grid: { CELL: CELL_PX, GRID: GRID_SIZE },
       state: {
@@ -230,6 +236,12 @@ export class PersistenceManager {
     opts: { doRenderLog: () => void; dom: DomRefs }
   ): void {
     const d = data as Record<string, any>;
+    // Version check: v4 saves have no top-level version; v4.2 saves have version:'v4.2'.
+    // Throw on unknown future versions to surface incompatibility early.
+    const saveVersion = d.version as string | undefined;
+    if (saveVersion && saveVersion !== 'v4.2') {
+      throw new Error(`Save file version "${saveVersion}" is not compatible with v4.2`);
+    }
     world.running = false;
     world.grid.clear();
     world.agents.length = 0;
