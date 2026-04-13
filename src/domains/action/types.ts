@@ -44,6 +44,8 @@ export interface ActionDef {
   readonly interruptible: boolean;
   /** Tool emoji rendered between agent and target during the action, or null for no tool. */
   readonly tool: string | null;
+  /** Rotation offset (radians) to align the tool emoji toward the target. Defaults to Math.PI * 1.25 if omitted. */
+  readonly toolRotationOffset?: number;
 }
 
 export interface IActionState {

@@ -57,7 +57,7 @@ export class Renderer {
 
   constructor() {
     this._indicatorRenderer = new IndicatorRenderer(
-      { topLeft: { source: 'faction_flag' }, topRight: { source: 'pregnancy' }, topMiddle: { source: 'health_band' } },
+      { topLeft: { source: 'faction_flag' }, topRight: { source: 'none' }, bottomMiddle: { source: 'pregnancy' } },
       this._emojiCache
     );
     this._toolRenderer = new ToolRenderer(this._emojiCache);

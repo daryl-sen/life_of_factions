@@ -3,7 +3,7 @@ import type { ActionType } from '../action/types';
 
 export type AnimationType =
   | 'shake' | 'bob' | 'pulse' | 'bounce'
-  | 'shrink' | 'wiggle' | 'flash' | 'sway' | 'none';
+  | 'shrink' | 'wiggle' | 'flash' | 'sway' | 'squeeze' | 'none';
 
 export interface AnimationState {
   type: AnimationType;
@@ -36,7 +36,7 @@ export const ACTION_ANIMATIONS: Record<ActionType, AnimationType> = {
   deposit:    'wiggle',
   withdraw:   'wiggle',
   pickup:     'wiggle',
-  poop:       'wiggle',
+  poop:       'squeeze',
   clean:      'wiggle',
   play:       'bounce',
   idle:       'none',
@@ -117,6 +117,8 @@ export class AnimationRunner {
         return { dx: 0, dy: 0, rotation: 0, scale: 1 + Math.sin(elapsed / 100) * 0.2 };
       case 'sway':
         return { dx: Math.sin(elapsed / 1000) * 1, dy: 0, rotation: Math.sin(elapsed / 1000) * 0.05, scale: 1 };
+      case 'squeeze':
+        return { dx: 0, dy: 0, rotation: 0, scale: 1 - Math.abs(Math.sin(elapsed / 350)) * 0.25 };
       case 'none':
       default:
         return IDENTITY;

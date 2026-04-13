@@ -33,20 +33,25 @@ const MOOD_EMOJIS: Record<string, string> = {
 
 /**
  * Renders configurable indicator slots around an agent's cell.
- * Three slots: topLeft, topRight, topMiddle.
+ * Slots: topLeft, topRight (two top slots), bottomMiddle (below the agent).
  *
  * v4.2: Replaces the hardcoded pregnancy+faction_flag indicators in renderer.ts.
  * Each slot can independently show faction_flag, pregnancy, health_band, mood,
  * level, or nothing. The configuration can be changed at runtime via the UI.
+ *
+ * Default layout:
+ *   topLeft  = faction_flag
+ *   topRight = none (reserved for future profession indicator)
+ *   bottomMiddle = pregnancy
  */
 export class IndicatorRenderer {
   private readonly _cache: EmojiCache;
 
   constructor(
     private readonly _slotConfig: {
-      topLeft:   IndicatorSlotConfig;
-      topRight:  IndicatorSlotConfig;
-      topMiddle: IndicatorSlotConfig;
+      topLeft:      IndicatorSlotConfig;
+      topRight:     IndicatorSlotConfig;
+      bottomMiddle: IndicatorSlotConfig;
     },
     emojiCache: EmojiCache
   ) {
@@ -63,14 +68,14 @@ export class IndicatorRenderer {
     const indicatorSize = CELL_PX * 0.45;
 
     const positions = {
-      topLeft:   { x: cellPixelX + CELL_PX * 0.05,  y: cellPixelY - CELL_PX * 0.35 },
-      topRight:  { x: cellPixelX + CELL_PX * 0.7,   y: cellPixelY - CELL_PX * 0.35 },
-      topMiddle: { x: cellPixelX + CELL_PX * 0.375, y: cellPixelY - CELL_PX * 0.5  },
+      topLeft:      { x: cellPixelX + CELL_PX * 0.05,  y: cellPixelY - CELL_PX * 0.35 },
+      topRight:     { x: cellPixelX + CELL_PX * 0.7,   y: cellPixelY - CELL_PX * 0.35 },
+      bottomMiddle: { x: cellPixelX + CELL_PX * 0.275, y: cellPixelY + CELL_PX * 0.55 },
     };
 
-    this._renderSlot(ctx, agent, this._slotConfig.topLeft,   positions.topLeft,   indicatorSize, world);
-    this._renderSlot(ctx, agent, this._slotConfig.topRight,  positions.topRight,  indicatorSize, world);
-    this._renderSlot(ctx, agent, this._slotConfig.topMiddle, positions.topMiddle, indicatorSize, world);
+    this._renderSlot(ctx, agent, this._slotConfig.topLeft,      positions.topLeft,      indicatorSize, world);
+    this._renderSlot(ctx, agent, this._slotConfig.topRight,     positions.topRight,     indicatorSize, world);
+    this._renderSlot(ctx, agent, this._slotConfig.bottomMiddle, positions.bottomMiddle, indicatorSize, world);
   }
 
   private _renderSlot(
@@ -136,7 +141,7 @@ export class IndicatorRenderer {
   }
 
   /** Update a slot's source (called from the indicator config UI). */
-  setSlot(slot: 'topLeft' | 'topRight' | 'topMiddle', source: IndicatorSource): void {
+  setSlot(slot: 'topLeft' | 'topRight' | 'bottomMiddle', source: IndicatorSource): void {
     this._slotConfig[slot].source = source;
   }
 }

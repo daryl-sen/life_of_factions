@@ -1,9 +1,9 @@
 import type { IndicatorRenderer, IndicatorSource } from '../rendering/indicator-renderer';
 
-const SLOT_LABELS: Record<'topLeft' | 'topRight' | 'topMiddle', string> = {
-  topLeft:   'Top-Left',
-  topRight:  'Top-Right',
-  topMiddle: 'Top-Middle',
+const SLOT_LABELS: Record<'topLeft' | 'topRight' | 'bottomMiddle', string> = {
+  topLeft:      'Top-Left',
+  topRight:     'Top-Right',
+  bottomMiddle: 'Bottom',
 };
 
 const SOURCE_OPTIONS: Array<{ value: IndicatorSource; label: string }> = [
@@ -33,7 +33,7 @@ export class IndicatorConfigPanel {
     heading.textContent = 'Agent Indicators';
     wrapper.appendChild(heading);
 
-    for (const slot of ['topLeft', 'topRight', 'topMiddle'] as const) {
+    for (const slot of ['topLeft', 'topRight', 'bottomMiddle'] as const) {
       const row = document.createElement('label');
       row.className = 'indicator-config-row';
 
