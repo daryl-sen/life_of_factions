@@ -1,4 +1,5 @@
 import { GRID_SIZE, TICK_MS } from '../../core/constants';
+import { TUNE } from '../../core/tuning';
 import type { ResourceMemoryType } from '../../core/types';
 import { key, manhattan, rndi, log } from '../../core/utils';
 import { findPath, findNearest, planPath } from '../../core/pathfinding';
@@ -15,18 +16,10 @@ import { ContextBuilder } from '../decision/context-builder';
 import { evaluateNeeds } from '../decision/need-evaluator';
 import { computeMood } from '../decision/mood-evaluator';
 
-// ── Inlined TUNE constants ──
-
-const PASSIVE_ENERGY_DRAIN = 0.0625;
-const FULLNESS_PASSIVE_DECAY = 0.03;
-const INSPIRATION_PASSIVE_DECAY = 0.015;
-const SOCIAL_PASSIVE_DECAY = 0.01;
+// ── Local constants (not in TUNE — world/gameplay mechanics not tuned per-trait) ──
 
 const ENERGY_LOW_THRESHOLD = 40;
 
-const MOVE_ENERGY = 0.12;
-const FULLNESS_MOVE_DECAY = 0.10;
-const HYGIENE_MOVE_DECAY = 0.05;
 const HYGIENE_STEP_ON_POOP_DECAY = 5;
 
 const FULLNESS_SEEK_THRESHOLD = 40;
@@ -624,10 +617,10 @@ export class AgentUpdater {
     agent.ageTicks++;
 
     // Passive drains (pregnancy increases fullness decay by 50%)
-    agent.energy -= PASSIVE_ENERGY_DRAIN;
-    agent.drainFullness(FULLNESS_PASSIVE_DECAY * agent.fullnessDecayMult);
-    agent.inspiration = Math.max(0, agent.inspiration - INSPIRATION_PASSIVE_DECAY);
-    agent.social = Math.max(0, agent.social - SOCIAL_PASSIVE_DECAY);
+    agent.energy -= TUNE.decay.baseEnergyPerTick;
+    agent.drainFullness(TUNE.decay.baseFullnessPerTick * agent.fullnessDecayMult);
+    agent.inspiration = Math.max(0, agent.inspiration - TUNE.decay.baseInspirationPerTick);
+    agent.social = Math.max(0, agent.social - TUNE.decay.baseSocialPerTick);
 
     // Poop timer
     if (agent.poopTimerMs > 0) agent.poopTimerMs -= TICK_MS;
@@ -778,9 +771,9 @@ export class AgentUpdater {
                 }
                 agent.pathIdx++;
                 agent.moveCredit -= 1;
-                agent.energy -= MOVE_ENERGY;
-                agent.drainFullness(FULLNESS_MOVE_DECAY);
-                agent.hygiene = Math.max(0, agent.hygiene - HYGIENE_MOVE_DECAY);
+                agent.energy -= TUNE.actionBaseCost.move;
+                agent.drainFullness(TUNE.decay.moveFullnessDecay);
+                agent.hygiene = Math.max(0, agent.hygiene - TUNE.decay.moveHygieneDecay);
                 if (world.poopBlocks.has(key(agent.cellX, agent.cellY))) {
                   agent.hygiene = Math.max(0, agent.hygiene - HYGIENE_STEP_ON_POOP_DECAY);
                 }
@@ -988,7 +981,7 @@ export class AgentUpdater {
 
     // ── Disease effects ──
     if (agent.diseased) {
-      agent.energy -= PASSIVE_ENERGY_DRAIN; // 2x drain
+      agent.energy -= TUNE.decay.baseEnergyPerTick; // 2x drain (disease doubles energy drain)
       agent.health -= (DISEASE_HP_DRAIN_PER_SEC * TICK_MS) / 1000;
       if (agent.hygiene > DISEASE_CURE_HYGIENE_THRESHOLD) {
         agent.diseased = false;
