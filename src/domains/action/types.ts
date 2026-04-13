@@ -34,11 +34,16 @@ export enum ActionTag {
 export interface ActionDef {
   readonly type: ActionType;
   readonly tags: ReadonlySet<ActionTag>;
-  readonly energyCost: number;
+  /** Base energy cost per second. v4.2: renamed from energyCost; actual per-agent cost computed via cost-functions. */
+  readonly baseEnergyCost: number;
   readonly durationRange: readonly [number, number];
   readonly requiresTarget: boolean;
+  /** 'external_cell': action targets another cell (enables tool rendering when tool != null). */
+  readonly targetType: 'self' | 'external_cell' | 'area' | 'none';
   readonly targetRange: number;
   readonly interruptible: boolean;
+  /** Tool emoji rendered between agent and target during the action, or null for no tool. */
+  readonly tool: string | null;
 }
 
 export interface IActionState {
@@ -48,6 +53,8 @@ export interface IActionState {
   payload: IActionPayload | null;
   startedAtMs: number;
   totalMs: number;
+  /** Per-second energy cost for this action, computed at creation time via cost-functions (includes trait + level scaling). */
+  energyCostPerTick: number;
 }
 
 export interface IActionPayload {

@@ -1,7 +1,6 @@
 import { manhattan } from '../../core/utils';
 import type { Agent } from '../entity/agent';
 import type { World } from '../world/world';
-import { ACTION_REGISTRY } from './action-registry';
 import { onAttackTick } from './effects/combat-effects';
 import { onTalkTick, onTalkComplete, onQuarrelTick, onQuarrelComplete, onHealTick, onHealComplete, onShareTick, onShareComplete } from './effects/social-effects';
 import { onSleepTick, onSleepComplete, onEatComplete, onWashComplete } from './effects/survival-effects';
@@ -47,9 +46,8 @@ export class ActionProcessor {
     act.remainingMs -= dtMs;
     act.tickCounterMs += dtMs;
 
-    // Energy cost
-    const def = ACTION_REGISTRY.get(act.type);
-    const costPerMs = (def?.energyCost ?? 0) / 1000;
+    // Energy cost — uses pre-computed trait+level-scaled value from ActionFactory
+    const costPerMs = (act.energyCostPerTick ?? 0) / 1000;
     agent.energy -= costPerMs * dtMs;
 
     // Fullness decay during all actions
