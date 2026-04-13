@@ -99,7 +99,8 @@ export const ACTION_REGISTRY: ReadonlyMap<ActionType, ActionDef> = new Map<Actio
     targetType: 'external_cell',
     targetRange: 1,
     interruptible: false,
-    tool: '\u{1FAF8}',   // 🤚 (raised back of hand — harvest)
+    tool: '\u{270B}',              // ✋
+    toolRotationOffset: Math.PI * 0.75,
   }],
   ['eat', {
     type: 'eat',

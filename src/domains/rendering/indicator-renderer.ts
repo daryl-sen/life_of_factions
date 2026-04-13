@@ -70,7 +70,7 @@ export class IndicatorRenderer {
     const positions = {
       topLeft:      { x: cellPixelX + CELL_PX * 0.05,  y: cellPixelY - CELL_PX * 0.35 },
       topRight:     { x: cellPixelX + CELL_PX * 0.7,   y: cellPixelY - CELL_PX * 0.35 },
-      bottomMiddle: { x: cellPixelX + CELL_PX * 0.375, y: cellPixelY + CELL_PX * 0.85 },
+      bottomMiddle: { x: cellPixelX + CELL_PX * 0.275, y: cellPixelY + CELL_PX * 0.55 },
     };
 
     this._renderSlot(ctx, agent, this._slotConfig.topLeft,      positions.topLeft,      indicatorSize, world);

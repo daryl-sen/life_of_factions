@@ -62,11 +62,12 @@ export class ToolRenderer {
     const dw = w * scale;
     const dh = h * scale;
 
+    const rotOffset = def.toolRotationOffset ?? Math.PI * 1.25;
+
     ctx.save();
     ctx.globalAlpha = 0.9;
     ctx.translate(mx, my);
-    // Offset angle by 5π/4 to match existing attack-line orientation convention
-    ctx.rotate(angle + Math.PI * 1.25);
+    ctx.rotate(angle + rotOffset);
     ctx.drawImage(ec, -dw / 2, -dh / 2, dw, dh);
     ctx.restore();
   }
