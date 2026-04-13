@@ -35,9 +35,9 @@ function getSeekThreshold(need: NeedName, traits: TraitSet): number {
     case 'hygiene':
       return 40; // No gene for hygiene yet, use default
     case 'social':
-      // Gregariousness: higher decay = higher thresholds (needs interaction more)
-      // Scale: socialDecay 0.002-0.025, default 0.01 -> seekThreshold 20-60, default 40
-      return 20 + (traits.gregariousness.socialDecay - 0.002) / (0.025 - 0.002) * 40;
+      // Sociality (AD gene, falls back to gregariousness): higher decay = higher thresholds.
+      // Scale: socialDecay 0.002-0.025, default 0.01 → seekThreshold 20-60, default 40.
+      return 20 + (traits.sociality.socialDecay - 0.002) / (0.025 - 0.002) * 40;
     case 'inspiration':
       return 40; // No gene yet, use default
   }

@@ -9,10 +9,13 @@ const MAX_DNA_LENGTH = 250;     // 50 genes
 // Essential gene codes that must be present for viability
 const ESSENTIAL_CODES = ['AA', 'BB', 'CC', 'DD', 'EE'];
 
-// All catalog codes (uppercase)
+// All catalog codes (uppercase) used when generating random genomes.
+// OO (Gregariousness) replaced by AD (Sociality) for new agents per v4.2.
+// OO remains in GENE_REGISTRY for backward-compatible DNA parsing.
 const ALL_CODES = [
   'AA', 'BB', 'CC', 'DD', 'EE', 'FF', 'GG', 'HH', 'II', 'JJ',
-  'KK', 'LL', 'MM', 'NN', 'OO', 'PP', 'QQ', 'RR', 'SS', 'TT',
+  'KK', 'LL', 'MM', 'NN', 'AD', 'PP', 'QQ', 'RR', 'SS', 'TT',
+  'UU', 'VV', 'AG', 'AP',
 ];
 
 /** Parse a 5-character gene segment into a RawGeneEntry */
@@ -84,6 +87,17 @@ export class Genome {
     this.dna = trimmed;
     this.genes = parseDna(trimmed);
     this.traits = expressGenome(this.genes);
+  }
+
+  /**
+   * Returns true if any coding gene (reinforcing or reducing) for the given
+   * 2-char trait code exists in this genome.
+   * Used to distinguish "gene present but unexpressed" from "no gene at all"
+   * (e.g., AG gene present with zero gestationMs vs. no AG gene → v4 fallback).
+   */
+  hasGeneCode(code: string): boolean {
+    const upper = code.toUpperCase();
+    return this.genes.some(g => g.coding && g.code.toUpperCase() === upper);
   }
 
   toString(): string {

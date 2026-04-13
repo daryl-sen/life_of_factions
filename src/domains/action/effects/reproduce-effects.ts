@@ -7,10 +7,7 @@ import { crossover } from '../../genetics/crossover';
 import { mutate } from '../../genetics/mutation';
 import { Genome } from '../../genetics/genome';
 import { isViable } from '../../genetics/viability';
-
-// ── Constants ──
-const REPRODUCE_ENERGY_COST = 12;
-const FULLNESS_DONATE_RANGE: [number, number] = [15, 25];
+import { TUNE } from '../../../core/tuning';
 
 export function onReproduceComplete(world: World, agent: Agent, target: Agent | undefined): void {
   // Asexual reproduction (parthenogenesis)
@@ -32,20 +29,21 @@ export function onReproduceComplete(world: World, agent: Agent, target: Agent | 
   if (!free) return;
 
   // Energy + fullness costs
-  agent.drainEnergy(REPRODUCE_ENERGY_COST);
-  target.drainEnergy(REPRODUCE_ENERGY_COST);
+  agent.drainEnergy(TUNE.reproduce.energyCost);
+  target.drainEnergy(TUNE.reproduce.energyCost);
 
-  const p1Donate = Math.min(agent.fullness, FULLNESS_DONATE_RANGE[0] + Math.random() * (FULLNESS_DONATE_RANGE[1] - FULLNESS_DONATE_RANGE[0]));
-  const p2Donate = Math.min(target.fullness, FULLNESS_DONATE_RANGE[0] + Math.random() * (FULLNESS_DONATE_RANGE[1] - FULLNESS_DONATE_RANGE[0]));
+  const [donateMin, donateMax] = TUNE.pregnancy.v4FullnessDonateRange;
+  const p1Donate = Math.min(agent.fullness, donateMin + Math.random() * (donateMax - donateMin));
+  const p2Donate = Math.min(target.fullness, donateMin + Math.random() * (donateMax - donateMin));
   agent.drainFullness(p1Donate);
   target.drainFullness(p2Donate);
 
-  // DNA: crossover then mutate
+  // DNA: crossover then mutate (v4 path uses TUNE.mutation.baseRate)
   const childDna = mutate(crossover(agent.genome.dna, target.genome.dna));
 
   // Check viability
   const childGenome = new Genome(childDna);
-  if (!isViable(childGenome.traits, childGenome.genes)) {
+  if (!isViable(childGenome.traits, childGenome.genes, childGenome.dna)) {
     log(world, 'reproduce', `${agent.name} had a stillborn child`, agent.id, {});
     world.events.emit('agent:stillborn', { parentId: agent.id });
     return;
@@ -64,7 +62,7 @@ export function onReproduceComplete(world: World, agent: Agent, target: Agent | 
 
   // Start pregnancy on the initiator
   const babyDuration = childGenome.traits.maturity.babyDurationMs;
-  const pregnancyDuration = babyDuration * 0.5;
+  const pregnancyDuration = babyDuration * TUNE.pregnancy.v4DurationMult;
   const totalDonated = p1Donate + p2Donate;
   agent.pregnancy.start(childDna, pregnancyDuration, familyName, factionId, target.id, totalDonated);
 
@@ -82,21 +80,22 @@ function reproduceAsexual(world: World, agent: Agent): void {
   const free = spots.find(([x, y]) => !world.grid.isBlocked(x, y));
   if (!free) return;
 
-  agent.drainEnergy(REPRODUCE_ENERGY_COST);
-  const p1Donate = Math.min(agent.fullness, FULLNESS_DONATE_RANGE[0] + Math.random() * (FULLNESS_DONATE_RANGE[1] - FULLNESS_DONATE_RANGE[0]));
+  agent.drainEnergy(TUNE.reproduce.energyCost);
+  const [donateMinA, donateMaxA] = TUNE.pregnancy.v4FullnessDonateRange;
+  const p1Donate = Math.min(agent.fullness, donateMinA + Math.random() * (donateMaxA - donateMinA));
   agent.drainFullness(p1Donate);
 
   // No crossover, just mutate
   const childDna = mutate(agent.genome.dna);
   const childGenome = new Genome(childDna);
-  if (!isViable(childGenome.traits, childGenome.genes)) {
+  if (!isViable(childGenome.traits, childGenome.genes, childGenome.dna)) {
     log(world, 'reproduce', `${agent.name} had a stillborn child`, agent.id, {});
     world.events.emit('agent:stillborn', { parentId: agent.id });
     return;
   }
 
   const babyDuration = childGenome.traits.maturity.babyDurationMs;
-  const pregnancyDuration = babyDuration * 0.5;
+  const pregnancyDuration = babyDuration * TUNE.pregnancy.v4DurationMult;
   agent.pregnancy.start(childDna, pregnancyDuration, agent.familyName, agent.factionId, null, p1Donate);
 
   world.events.emit('pregnancy:started', { agentId: agent.id, duration: pregnancyDuration });

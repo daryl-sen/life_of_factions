@@ -37,6 +37,14 @@ export interface TraitSet {
   readonly fidelity: { readonly leaveProbability: number };
   readonly greed: { readonly hoardProbability: number };
   readonly maternity: { readonly feedProbability: number };
+
+  // v4.2 additions
+  /** AD gene. Social need decay rate. Falls back to gregariousness.socialDecay when AD absent. */
+  readonly sociality: { readonly socialDecay: number };
+  /** AG gene. Gestation duration in ms. 0 = instant birth (zero needs) when AG present; no AG = v4 fallback. */
+  readonly pregnancy: { readonly gestationMs: number };
+  /** AP gene. Per-child mutation rate. Defaults to TUNE.mutation.baseRate when AP absent. */
+  readonly volatility: { readonly mutationRate: number };
 }
 
 /** Definition of a single trait component's scaling */

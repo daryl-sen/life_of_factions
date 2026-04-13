@@ -5,3 +5,10 @@ export { expressGenome } from './expression';
 export { crossover } from './crossover';
 export { mutate } from './mutation';
 export { isViable } from './viability';
+export {
+  attackEnergyCost,
+  moveEnergyCost,
+  passiveEnergyDrainPerTick,
+  levelEnergyMultiplier,
+  computeActionCost,
+} from './cost-functions';

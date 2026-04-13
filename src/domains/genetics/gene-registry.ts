@@ -147,6 +147,32 @@ export const GENE_REGISTRY: ReadonlyMap<string, TraitDef> = new Map<string, Trai
       { key: 'feedProbability', min: 0.0, default: 0.5, max: 1.0, scale: 500, inverted: false },
     ],
   }],
+
+  // v4.2 additions
+  ['AD', {
+    code: 'AD', name: 'Sociality', essential: false,
+    // Same component structure as OO (Gregariousness) — replaces it for new agents.
+    // Existing OO genes continue to write to `gregariousness`; AD writes to `sociality`.
+    components: [
+      { key: 'socialDecay', min: 0.002, default: 0.01, max: 0.025, scale: 10000, inverted: false },
+    ],
+  }],
+  ['AG', {
+    code: 'AG', name: 'Pregnancy', essential: false,
+    // gestationMs > 0: gradual need-transfer gestation.
+    // gestationMs = 0 (gene present but at floor): instant birth with zero needs.
+    // No AG gene at all: v4 countdown-timer fallback.
+    components: [
+      { key: 'gestationMs', min: 0, default: 0, max: 120000, scale: 0.005, inverted: false },
+    ],
+  }],
+  ['AP', {
+    code: 'AP', name: 'Volatility', essential: false,
+    // Controls per-lineage mutation rate. Default matches v4 hardcoded MUTATION_RATE (0.005).
+    components: [
+      { key: 'mutationRate', min: 0.001, default: 0.005, max: 0.02, scale: 10000, inverted: false },
+    ],
+  }],
 ]);
 
 /**
