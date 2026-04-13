@@ -663,7 +663,7 @@ export class AgentUpdater {
       }
     }
 
-    // Pregnancy timer
+    // Pregnancy tick (miscarriage checks shared by both paths)
     if (agent.pregnancy.active) {
       // Miscarriage: starvation ends pregnancy immediately
       if (agent.fullness <= 0) {
@@ -681,7 +681,19 @@ export class AgentUpdater {
           log(world, 'reproduce', `${agent.name} lost the pregnancy (illness)`, agent.id, {});
           world.events.emit('pregnancy:miscarriage', { agentId: agent.id, cause: 'disease' });
         }
+      } else if (agent.pregnancy.useTransferMechanic) {
+        // v4.2: per-tick need transfer from parent to child
+        const drained = agent.pregnancy.tickTransfer();
+        agent.drainFullness(drained.fullnessDrained);
+        agent.needs.hygiene     = Math.max(0, agent.needs.hygiene     - drained.hygieneDrained);
+        agent.needs.social      = Math.max(0, agent.needs.social      - drained.socialDrained);
+        agent.needs.inspiration = Math.max(0, agent.needs.inspiration - drained.inspirationDrained);
+
+        if (agent.pregnancy.isReadyForBirth()) {
+          AgentUpdater._handleBirth(world, agent);
+        }
       } else {
+        // v4 fallback: countdown timer
         const birth = agent.pregnancy.tick(TICK_MS);
         if (birth) {
           AgentUpdater._handleBirth(world, agent);
@@ -1032,14 +1044,24 @@ export class AgentUpdater {
     }
 
     const [cx, cy] = free;
+    // For the v4.2 transfer mechanic, the child's initial fullness comes from
+    // the accumulated childNeeds.fullness; other needs are also transferred in.
+    const initialFullness = preg.useTransferMechanic
+      ? preg.childNeeds.fullness
+      : preg.donatedFullness;
     const child = AgentFactory.createChild(
       cx, cy,
       preg.childDna,
       preg.childFamilyName ?? agent.familyName,
       preg.childFactionId,
       agent.generation,
-      preg.donatedFullness
+      initialFullness
     );
+    if (preg.useTransferMechanic) {
+      child.needs.hygiene     = preg.childNeeds.hygiene;
+      child.needs.social      = preg.childNeeds.social;
+      child.needs.inspiration = preg.childNeeds.inspiration;
+    }
 
     // Set parent IDs for maternity feeding
     child.parentIds = [agent.id];

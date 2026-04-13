@@ -432,16 +432,23 @@ export class PersistenceManager {
           agent.resourceMemory.set(rType, entries ?? []);
         }
       }
-      // Restore pregnancy state
+      // Restore pregnancy state (v4 and v4.2 save formats)
       if (a.pregnancy && a.pregnancy.childDna) {
-        agent.pregnancy.start(
-          a.pregnancy.childDna,
-          a.pregnancy.remainingMs ?? 0,
-          a.pregnancy.childFamilyName ?? agent.familyName,
-          a.pregnancy.childFactionId ?? null,
-          a.pregnancy.partnerId ?? null,
-          a.pregnancy.donatedFullness ?? 0
-        );
+        const useTransfer = !!(a.pregnancy.useTransferMechanic);
+        agent.pregnancy.start({
+          childDna:         a.pregnancy.childDna,
+          childFamilyName:  a.pregnancy.childFamilyName ?? agent.familyName,
+          childFactionId:   a.pregnancy.childFactionId ?? null,
+          partnerId:        a.pregnancy.partnerId ?? null,
+          useTransferMechanic: useTransfer,
+          remainingMs:      a.pregnancy.remainingMs ?? 0,
+          donatedFullness:  a.pregnancy.donatedFullness ?? 0,
+          transferRate:     a.pregnancy.transferRate ?? 0,
+          gestationStartTick: a.pregnancy.gestationStartTick ?? 0,
+        });
+        if (useTransfer && a.pregnancy.childNeeds) {
+          agent.pregnancy.childNeeds = { ...a.pregnancy.childNeeds };
+        }
       }
 
       world.agents.push(agent);
