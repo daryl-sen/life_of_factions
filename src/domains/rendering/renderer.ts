@@ -1,4 +1,5 @@
-import { CELL_PX, GRID_SIZE, COLORS, AGENT_EMOJIS, IDLE_EMOJIS, WORLD_EMOJIS, FOOD_EMOJIS } from '../../core/constants';
+import { CELL_PX, GRID_SIZE, COLORS, AGENT_EMOJIS, IDLE_EMOJIS, WORLD_EMOJIS, FOOD_EMOJIS, MEDICINE_EMOJI, CACTUS_EMOJI } from '../../core/constants';
+import { FLOWER_LIFESPAN_RANGE } from '../simulation/spawner';
 import { getIdleEmoji } from '../../core/utils';
 import type { TerrainField } from '../world/terrain-field';
 import type { World } from '../world';
@@ -46,8 +47,11 @@ const LOD_EGG     = '#f5e6c8';
 const LOD_POOP    = '#6b4226';
 const LOD_FOOD    = '#c88040';
 const LOD_LOOT    = '#c9a83f';
-const LOD_FARM    = '#b8860b';
+const LOD_FARM     = '#b8860b';
 const LOD_OBSTACLE = '#888888';
+const LOD_MEDICINE = '#4a8c5c';
+const LOD_FLOWER   = '#cc6699';
+const LOD_CACTUS   = '#2d6b3e';
 
 export class Renderer {
   private readonly _emojiCache = new EmojiCache();
@@ -118,6 +122,9 @@ export class Renderer {
     this._drawEggs(ctx, world, vb, lod);
     this._drawPoopBlocks(ctx, world, vb, lod);
     this._drawFoodBlocks(ctx, world, vb, lod);
+    this._drawMedicineBlocks(ctx, world, vb, lod);
+    this._drawFlowerBlocks(ctx, world, vb, lod);
+    this._drawCactusBlocks(ctx, world, vb, lod);
     this._drawLootBags(ctx, world, vb, lod);
     this._drawFarms(ctx, world, vb, lod);
     this._drawObstacles(ctx, world, vb, lod);
@@ -317,7 +324,7 @@ export class Renderer {
   }
 
   private _drawTreeBlocks(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
-    // Rebuild near-water lookup when tree or water counts change
+    // Rebuild near-water/sustain lookup when tree or water counts change
     const treeCount = world.treeBlocks.size;
     const waterCount = world.waterBlocks.size;
     if (treeCount !== this._cachedTreeCount || waterCount !== this._cachedWaterCount) {
@@ -325,12 +332,25 @@ export class Renderer {
       this._cachedWaterCount = waterCount;
       this._treeNearWater.clear();
       for (const tree of world.treeBlocks.values()) {
+        const k = `${tree.x},${tree.y}`;
+        let near = false;
         for (const wb of world.waterBlocks.values()) {
-          if (Math.abs(tree.x - wb.x) + Math.abs(tree.y - wb.y) <= 5) {
-            this._treeNearWater.add(`${tree.x},${tree.y}`);
-            break;
+          if (Math.abs(tree.x - wb.x) + Math.abs(tree.y - wb.y) <= 5) { near = true; break; }
+        }
+        if (!near && tree.variant === 'tropical') {
+          for (const sw of world.saltWaterBlocks.values()) {
+            if (Math.abs(tree.x - sw.x) + Math.abs(tree.y - sw.y) <= 5) { near = true; break; }
           }
         }
+        if (!near && tree.variant === 'evergreen') {
+          for (const [, obs] of world.obstacles) {
+            if (obs.category === 'mountain' &&
+                Math.abs(tree.x - obs.x) + Math.abs(tree.y - obs.y) <= 3) {
+              near = true; break;
+            }
+          }
+        }
+        if (near) this._treeNearWater.add(k);
       }
     }
 
@@ -403,6 +423,53 @@ export class Renderer {
         this._fillCell(ctx, fb.x, fb.y, LOD_FOOD, 4);
       } else {
         this._drawCellEmoji(ctx, fb.x, fb.y, fb.emoji || FOOD_EMOJIS.lq[0], CELL_PX / 2);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  private _drawMedicineBlocks(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
+    for (const [, block] of world.medicineBlocks) {
+      if (!this._inView(block.x, block.y, vb)) continue;
+      const px = block.x * CELL_PX;
+      const py = block.y * CELL_PX;
+      if (lod) {
+        ctx.fillStyle = LOD_MEDICINE;
+        ctx.fillRect(px + 4, py + 4, CELL_PX - 8, CELL_PX - 8);
+      } else {
+        this._drawCellEmoji(ctx, block.x, block.y, MEDICINE_EMOJI, CELL_PX / 2);
+      }
+    }
+  }
+
+  private _drawFlowerBlocks(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
+    const fadeThreshold = FLOWER_LIFESPAN_RANGE[1] * 0.2;
+    for (const [, flower] of world.flowerBlocks) {
+      if (!this._inView(flower.x, flower.y, vb)) continue;
+      const fade = flower.lifespanMs < fadeThreshold
+        ? Math.max(0, flower.lifespanMs / fadeThreshold)
+        : 1;
+      ctx.globalAlpha = fade;
+      if (lod) {
+        ctx.fillStyle = LOD_FLOWER;
+        ctx.fillRect(flower.x * CELL_PX + 5, flower.y * CELL_PX + 5, CELL_PX - 10, CELL_PX - 10);
+      } else {
+        this._drawCellEmoji(ctx, flower.x, flower.y, flower.emoji, CELL_PX / 2);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  private _drawCactusBlocks(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
+    for (const [, cactus] of world.cactusBlocks) {
+      if (!this._inView(cactus.x, cactus.y, vb)) continue;
+      const alpha = 0.4 + 0.6 * (cactus.units / cactus.maxUnits);
+      ctx.globalAlpha = alpha;
+      if (lod) {
+        ctx.fillStyle = LOD_CACTUS;
+        ctx.fillRect(cactus.x * CELL_PX, cactus.y * CELL_PX, CELL_PX, CELL_PX);
+      } else {
+        this._drawCellEmoji(ctx, cactus.x, cactus.y, CACTUS_EMOJI);
       }
       ctx.globalAlpha = 1;
     }

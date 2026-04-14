@@ -1,14 +1,17 @@
-import { key, log } from '../../../core/utils';
+import { key, log, manhattan } from '../../../core/utils';
+import { COCONUT_EMOJI, TREE_FRUIT_EMOJIS } from '../../../core/constants';
 import type { Agent } from '../../entity/agent';
 import type { World } from '../../world/world';
 import type { IActionState } from '../types';
+import { Spawner } from '../../simulation/spawner';
 
 // ── Constants ──
 const XP_PER_HARVEST = 2;
 const WATER_SHRINK_THRESHOLD = 0.25;
 const TREE_SEEDLING_CHANCE_ON_HARVEST = 0.10;
 const TREE_FOOD_CHANCE_ON_HARVEST = 0.05;
-const TREE_FOOD_REQUIRES_POOP_RADIUS = 3;
+const COCONUT_CAP_PER_TREE = 3;
+const COCONUT_RADIUS = 2;
 const FLAG_STORAGE_CAP = 30;
 
 // ── Harvest ──
@@ -17,9 +20,11 @@ export function onHarvestComplete(world: World, agent: Agent): void {
   const act = agent.action!;
   const tp = act.payload?.targetPos;
   if (!tp) return;
-  if (agent.inventoryFull()) return;
 
   const rt = act.payload?.resourceType || 'food_lq';
+
+  // Medicine bypasses inventory-full check (it's a status cure, not an item)
+  if (rt !== 'medicine' && agent.inventoryFull()) return;
 
   if (rt === 'food_hq' || rt === 'food_lq') {
     harvestFood(world, agent, tp);
@@ -27,6 +32,10 @@ export function onHarvestComplete(world: World, agent: Agent): void {
     harvestWater(world, agent, tp);
   } else if (rt === 'wood') {
     harvestWood(world, agent, tp);
+  } else if (rt === 'medicine') {
+    harvestMedicine(world, agent, tp);
+  } else if (rt === 'cactus') {
+    harvestCactus(world, agent, tp);
   }
 }
 
@@ -86,17 +95,55 @@ function harvestWood(world: World, agent: Agent, tp: { x: number; y: number }): 
   agent.addXp(XP_PER_HARVEST);
   log(world, 'harvest', `${agent.name} harvested wood`, agent.id, { x: tp.x, y: tp.y });
 
-  // Roll for seedling (10%) or food (5%)
+  // Roll for seedling (10%) or fruit (5%) — variant-specific
   const roll = Math.random();
   if (roll < TREE_SEEDLING_CHANCE_ON_HARVEST) {
-    world.events.emit('harvest:seedling-chance', { x: tree.x, y: tree.y });
+    Spawner.trySpawnSeedling(world, tree.x, tree.y, tree.variant);
   } else if (roll < TREE_SEEDLING_CHANCE_ON_HARVEST + TREE_FOOD_CHANCE_ON_HARVEST) {
-    world.events.emit('harvest:food-chance', { x: tree.x, y: tree.y, poopRadius: TREE_FOOD_REQUIRES_POOP_RADIUS });
+    if (tree.variant === 'tropical') {
+      let nearby = 0;
+      for (const [, fb] of world.foodBlocks) {
+        if (manhattan(tree.x, tree.y, fb.x, fb.y) <= COCONUT_RADIUS) nearby++;
+      }
+      if (nearby < COCONUT_CAP_PER_TREE) {
+        Spawner.trySpawnFruitNearTree(world, tree.x, tree.y, COCONUT_EMOJI);
+      }
+    } else if (tree.variant === 'regular') {
+      const emoji = TREE_FRUIT_EMOJIS[Math.floor(Math.random() * TREE_FRUIT_EMOJIS.length)];
+      Spawner.trySpawnFruitNearTree(world, tree.x, tree.y, emoji);
+    }
+    // Evergreen: no fruit
   }
 
   if (tree.units <= 0) {
     world.grid.treeBlocks.delete(k);
     world.deadMarkers.push({ cellX: tree.x, cellY: tree.y, cause: 'tree', msRemaining: 10000 });
+  }
+  checkLevelUp(world, agent);
+}
+
+function harvestMedicine(world: World, agent: Agent, tp: { x: number; y: number }): void {
+  const k = key(tp.x, tp.y);
+  const block = world.grid.medicineBlocks.get(k);
+  if (!block) return;
+  if (!agent.diseased) return; // no benefit if healthy
+  world.grid.medicineBlocks.delete(k);
+  agent.diseased = false;
+  agent.addXp(XP_PER_HARVEST);
+  log(world, 'harvest', `${agent.name} used medicine to cure disease`, agent.id, { x: tp.x, y: tp.y });
+  checkLevelUp(world, agent);
+}
+
+function harvestCactus(world: World, agent: Agent, tp: { x: number; y: number }): void {
+  const k = key(tp.x, tp.y);
+  const cactus = world.grid.cactusBlocks.get(k);
+  if (!cactus || cactus.units <= 0) return;
+  cactus.units--;
+  agent.addToInventory('water', 1);
+  agent.addXp(XP_PER_HARVEST);
+  log(world, 'harvest', `${agent.name} harvested water from cactus`, agent.id, { x: tp.x, y: tp.y });
+  if (cactus.units <= 0) {
+    world.grid.cactusBlocks.delete(k);
   }
   checkLevelUp(world, agent);
 }
@@ -163,3 +210,4 @@ function checkLevelUp(world: World, agent: Agent): void {
     log(world, 'level', `${agent.name} leveled to ${agent.level}`, agent.id, {});
   }
 }
+

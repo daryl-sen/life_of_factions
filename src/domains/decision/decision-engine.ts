@@ -213,7 +213,11 @@ function resolveTarget(
       const adjRes = ctx.nearbyResources.filter(r => r.dist <= 1);
       if (!adjRes.length) return null;
       const r = adjRes[0];
-      const resourceType = r.type === 'food' ? 'food_lq' : r.type;
+      let resourceType: string;
+      if (r.type === 'food') resourceType = 'food_lq';
+      else if (r.type === 'medicine') resourceType = 'medicine';
+      else if (r.type === 'cactus') resourceType = 'cactus';
+      else resourceType = r.type;
       return { targetPos: { x: r.pos.x, y: r.pos.y }, resourceType } as { targetPos: { x: number; y: number }; resourceType: string } & { targetId?: string };
     }
     case 'pickup': {

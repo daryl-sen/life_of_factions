@@ -1,4 +1,5 @@
 import type { LogCategory } from '../domains/action/types';
+import type { TreeVariant, ObstacleCategory } from '../domains/world/types';
 
 export const CELL_PX = 16;
 export let GRID_SIZE = 62;
@@ -78,10 +79,10 @@ export const IDLE_EMOJIS = {
 };
 
 export const FOOD_EMOJIS = {
-  hq: ['\u{1F954}', '\u{1F34E}', '\u{1F351}', '\u{1F33D}', '\u{1F345}'],
-  //    🥔           🍎           🍑           🌽           🍅
-  lq: ['\u{1F33F}', '\u{1F96C}', '\u{1F966}', '\u{1F340}'],
-  //    🌿           🥬           🥦           🍀
+  hq: ['\u{1F954}', '\u{1F33D}', '\u{1F345}'],
+  //    🥔           🌽           🍅
+  lq: ['\u{1F96C}', '\u{1F966}', '\u{1F340}'],
+  //    🥬           🥦           🍀
 } as const;
 
 export const OBSTACLE_EMOJIS = [
@@ -104,12 +105,45 @@ export const WORLD_EMOJIS = {
   egg: '\u{1F95A}',         // 🥚
 } as const;
 
-export const TREE_EMOJIS: readonly string[] = [
-  '\u{1F332}', // 🌲
-  '\u{1F333}', // 🌳
-  '\u{1F334}', // 🌴
-  '\u{1F384}', // 🎄
-];
+export const TREE_VARIANT_EMOJI: Record<TreeVariant, string> = {
+  tropical:  '\u{1F334}', // 🌴
+  evergreen: '\u{1F332}', // 🌲
+  regular:   '\u{1F333}', // 🌳
+};
+
+export const TREE_FRUIT_EMOJIS: readonly string[] = [
+  '\u{1F34E}', // 🍎 apple
+  '\u{1F350}', // 🍐 pear
+  '\u{1F34A}', // 🍊 orange
+  '\u{1F34B}', // 🍋 lemon
+  '\u{1F351}', // 🍑 peach
+  '\u{1F352}', // 🍒 cherry
+  '\u{1F34F}', // 🍏 green apple
+] as const;
+
+export const FLOWER_EMOJIS: readonly string[] = [
+  '\u{1F339}', // 🌹
+  '\u{1F33A}', // 🌺
+  '\u{1F337}', // 🌷
+  '\u{1F33B}', // 🌻
+  '\u{1FAB7}', // 🪻
+] as const;
+
+export const FARM_CROP_EMOJI = '\u{1F33E}'; // 🌾
+
+export const MEDICINE_EMOJI = '\u{1F33F}'; // 🌿
+
+export const CACTUS_EMOJI = '\u{1F335}'; // 🌵
+
+export const COCONUT_EMOJI = '\u{1F965}'; // 🥥
+
+export const OBSTACLE_CATEGORY: Record<string, ObstacleCategory> = {
+  '\u26F0\uFE0F':    'mountain', // ⛰️
+  '\u{1F5FB}':       'mountain', // 🗻
+  '\u{1F3D4}\uFE0F': 'mountain', // 🏔️
+  '\u{1FAA8}':       'rock',     // 🪨
+  '\u{1FAB5}':       'wood',     // 🪵
+};
 
 export const LOG_CATS: readonly LogCategory[] = [
   'talk',

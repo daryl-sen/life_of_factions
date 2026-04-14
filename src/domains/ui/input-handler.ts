@@ -1,4 +1,4 @@
-import { CELL_PX, GRID_SIZE, OBSTACLE_EMOJIS } from '../../core/constants';
+import { CELL_PX, GRID_SIZE, OBSTACLE_EMOJIS, OBSTACLE_CATEGORY } from '../../core/constants';
 import { key, log, uuid } from '../../core/utils';
 import type { World } from '../world';
 import type { Camera } from '../rendering/camera';
@@ -64,7 +64,8 @@ export class InputHandler {
           !world.agentsByCell.has(k)
         ) {
           const emoji = OBSTACLE_EMOJIS[Math.floor(Math.random() * OBSTACLE_EMOJIS.length)];
-          world.obstacles.set(k, { id: uuid(), x, y, emoji, hp: 12, maxHp: 12 });
+          const category = OBSTACLE_CATEGORY[emoji] ?? 'rock';
+          world.obstacles.set(k, { id: uuid(), x, y, emoji, category, hp: 12, maxHp: 12 });
           log(world, 'build', `Obstacle @${x},${y} (user)`, null, { x, y });
         }
       } else if (world.paintMode === 'erase') {

@@ -1,6 +1,6 @@
 import { GRID_SIZE } from '../../core/constants';
 import { key } from '../../core/utils';
-import type { IFoodBlock, IFarm, IObstacle, IFlag, IWaterBlock, ITreeBlock, ISeedling, ILootBag, IPoopBlock, IEgg, ISaltWaterBlock } from './types';
+import type { IFoodBlock, IFarm, IObstacle, IFlag, IWaterBlock, ITreeBlock, ISeedling, ILootBag, IPoopBlock, IEgg, ISaltWaterBlock, IMedicineBlock, IFlowerBlock, ICactusBlock } from './types';
 
 export class Grid {
   size: number = GRID_SIZE;
@@ -17,6 +17,9 @@ export class Grid {
   readonly poopBlocks: Map<string, IPoopBlock> = new Map();
   readonly eggs: Map<string, IEgg> = new Map();
   readonly saltWaterBlocks: Map<string, ISaltWaterBlock> = new Map();
+  readonly medicineBlocks: Map<string, IMedicineBlock> = new Map();
+  readonly flowerBlocks: Map<string, IFlowerBlock> = new Map();
+  readonly cactusBlocks: Map<string, ICactusBlock> = new Map();
 
   isBlocked(x: number, y: number, ignoreId: string | null = null): boolean {
     if (x < 0 || y < 0 || x >= this.size || y >= this.size) return true;
@@ -26,6 +29,7 @@ export class Grid {
     if (this.flagCells.has(k)) return true;
     if (this.waterBlocks.has(k)) return true;
     if (this.treeBlocks.has(k)) return true;
+    if (this.cactusBlocks.has(k)) return true;
     if (this.saltWaterBlocks.has(k)) return true;
     const occ = this.agentsByCell.get(k);
     if (occ && occ !== ignoreId) return true;
@@ -41,6 +45,7 @@ export class Grid {
     if (this.flagCells.has(k)) return true;
     if (this.waterBlocks.has(k)) return true;
     if (this.treeBlocks.has(k)) return true;
+    if (this.cactusBlocks.has(k)) return true;
     if (this.saltWaterBlocks.has(k)) return true;
     return false;
   }
@@ -60,7 +65,10 @@ export class Grid {
       this.poopBlocks.has(k) ||
       this.agentsByCell.has(k) ||
       this.eggs.has(k) ||
-      this.saltWaterBlocks.has(k)
+      this.saltWaterBlocks.has(k) ||
+      this.medicineBlocks.has(k) ||
+      this.flowerBlocks.has(k) ||
+      this.cactusBlocks.has(k)
     );
   }
 
@@ -87,5 +95,8 @@ export class Grid {
     this.poopBlocks.clear();
     this.eggs.clear();
     this.saltWaterBlocks.clear();
+    this.medicineBlocks.clear();
+    this.flowerBlocks.clear();
+    this.cactusBlocks.clear();
   }
 }

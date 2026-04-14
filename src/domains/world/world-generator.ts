@@ -1,4 +1,4 @@
-import { GRID_SIZE, OBSTACLE_EMOJIS } from '../../core/constants';
+import { GRID_SIZE, OBSTACLE_EMOJIS, OBSTACLE_CATEGORY } from '../../core/constants';
 import { key, rndi, uuid } from '../../core/utils';
 import { TUNE } from '../../core/tuning';
 import type { World } from './world';
@@ -42,6 +42,7 @@ export class WorldGenerator {
     const obstacleCount = rndi(30, 50);
     for (let i = 0; i < obstacleCount; i++) {
       const emoji = OBSTACLE_EMOJIS[Math.floor(Math.random() * OBSTACLE_EMOJIS.length)];
+      const category = OBSTACLE_CATEGORY[emoji] ?? 'rock';
       if (Math.random() < 0.4) {
         let placed = false;
         for (let attempt = 0; attempt < 50; attempt++) {
@@ -51,7 +52,7 @@ export class WorldGenerator {
               !world.grid.isCellOccupied(x + 1, y) &&
               !world.grid.isCellOccupied(x, y + 1) &&
               !world.grid.isCellOccupied(x + 1, y + 1)) {
-            const obs = { id: uuid(), x, y, emoji, hp: 24, maxHp: 24, size: '2x2' as const };
+            const obs = { id: uuid(), x, y, emoji, category, hp: 24, maxHp: 24, size: '2x2' as const };
             world.obstacles.set(key(x, y),         obs);
             world.obstacles.set(key(x + 1, y),     obs);
             world.obstacles.set(key(x, y + 1),     obs);
@@ -62,11 +63,11 @@ export class WorldGenerator {
         }
         if (!placed) {
           const { x, y } = world.grid.randomFreeCell();
-          world.obstacles.set(key(x, y), { id: uuid(), x, y, emoji, hp: 12, maxHp: 12 });
+          world.obstacles.set(key(x, y), { id: uuid(), x, y, emoji, category, hp: 12, maxHp: 12 });
         }
       } else {
         const { x, y } = world.grid.randomFreeCell();
-        world.obstacles.set(key(x, y), { id: uuid(), x, y, emoji, hp: 12, maxHp: 12 });
+        world.obstacles.set(key(x, y), { id: uuid(), x, y, emoji, category, hp: 12, maxHp: 12 });
       }
     }
   }
@@ -104,7 +105,8 @@ export class WorldGenerator {
     }
 
     // Place obstacles on boundary cells (cells adjacent to a different region)
-    const emoji = OBSTACLE_EMOJIS[Math.floor(Math.random() * OBSTACLE_EMOJIS.length)];
+    const barrierEmoji = OBSTACLE_EMOJIS[Math.floor(Math.random() * OBSTACLE_EMOJIS.length)];
+    const barrierCategory = OBSTACLE_CATEGORY[barrierEmoji] ?? 'rock';
     for (let y = 1; y < GRID_SIZE - 1; y++) {
       for (let x = 1; x < GRID_SIZE - 1; x++) {
         const r = region[y * GRID_SIZE + x];
@@ -117,7 +119,7 @@ export class WorldGenerator {
         // ~40% fill — leave gaps for cross-region pathfinding
         if (Math.random() > 0.4) continue;
         if (world.grid.isCellOccupied(x, y)) continue;
-        world.obstacles.set(key(x, y), { id: uuid(), x, y, emoji, hp: 12, maxHp: 12 });
+        world.obstacles.set(key(x, y), { id: uuid(), x, y, emoji: barrierEmoji, category: barrierCategory, hp: 12, maxHp: 12 });
       }
     }
   }

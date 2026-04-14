@@ -173,7 +173,7 @@ function scanVision(world: World, agent: Agent): void {
       if (world.foodBlocks.has(k) || world.seedlings.has(k)) {
         agent.rememberResource('food', x, y, world.tick);
       }
-      if (world.waterBlocks.has(k)) {
+      if (world.waterBlocks.has(k) || world.cactusBlocks.has(k)) {
         agent.rememberResource('water', x, y, world.tick);
       }
       if (world.treeBlocks.has(k)) {

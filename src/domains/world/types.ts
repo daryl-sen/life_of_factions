@@ -2,6 +2,10 @@
 
 export type FoodQuality = 'hq' | 'lq';
 
+export type TreeVariant = 'tropical' | 'evergreen' | 'regular';
+
+export type ObstacleCategory = 'mountain' | 'rock' | 'wood';
+
 export interface IFoodBlock {
   id: string;
   x: number;
@@ -25,6 +29,7 @@ export interface IObstacle {
   x: number;
   y: number;
   emoji: string;
+  category: ObstacleCategory;
   hp: number;
   maxHp: number;
   size?: '2x2';
@@ -69,6 +74,7 @@ export interface ITreeBlock {
   x: number;
   y: number;
   emoji: string;
+  variant: TreeVariant;
   units: number;
   maxUnits: number;
   ageTotalMs: number;
@@ -79,9 +85,32 @@ export interface ISeedling {
   id: string;
   x: number;
   y: number;
+  variant: TreeVariant;
   plantedAtTick: number;
   growthDurationMs: number;
   growthElapsedMs: number;
+}
+
+export interface IMedicineBlock {
+  id: string;
+  x: number;
+  y: number;
+}
+
+export interface IFlowerBlock {
+  id: string;
+  x: number;
+  y: number;
+  emoji: string;
+  lifespanMs: number;
+}
+
+export interface ICactusBlock {
+  id: string;
+  x: number;
+  y: number;
+  units: number;
+  maxUnits: number;
 }
 
 export interface ICloud {
