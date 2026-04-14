@@ -894,7 +894,7 @@ export class AgentUpdater {
               } else if (!agent.action && agent.hygiene < HYGIENE_SEEK_THRESHOLD) {
                 seekWaterWhenThirsty(world, agent);
               } else if (!agent.action) {
-                // Opportunistic loot bag pickup
+                // Opportunistic loot bag pickup (adjacent) or seek (vision range)
                 if (!agent.inventoryFull()) {
                   const bagKey = key(agent.cellX, agent.cellY);
                   if (world.lootBags.has(bagKey)) {
@@ -904,11 +904,27 @@ export class AgentUpdater {
                       [agent.cellX + 1, agent.cellY], [agent.cellX - 1, agent.cellY],
                       [agent.cellX, agent.cellY + 1], [agent.cellX, agent.cellY - 1],
                     ];
+                    let pickedAdj = false;
                     for (const [nx, ny] of adjCells) {
                       const ak = key(nx, ny);
                       if (world.lootBags.has(ak)) {
                         tryStartAction(agent,'pickup', { targetPos: { x: nx, y: ny } });
+                        pickedAdj = true;
                         break;
+                      }
+                    }
+                    // No adjacent bag — scan vision range and pathfind toward nearest
+                    if (!pickedAdj) {
+                      let closestBag: { x: number; y: number; d: number } | null = null;
+                      const vr = VISION_RANGE;
+                      for (const [, bag] of world.lootBags) {
+                        const d = manhattan(agent.cellX, agent.cellY, bag.x, bag.y);
+                        if (d > 1 && d <= vr && (!closestBag || d < closestBag.d)) {
+                          closestBag = { x: bag.x, y: bag.y, d };
+                        }
+                      }
+                      if (closestBag) {
+                        agentPlanPath(world, agent, closestBag.x, closestBag.y);
                       }
                     }
                   }
