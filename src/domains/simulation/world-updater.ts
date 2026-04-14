@@ -1,5 +1,5 @@
-import { TICK_MS } from '../../core/constants';
-import { key, log } from '../../core/utils';
+import { TICK_MS, OBSTACLE_CATEGORY } from '../../core/constants';
+import { key, log, manhattan } from '../../core/utils';
 import type { World } from '../world/world';
 
 // ── Inlined TUNE constants ──
@@ -8,6 +8,10 @@ const WATER_BASE_DECAY_PER_TICK = 0.008;
 const WATER_SHRINK_THRESHOLD = 0.25;
 
 const TERRAIN_UPDATE_INTERVAL = 40; // ticks (~10 seconds)
+
+const TREE_WATER_SUSTAIN_RANGE = 5;      // manhattan distance for water sustain
+const TREE_DECLINE_RATE_PER_TICK = 0.01; // units lost per tick when dehydrated
+const EVERGREEN_MOUNTAIN_RANGE = 3;      // mountain sustain range for evergreens
 
 export class WorldUpdater {
 
@@ -65,6 +69,70 @@ export class WorldUpdater {
     }
   }
 
+  // ── Tree dehydration / decline ──
+
+  static tickTreeSustain(world: World): void {
+    const toRemove: string[] = [];
+
+    for (const [k, tree] of world.treeBlocks) {
+      let sustained = false;
+
+      // Fresh water check (all variants)
+      for (const wb of world.waterBlocks.values()) {
+        if (manhattan(tree.x, tree.y, wb.x, wb.y) <= TREE_WATER_SUSTAIN_RANGE) {
+          sustained = true;
+          break;
+        }
+      }
+
+      // Saltwater check (tropical only)
+      if (!sustained && tree.variant === 'tropical') {
+        for (const sw of world.saltWaterBlocks.values()) {
+          if (manhattan(tree.x, tree.y, sw.x, sw.y) <= TREE_WATER_SUSTAIN_RANGE) {
+            sustained = true;
+            break;
+          }
+        }
+      }
+
+      // Mountain sustain (evergreen adults only)
+      if (!sustained && tree.variant === 'evergreen') {
+        for (const [, obs] of world.obstacles) {
+          if ((obs.category === 'mountain' || OBSTACLE_CATEGORY[obs.emoji] === 'mountain') &&
+              manhattan(tree.x, tree.y, obs.x, obs.y) <= EVERGREEN_MOUNTAIN_RANGE) {
+            sustained = true;
+            break;
+          }
+        }
+      }
+
+      if (!sustained) {
+        tree.units -= TREE_DECLINE_RATE_PER_TICK;
+        if (tree.units <= 0) {
+          toRemove.push(k);
+        }
+      }
+    }
+
+    for (const k of toRemove) {
+      const tree = world.treeBlocks.get(k)!;
+      world.treeBlocks.delete(k);
+      world.deadMarkers.push({ cellX: tree.x, cellY: tree.y, cause: 'tree', msRemaining: 10000 });
+      log(world, 'death', `Tree @${tree.x},${tree.y} died of dehydration`, null, { x: tree.x, y: tree.y });
+    }
+  }
+
+  // ── Flower lifespan decay ──
+
+  static tickFlowerDecay(world: World): void {
+    for (const [k, flower] of world.flowerBlocks) {
+      flower.lifespanMs -= TICK_MS;
+      if (flower.lifespanMs <= 0) {
+        world.flowerBlocks.delete(k);
+      }
+    }
+  }
+
   // ── Block decay (delegates to BlockManager) ──
 
   static tickBlockDecay(world: World): void {
@@ -77,6 +145,8 @@ export class WorldUpdater {
     WorldUpdater.tickWaterDecay(world);
     WorldUpdater.tickTerrain(world);
     WorldUpdater.tickTreeAging(world);
+    WorldUpdater.tickTreeSustain(world);
+    WorldUpdater.tickFlowerDecay(world);
     WorldUpdater.tickBlockDecay(world);
   }
 }

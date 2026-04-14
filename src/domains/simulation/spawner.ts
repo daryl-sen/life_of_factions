@@ -1,6 +1,11 @@
-import { GRID_SIZE, TICK_MS, FOOD_EMOJIS, TREE_EMOJIS } from '../../core/constants';
+import {
+  GRID_SIZE, TICK_MS, FOOD_EMOJIS,
+  TREE_VARIANT_EMOJI, TREE_FRUIT_EMOJIS, FLOWER_EMOJIS,
+  FARM_CROP_EMOJI, MEDICINE_EMOJI, CACTUS_EMOJI, COCONUT_EMOJI,
+} from '../../core/constants';
 import { key, manhattan, rndi, log, uuid } from '../../core/utils';
 import type { World } from '../world/world';
+import type { TreeVariant } from '../world/types';
 import { AgentFactory } from '../entity/agent-factory';
 
 // ── Inlined TUNE constants ──
@@ -23,6 +28,26 @@ const TREE_WATER_REQUIRED_FOR_SEEDLING = 5;
 const TREE_POOP_BOOST_SEEDLING_RADIUS = 3;
 const TREE_SEEDLING_NEAR_WATER_CHANCE = 0.0005;
 
+// ── Tree variant tuning ──
+const TROPICAL_DENSITY_CAP = 2;          // max 🌴 in 3×3 area
+const REGULAR_DENSITY_CAP = 3;           // max 🌳 in 3×3 area
+
+// ── New plant tuning ──
+const MEDICINE_SPAWN_CHANCE = 0.0003;    // per mountain obstacle per tick
+const MEDICINE_SPAWN_RADIUS = 3;
+
+const FLOWER_SPAWN_CHANCE = 0.0002;      // per fresh-water block per tick
+const FLOWER_SPAWN_RADIUS = 3;
+const FLOWER_LIFESPAN_RANGE: [number, number] = [100000, 140000]; // ~100-140s
+
+const CACTUS_SPAWN_CHANCE = 0.0001;      // global roll per tick
+const CACTUS_MIN_WATER_DISTANCE = 15;
+const CACTUS_UNITS = 1;
+const CACTUS_MAX_UNITS = 1;
+
+const COCONUT_CAP_PER_TREE = 3;         // max coconuts within COCONUT_RADIUS cells
+const COCONUT_RADIUS = 2;
+
 const EGG_HATCH_TIME_MS = 60000;
 const EGG_SPAWN_CHANCE_PER_LARGE_WATER = 0.0002;
 
@@ -44,8 +69,28 @@ function randomFoodEmoji(quality: 'hq' | 'lq'): string {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function randomTreeEmoji(): string {
-  return TREE_EMOJIS[Math.floor(Math.random() * TREE_EMOJIS.length)];
+function randomVariant(): TreeVariant {
+  const variants: TreeVariant[] = ['tropical', 'evergreen', 'regular'];
+  return variants[Math.floor(Math.random() * variants.length)];
+}
+
+function countVariantInArea(world: World, cx: number, cy: number, variant: TreeVariant, radius: number): number {
+  let count = 0;
+  for (let dx = -radius; dx <= radius; dx++) {
+    for (let dy = -radius; dy <= radius; dy++) {
+      const tree = world.treeBlocks.get(key(cx + dx, cy + dy));
+      if (tree && tree.variant === variant) count++;
+    }
+  }
+  return count;
+}
+
+function countFoodInRadius(world: World, cx: number, cy: number, radius: number): number {
+  let count = 0;
+  for (const [, fb] of world.foodBlocks) {
+    if (manhattan(cx, cy, fb.x, fb.y) <= radius) count++;
+  }
+  return count;
 }
 
 // ── Public API ──
@@ -116,7 +161,7 @@ export class Spawner {
         const units = rndi(FOOD_HQ_UNITS[0], FOOD_HQ_UNITS[1]);
         world.foodBlocks.set(key(x, y), {
           id: uuid(), x, y,
-          emoji: randomFoodEmoji('hq'),
+          emoji: FARM_CROP_EMOJI,
           quality: 'hq', units, maxUnits: units,
         });
         spawned = true;
@@ -195,7 +240,8 @@ export class Spawner {
 
   // ── Tree spawning ──
 
-  static addTree(world: World): boolean {
+  static addTree(world: World, variant?: TreeVariant): boolean {
+    const v = variant ?? randomVariant();
     for (let attempt = 0; attempt < 500; attempt++) {
       const x = rndi(0, GRID_SIZE - 1);
       const y = rndi(0, GRID_SIZE - 1);
@@ -204,7 +250,8 @@ export class Spawner {
       const maxAgeMs = rndi(TREE_MAX_AGE_RANGE[0], TREE_MAX_AGE_RANGE[1]);
       world.treeBlocks.set(key(x, y), {
         id: uuid(), x, y,
-        emoji: randomTreeEmoji(),
+        emoji: TREE_VARIANT_EMOJI[v],
+        variant: v,
         units, maxUnits: units,
         ageTotalMs: 0, maxAgeMs,
       });
@@ -222,12 +269,21 @@ export class Spawner {
 
   // ── Seedling / tree passive spawns ──
 
-  static trySpawnSeedling(world: World, originX: number, originY: number): boolean {
+  static trySpawnSeedling(world: World, originX: number, originY: number, variant: TreeVariant): boolean {
+    // Check for water — tropical can use saltwater too
     let nearWater = false;
     for (const wb of world.waterBlocks.values()) {
       if (manhattan(originX, originY, wb.x, wb.y) <= TREE_WATER_REQUIRED_FOR_SEEDLING) {
         nearWater = true;
         break;
+      }
+    }
+    if (!nearWater && variant === 'tropical') {
+      for (const sw of world.saltWaterBlocks.values()) {
+        if (manhattan(originX, originY, sw.x, sw.y) <= TREE_WATER_REQUIRED_FOR_SEEDLING) {
+          nearWater = true;
+          break;
+        }
       }
     }
     if (!nearWater) return false;
@@ -241,6 +297,7 @@ export class Spawner {
       const dur = rndi(TREE_SEEDLING_GROWTH_RANGE[0], TREE_SEEDLING_GROWTH_RANGE[1]);
       world.seedlings.set(key(x, y), {
         id: uuid(), x, y,
+        variant,
         plantedAtTick: world.tick,
         growthDurationMs: dur,
         growthElapsedMs: 0,
@@ -250,38 +307,88 @@ export class Spawner {
     return false;
   }
 
-  static trySpawnFoodNearTree(world: World, treeX: number, treeY: number): boolean {
+  static trySpawnFruitNearTree(world: World, treeX: number, treeY: number, emoji: string): boolean {
     const r = TREE_FOOD_RADIUS;
     for (let attempt = 0; attempt < 10; attempt++) {
       const x = treeX + rndi(-r, r);
       const y = treeY + rndi(-r, r);
       if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) continue;
       if (world.grid.isCellOccupied(x, y)) continue;
-      return Spawner.addCrop(world, x, y);
+      const units = rndi(FOOD_HQ_UNITS[0], FOOD_HQ_UNITS[1]);
+      world.foodBlocks.set(key(x, y), {
+        id: uuid(), x, y,
+        emoji,
+        quality: 'hq',
+        units, maxUnits: units,
+      });
+      return true;
     }
     return false;
   }
 
   static tickSeedlings(world: World): void {
     const toConvert: string[] = [];
+    const toDie: string[] = [];
+
     for (const [k, s] of world.seedlings) {
+      // Check water proximity — tropical can use saltwater too
       let nearWater = false;
       for (const wb of world.waterBlocks.values()) {
-        if (manhattan(s.x, s.y, wb.x, wb.y) <= 5) { nearWater = true; break; }
+        if (manhattan(s.x, s.y, wb.x, wb.y) <= TREE_WATER_REQUIRED_FOR_SEEDLING) {
+          nearWater = true;
+          break;
+        }
       }
-      s.growthElapsedMs += nearWater ? TICK_MS : TICK_MS / 100;
+      if (!nearWater && s.variant === 'tropical') {
+        for (const sw of world.saltWaterBlocks.values()) {
+          if (manhattan(s.x, s.y, sw.x, sw.y) <= TREE_WATER_REQUIRED_FOR_SEEDLING) {
+            nearWater = true;
+            break;
+          }
+        }
+      }
+
+      if (nearWater) {
+        s.growthElapsedMs += TICK_MS;
+      } else {
+        // Without water, seedling declines — reverse progress at double the slow rate
+        s.growthElapsedMs -= TICK_MS * 2;
+        if (s.growthElapsedMs <= -(s.growthDurationMs * 0.5)) {
+          toDie.push(k);
+          continue;
+        }
+      }
+
       if (s.growthElapsedMs >= s.growthDurationMs) {
         toConvert.push(k);
       }
     }
+
+    // Silent deaths (no marker)
+    for (const k of toDie) {
+      world.seedlings.delete(k);
+    }
+
     for (const k of toConvert) {
       const s = world.seedlings.get(k)!;
+
+      // Density check for capped variants
+      if (s.variant === 'tropical' || s.variant === 'regular') {
+        const cap = s.variant === 'tropical' ? TROPICAL_DENSITY_CAP : REGULAR_DENSITY_CAP;
+        const count = countVariantInArea(world, s.x, s.y, s.variant, 1); // 3×3 = radius 1
+        if (count >= cap) {
+          world.seedlings.delete(k); // silently die, no death marker
+          continue;
+        }
+      }
+
       world.seedlings.delete(k);
       const units = rndi(TREE_UNIT_RANGE[0], TREE_UNIT_RANGE[1]);
       const maxAgeMs = rndi(TREE_MAX_AGE_RANGE[0], TREE_MAX_AGE_RANGE[1]);
       world.treeBlocks.set(k, {
         id: uuid(), x: s.x, y: s.y,
-        emoji: randomTreeEmoji(),
+        emoji: TREE_VARIANT_EMOJI[s.variant],
+        variant: s.variant,
         units, maxUnits: units,
         ageTotalMs: 0, maxAgeMs,
       });
@@ -305,6 +412,7 @@ export class Spawner {
           const dur = rndi(TREE_SEEDLING_GROWTH_RANGE[0], TREE_SEEDLING_GROWTH_RANGE[1]);
           world.seedlings.set(key(x, y), {
             id: uuid(), x, y,
+            variant: randomVariant(),  // random since no parent
             plantedAtTick: world.tick,
             growthDurationMs: dur,
             growthElapsedMs: 0,
@@ -335,9 +443,19 @@ export class Spawner {
       if (hydrated) seedlingChance *= 3;
       if (nearPoop) seedlingChance *= 2;
       if (Math.random() < seedlingChance) {
-        Spawner.trySpawnSeedling(world, tree.x, tree.y);
+        Spawner.trySpawnSeedling(world, tree.x, tree.y, tree.variant);
       } else if (nearPoop && Math.random() < TREE_FOOD_PASSIVE_CHANCE) {
-        Spawner.trySpawnFoodNearTree(world, tree.x, tree.y);
+        // Variant-specific fruit
+        if (tree.variant === 'tropical') {
+          const nearbyCoconuts = countFoodInRadius(world, tree.x, tree.y, COCONUT_RADIUS);
+          if (nearbyCoconuts < COCONUT_CAP_PER_TREE) {
+            Spawner.trySpawnFruitNearTree(world, tree.x, tree.y, COCONUT_EMOJI);
+          }
+        } else if (tree.variant === 'regular') {
+          const emoji = TREE_FRUIT_EMOJIS[Math.floor(Math.random() * TREE_FRUIT_EMOJIS.length)];
+          Spawner.trySpawnFruitNearTree(world, tree.x, tree.y, emoji);
+        }
+        // Evergreen: no fruit
       }
     }
   }
@@ -465,11 +583,8 @@ export class Spawner {
   }
 
   // ── Egg spawning and hatching ──
-  // Eggs spawn from large water blocks (0.0002 chance/tick/large block), continuously,
-  // regardless of agent count.
 
   static tickEggs(world: World): void {
-    // Spawn eggs from large water blocks
     const seenWater = new Set<string>();
     for (const wb of world.waterBlocks.values()) {
       if (seenWater.has(wb.id)) continue;
@@ -477,7 +592,6 @@ export class Spawner {
       if (wb.size !== 'large') continue;
       if (Math.random() >= EGG_SPAWN_CHANCE_PER_LARGE_WATER) continue;
 
-      // Place egg adjacent to a water cell
       for (const cell of wb.cells) {
         const adj: [number, number][] = [
           [cell.x + 1, cell.y], [cell.x - 1, cell.y],
@@ -499,7 +613,6 @@ export class Spawner {
       }
     }
 
-    // Hatch eggs
     const toHatch: string[] = [];
     for (const [k, egg] of world.eggs) {
       egg.hatchTimerMs -= TICK_MS;
@@ -519,6 +632,91 @@ export class Spawner {
     }
   }
 
+  // ── Medicine spawning ──
+
+  static tickMedicineSpawns(world: World): void {
+    const seen = new Set<string>();
+    for (const [, obs] of world.obstacles) {
+      if (seen.has(obs.id)) continue;
+      seen.add(obs.id);
+      if (obs.category !== 'mountain') continue;
+      if (Math.random() >= MEDICINE_SPAWN_CHANCE) continue;
+
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const dx = rndi(-MEDICINE_SPAWN_RADIUS, MEDICINE_SPAWN_RADIUS);
+        const dy = rndi(-MEDICINE_SPAWN_RADIUS, MEDICINE_SPAWN_RADIUS);
+        const x = obs.x + dx;
+        const y = obs.y + dy;
+        if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) continue;
+        if (world.grid.isCellOccupied(x, y)) continue;
+        world.medicineBlocks.set(key(x, y), { id: uuid(), x, y });
+        break;
+      }
+    }
+  }
+
+  // ── Flower spawning ──
+
+  static tickFlowerSpawns(world: World): void {
+    const seen = new Set<string>();
+    for (const [, wb] of world.waterBlocks) {
+      if (seen.has(wb.id)) continue;
+      seen.add(wb.id);
+      if (Math.random() >= FLOWER_SPAWN_CHANCE) continue;
+
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const dx = rndi(-FLOWER_SPAWN_RADIUS, FLOWER_SPAWN_RADIUS);
+        const dy = rndi(-FLOWER_SPAWN_RADIUS, FLOWER_SPAWN_RADIUS);
+        const x = wb.x + dx;
+        const y = wb.y + dy;
+        if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) continue;
+        if (world.grid.isCellOccupied(x, y)) continue;
+        const emoji = FLOWER_EMOJIS[Math.floor(Math.random() * FLOWER_EMOJIS.length)];
+        world.flowerBlocks.set(key(x, y), {
+          id: uuid(), x, y, emoji,
+          lifespanMs: rndi(FLOWER_LIFESPAN_RANGE[0], FLOWER_LIFESPAN_RANGE[1]),
+        });
+        break;
+      }
+    }
+  }
+
+  // ── Cactus spawning ──
+
+  static tickCactusSpawns(world: World): void {
+    if (Math.random() >= CACTUS_SPAWN_CHANCE) return;
+
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const x = rndi(0, GRID_SIZE - 1);
+      const y = rndi(0, GRID_SIZE - 1);
+      if (world.grid.isCellOccupied(x, y)) continue;
+
+      let tooClose = false;
+      for (const wb of world.waterBlocks.values()) {
+        if (manhattan(x, y, wb.x, wb.y) < CACTUS_MIN_WATER_DISTANCE) {
+          tooClose = true;
+          break;
+        }
+      }
+      if (!tooClose) {
+        for (const sw of world.saltWaterBlocks.values()) {
+          if (manhattan(x, y, sw.x, sw.y) < CACTUS_MIN_WATER_DISTANCE) {
+            tooClose = true;
+            break;
+          }
+        }
+      }
+      if (tooClose) continue;
+
+      world.cactusBlocks.set(key(x, y), {
+        id: uuid(), x, y,
+        units: CACTUS_UNITS,
+        maxUnits: CACTUS_MAX_UNITS,
+      });
+      break;
+    }
+  }
+
   // ── Combined tick ──
 
   static tick(world: World): void {
@@ -528,5 +726,11 @@ export class Spawner {
     Spawner.tickClouds(world);
     Spawner.tickSeedlingNearWater(world);
     Spawner.tickEggs(world);
+    Spawner.tickMedicineSpawns(world);
+    Spawner.tickFlowerSpawns(world);
+    Spawner.tickCactusSpawns(world);
   }
 }
+
+// Export for renderer use
+export { FLOWER_LIFESPAN_RANGE };

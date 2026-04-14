@@ -87,4 +87,7 @@ export class World {
   get poopBlocks() { return this.grid.poopBlocks; }
   get eggs() { return this.grid.eggs; }
   get saltWaterBlocks() { return this.grid.saltWaterBlocks; }
+  get medicineBlocks() { return this.grid.medicineBlocks; }
+  get flowerBlocks() { return this.grid.flowerBlocks; }
+  get cactusBlocks() { return this.grid.cactusBlocks; }
 }

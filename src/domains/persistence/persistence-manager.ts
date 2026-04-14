@@ -1,4 +1,4 @@
-import { CELL_PX, GRID_SIZE } from '../../core/constants';
+import { CELL_PX, GRID_SIZE, OBSTACLE_CATEGORY, TREE_VARIANT_EMOJI } from '../../core/constants';
 import { key, rndi, RingLog } from '../../core/utils';
 import type { ResourceMemoryType, IResourceMemoryEntry } from '../../core/types';
 import type { World } from '../world';
@@ -7,7 +7,7 @@ import { Agent } from '../entity/agent';
 import { Genome } from '../genetics';
 import { Faction, FactionManager } from '../faction';
 
-const VERSION = '4.2.0';
+const VERSION = '4.3.0';
 
 // Inlined TUNE constants
 const FARM_MAX_SPAWNS = 12;
@@ -145,7 +145,7 @@ export class PersistenceManager {
       } : null,
     }));
     return {
-      version: 'v4.2',
+      version: 'v4.3',
       meta: { version: VERSION, savedAt: Date.now() },
       grid: { CELL: CELL_PX, GRID: GRID_SIZE },
       state: {
@@ -172,6 +172,9 @@ export class PersistenceManager {
       poopBlocks: [...world.poopBlocks.values()],
       saltWaterBlocks: [...world.saltWaterBlocks.values()],
       eggs: [...world.eggs.values()],
+      medicineBlocks: [...world.medicineBlocks.values()],
+      flowerBlocks: [...world.flowerBlocks.values()],
+      cactusBlocks: [...world.cactusBlocks.values()],
       agents,
       familyRegistry: world.familyRegistry.getAllFamiliesIncludingDead().map(f => ({
         familyName: f.familyName,
@@ -239,8 +242,8 @@ export class PersistenceManager {
     // Version check: v4 saves have no top-level version; v4.2 saves have version:'v4.2'.
     // Throw on unknown future versions to surface incompatibility early.
     const saveVersion = d.version as string | undefined;
-    if (saveVersion && saveVersion !== 'v4.2') {
-      throw new Error(`Save file version "${saveVersion}" is not compatible with v4.2`);
+    if (saveVersion && saveVersion !== 'v4.2' && saveVersion !== 'v4.3') {
+      throw new Error(`Save file version "${saveVersion}" is not compatible with v4.3`);
     }
     world.running = false;
     world.grid.clear();
@@ -273,7 +276,12 @@ export class PersistenceManager {
       world.flagCells.add(key(fl.x, fl.y));
     }
     for (const o of d.obstacles || d.walls || []) {
-      const obs = { ...o, emoji: o.emoji || '🪨' };
+      const emoji = o.emoji || '\u{1FAA8}';
+      const obs = {
+        ...o,
+        emoji,
+        category: o.category ?? (OBSTACLE_CATEGORY[emoji] ?? 'rock'),
+      };
       world.obstacles.set(key(o.x, o.y), obs);
       if (o.size === '2x2') {
         world.obstacles.set(key(o.x + 1, o.y), obs);
@@ -314,9 +322,13 @@ export class PersistenceManager {
     }
     // Restore tree blocks
     for (const tb of d.treeBlocks || []) {
+      const emoji = tb.emoji ?? TREE_VARIANT_EMOJI.regular;
+      const variant = tb.variant ?? variantFromEmoji(emoji);
       world.treeBlocks.set(key(tb.x, tb.y), {
         id: tb.id, x: tb.x, y: tb.y,
-        emoji: tb.emoji, units: tb.units ?? 3,
+        emoji,
+        variant,
+        units: tb.units ?? 3,
         maxUnits: tb.maxUnits ?? 3,
         ageTotalMs: tb.ageTotalMs ?? 0,
         maxAgeMs: tb.maxAgeMs ?? rndi(TREE_MAX_AGE_RANGE[0], TREE_MAX_AGE_RANGE[1]),
@@ -326,6 +338,7 @@ export class PersistenceManager {
     for (const s of d.seedlings || []) {
       world.seedlings.set(key(s.x, s.y), {
         id: s.id, x: s.x, y: s.y,
+        variant: s.variant ?? 'regular',
         plantedAtTick: s.plantedAtTick ?? 0,
         growthDurationMs: s.growthDurationMs ?? 60000,
         growthElapsedMs: s.growthElapsedMs ?? 0,
@@ -365,6 +378,26 @@ export class PersistenceManager {
         x: eg.x,
         y: eg.y,
         hatchTimerMs: eg.hatchTimerMs ?? 0,
+      });
+    }
+    // Restore medicine blocks
+    for (const m of d.medicineBlocks || []) {
+      world.medicineBlocks.set(key(m.x, m.y), { id: m.id, x: m.x, y: m.y });
+    }
+    // Restore flower blocks
+    for (const f of d.flowerBlocks || []) {
+      world.flowerBlocks.set(key(f.x, f.y), {
+        id: f.id, x: f.x, y: f.y,
+        emoji: f.emoji,
+        lifespanMs: f.lifespanMs ?? 120000,
+      });
+    }
+    // Restore cactus blocks
+    for (const c of d.cactusBlocks || []) {
+      world.cactusBlocks.set(key(c.x, c.y), {
+        id: c.id, x: c.x, y: c.y,
+        units: c.units ?? 1,
+        maxUnits: c.maxUnits ?? 1,
       });
     }
     // Recompute terrain moisture from restored water/saltwater state
@@ -519,4 +552,12 @@ export class PersistenceManager {
       }
     });
   }
+}
+
+import type { TreeVariant } from '../world/types';
+
+function variantFromEmoji(emoji: string): TreeVariant {
+  if (emoji === TREE_VARIANT_EMOJI.tropical) return 'tropical';
+  if (emoji === TREE_VARIANT_EMOJI.evergreen) return 'evergreen';
+  return 'regular'; // default for 🌳, 🎄, or unknown
 }
