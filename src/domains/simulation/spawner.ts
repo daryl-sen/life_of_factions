@@ -375,7 +375,7 @@ export class Spawner {
       // Density check for capped variants
       if (s.variant === 'tropical' || s.variant === 'regular') {
         const cap = s.variant === 'tropical' ? TROPICAL_DENSITY_CAP : REGULAR_DENSITY_CAP;
-        const count = countVariantInArea(world, s.x, s.y, s.variant, 1); // 3×3 = radius 1
+        const count = countVariantInArea(world, s.x, s.y, s.variant, 2); // 5×5 = radius 2
         if (count >= cap) {
           world.seedlings.delete(k); // silently die, no death marker
           continue;
