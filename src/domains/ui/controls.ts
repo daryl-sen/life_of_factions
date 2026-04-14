@@ -100,7 +100,7 @@ export class Controls {
       spawnAgents(Number(ranges.rngAgents?.value || 20));
       world.running = true;
       if (buttons.btnStart) buttons.btnStart.style.display = 'none';
-      if (buttons.btnReset) buttons.btnReset.style.display = '';
+      if (buttons.btnReset) buttons.btnReset.style.display = 'block';
       if (buttons.btnPause) buttons.btnPause.disabled = false;
       if (buttons.btnResume) buttons.btnResume.disabled = true;
       if (ranges.rngAgents) ranges.rngAgents.disabled = true;
@@ -236,7 +236,7 @@ export class Controls {
           if (buttons.btnPause) buttons.btnPause.disabled = true;
           if (buttons.btnResume) buttons.btnResume.disabled = false;
           if (buttons.btnStart) buttons.btnStart.style.display = 'none';
-          if (buttons.btnReset) buttons.btnReset.style.display = '';
+          if (buttons.btnReset) buttons.btnReset.style.display = 'block';
           if (ranges.rngAgents) ranges.rngAgents.disabled = true;
           if (nums.numAgents) nums.numAgents.disabled = true;
         } catch (err) {

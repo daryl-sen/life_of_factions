@@ -76,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
       PersistenceManager.restore(world, autosaveData, { doRenderLog, dom });
       // Set button states so user can resume the restored session
       if (dom.buttons.btnStart) dom.buttons.btnStart.style.display = 'none';
-      if (dom.buttons.btnReset) dom.buttons.btnReset.style.display = '';
+      if (dom.buttons.btnReset) dom.buttons.btnReset.style.display = 'block';
       if (dom.buttons.btnPause) dom.buttons.btnPause.disabled = true;
       if (dom.buttons.btnResume) dom.buttons.btnResume.disabled = false;
       if (dom.ranges.rngAgents) dom.ranges.rngAgents.disabled = true;
