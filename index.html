@@ -348,6 +348,11 @@
         padding: 24px;
         max-width: 340px;
         width: 90vw;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        margin: 0;
       }
       #resetModal::backdrop {
         background: rgba(0,0,0,0.6);
@@ -1053,6 +1058,7 @@
             <label class="toggle-row"><input type="checkbox" id="cbPauseOnBlur"/> Pause when unfocused</label>
             <label class="toggle-row"><input type="checkbox" id="cbDrawGrid"/> Draw grid overlays</label>
           </div>
+          <div id="indicatorConfigMount" style="margin-top:14px"></div>
         </div>
       </div>
     </div>

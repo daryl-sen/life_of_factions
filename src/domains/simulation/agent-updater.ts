@@ -1,4 +1,6 @@
 import { GRID_SIZE, TICK_MS } from '../../core/constants';
+import { TUNE } from '../../core/tuning';
+import { moveEnergyCost, passiveEnergyDrainPerTick } from '../genetics/cost-functions';
 import type { ResourceMemoryType } from '../../core/types';
 import { key, manhattan, rndi, log } from '../../core/utils';
 import { findPath, findNearest, planPath } from '../../core/pathfinding';
@@ -15,18 +17,10 @@ import { ContextBuilder } from '../decision/context-builder';
 import { evaluateNeeds } from '../decision/need-evaluator';
 import { computeMood } from '../decision/mood-evaluator';
 
-// ── Inlined TUNE constants ──
-
-const PASSIVE_ENERGY_DRAIN = 0.0625;
-const FULLNESS_PASSIVE_DECAY = 0.03;
-const INSPIRATION_PASSIVE_DECAY = 0.015;
-const SOCIAL_PASSIVE_DECAY = 0.01;
+// ── Local constants (not in TUNE — world/gameplay mechanics not tuned per-trait) ──
 
 const ENERGY_LOW_THRESHOLD = 40;
 
-const MOVE_ENERGY = 0.12;
-const FULLNESS_MOVE_DECAY = 0.10;
-const HYGIENE_MOVE_DECAY = 0.05;
 const HYGIENE_STEP_ON_POOP_DECAY = 5;
 
 const FULLNESS_SEEK_THRESHOLD = 40;
@@ -624,10 +618,11 @@ export class AgentUpdater {
     agent.ageTicks++;
 
     // Passive drains (pregnancy increases fullness decay by 50%)
-    agent.energy -= PASSIVE_ENERGY_DRAIN;
-    agent.drainFullness(FULLNESS_PASSIVE_DECAY * agent.fullnessDecayMult);
-    agent.inspiration = Math.max(0, agent.inspiration - INSPIRATION_PASSIVE_DECAY);
-    agent.social = Math.max(0, agent.social - SOCIAL_PASSIVE_DECAY);
+    // v4.2: energy drain is trait-scaled (Recall slots add brain overhead)
+    agent.energy -= passiveEnergyDrainPerTick(agent.traits);
+    agent.drainFullness(TUNE.decay.baseFullnessPerTick * agent.fullnessDecayMult);
+    agent.inspiration = Math.max(0, agent.inspiration - TUNE.decay.baseInspirationPerTick);
+    agent.social = Math.max(0, agent.social - TUNE.decay.baseSocialPerTick);
 
     // Poop timer
     if (agent.poopTimerMs > 0) agent.poopTimerMs -= TICK_MS;
@@ -670,7 +665,7 @@ export class AgentUpdater {
       }
     }
 
-    // Pregnancy timer
+    // Pregnancy tick (miscarriage checks shared by both paths)
     if (agent.pregnancy.active) {
       // Miscarriage: starvation ends pregnancy immediately
       if (agent.fullness <= 0) {
@@ -688,7 +683,19 @@ export class AgentUpdater {
           log(world, 'reproduce', `${agent.name} lost the pregnancy (illness)`, agent.id, {});
           world.events.emit('pregnancy:miscarriage', { agentId: agent.id, cause: 'disease' });
         }
+      } else if (agent.pregnancy.useTransferMechanic) {
+        // v4.2: per-tick need transfer from parent to child
+        const drained = agent.pregnancy.tickTransfer();
+        agent.drainFullness(drained.fullnessDrained);
+        agent.needs.hygiene     = Math.max(0, agent.needs.hygiene     - drained.hygieneDrained);
+        agent.needs.social      = Math.max(0, agent.needs.social      - drained.socialDrained);
+        agent.needs.inspiration = Math.max(0, agent.needs.inspiration - drained.inspirationDrained);
+
+        if (agent.pregnancy.isReadyForBirth()) {
+          AgentUpdater._handleBirth(world, agent);
+        }
       } else {
+        // v4 fallback: countdown timer
         const birth = agent.pregnancy.tick(TICK_MS);
         if (birth) {
           AgentUpdater._handleBirth(world, agent);
@@ -778,9 +785,10 @@ export class AgentUpdater {
                 }
                 agent.pathIdx++;
                 agent.moveCredit -= 1;
-                agent.energy -= MOVE_ENERGY;
-                agent.drainFullness(FULLNESS_MOVE_DECAY);
-                agent.hygiene = Math.max(0, agent.hygiene - HYGIENE_MOVE_DECAY);
+                // v4.2: movement energy is trait-scaled (Agility increases cost)
+                agent.energy -= moveEnergyCost(agent.traits);
+                agent.drainFullness(TUNE.decay.moveFullnessDecay);
+                agent.hygiene = Math.max(0, agent.hygiene - TUNE.decay.moveHygieneDecay);
                 if (world.poopBlocks.has(key(agent.cellX, agent.cellY))) {
                   agent.hygiene = Math.max(0, agent.hygiene - HYGIENE_STEP_ON_POOP_DECAY);
                 }
@@ -1004,7 +1012,7 @@ export class AgentUpdater {
 
     // ── Disease effects ──
     if (agent.diseased) {
-      agent.energy -= PASSIVE_ENERGY_DRAIN; // 2x drain
+      agent.energy -= passiveEnergyDrainPerTick(agent.traits); // 2x drain (disease doubles energy drain)
       agent.health -= (DISEASE_HP_DRAIN_PER_SEC * TICK_MS) / 1000;
       if (agent.hygiene > DISEASE_CURE_HYGIENE_THRESHOLD) {
         agent.diseased = false;
@@ -1055,14 +1063,24 @@ export class AgentUpdater {
     }
 
     const [cx, cy] = free;
+    // For the v4.2 transfer mechanic, the child's initial fullness comes from
+    // the accumulated childNeeds.fullness; other needs are also transferred in.
+    const initialFullness = preg.useTransferMechanic
+      ? preg.childNeeds.fullness
+      : preg.donatedFullness;
     const child = AgentFactory.createChild(
       cx, cy,
       preg.childDna,
       preg.childFamilyName ?? agent.familyName,
       preg.childFactionId,
       agent.generation,
-      preg.donatedFullness
+      initialFullness
     );
+    if (preg.useTransferMechanic) {
+      child.needs.hygiene     = preg.childNeeds.hygiene;
+      child.needs.social      = preg.childNeeds.social;
+      child.needs.inspiration = preg.childNeeds.inspiration;
+    }
 
     // Set parent IDs for maternity feeding
     child.parentIds = [agent.id];

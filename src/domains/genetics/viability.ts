@@ -1,4 +1,5 @@
 import { GENE_REGISTRY, lookupGene } from './gene-registry';
+import { TUNE } from '../../core/tuning';
 import type { TraitSet, RawGeneEntry } from './types';
 
 /** Essential trait codes */
@@ -13,7 +14,11 @@ const ESSENTIAL_CODES = ['AA', 'BB', 'CC', 'DD', 'EE'];
  *
  * If either check fails, the child is stillborn.
  */
-export function isViable(traits: TraitSet, genes: ReadonlyArray<RawGeneEntry>): boolean {
+export function isViable(traits: TraitSet, genes: ReadonlyArray<RawGeneEntry>, dna: string): boolean {
+  // 0. DNA length bounds
+  if (dna.length < TUNE.mutation.minDnaLength) return false;
+  if (dna.length > TUNE.mutation.maxDnaLength) return false;
+
   // 1. Check that at least one functional gene exists for each essential trait
   const essentialCodingFound = new Set<string>();
   for (const gene of genes) {

@@ -5,7 +5,7 @@
 Emoji Life is a zero-player, real-time 2D sandbox simulation deployed to GitHub Pages. Autonomous agents live on a 62x62 grid, gathering food, forming factions, reproducing, building, and fighting. The simulation is "cozy-chaotic" — designed to produce emergent stories, not follow a script.
 
 **Live site:** https://daryl-sen.github.io/life_of_factions/
-**Version:** 4.0.0 (in development — genetics system)
+**Version:** 4.2.0
 **Branch strategy:** Feature branches off `main`, bundled PRs.
 
 ---

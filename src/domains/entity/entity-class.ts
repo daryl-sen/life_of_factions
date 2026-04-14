@@ -68,7 +68,7 @@ export const ENTITY_CLASSES: Record<EntityClassName, EntityClassDef> = {
       heal: '\u{1F917}',
       share: '\u{1FAE2}',
       sleep: '\u{1F634}',
-      harvest: '\u{1FAE8}',
+      harvest: '\u{1FAE8}',  // 🫨
       eat: '\u{1F914}',
       wash: '\u{1F914}',
       deposit: '\u{1F617}',
