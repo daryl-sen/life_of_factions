@@ -52,6 +52,7 @@ export class World {
   paintMode: PaintMode = 'none';
   pauseOnBlur = false;
   drawGrid = false;
+  drawTerritories = false;
   factionSort: 'members' | 'created' | 'name' | 'level' = 'members';
   familySort: 'alive' | 'total' | 'name' | 'lifespan' | 'generation' = 'alive';
   starredStats: string[] = ['agents', 'factions', 'crops'];

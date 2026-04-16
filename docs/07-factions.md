@@ -309,6 +309,58 @@ function reconcileFactions(world) {
 }
 ```
 
+## Territories
+
+Each faction has a **territory** — a circular region centered on its flag. The territory radius starts at 10 cells and grows as the faction gains members.
+
+```
+radius = min(25, 10 + floor(memberCount / 5))
+```
+
+| Members | Radius |
+|---------|--------|
+| 1–4     | 10     |
+| 5–9     | 11     |
+| 10–14   | 12     |
+| 25+     | 15     |
+| 75+     | 25 (cap) |
+
+### Territory Effects on Behavior
+
+Faction members inside their **own territory** receive behavioral modifiers scaled by their `AR` (Tribalism) trait:
+
+- **Social/helpful actions** toward allies are boosted (+60 × territorialSensitivity)
+- **Combat actions** against enemies are boosted (+80 × territorialSensitivity)
+
+Members inside an **enemy faction's territory** receive:
+
+- **Attack against territory owners** is slightly boosted (+50 × territorialSensitivity)
+
+Faction-less agents (not belonging to any faction) are unaffected by territorial modifiers.
+
+### Wandering vs. Staying (Nomadism Gene)
+
+The `AQ` (Nomadism) trait controls whether an agent tends to stay near their faction's flag or wander beyond the territory:
+
+- **High wanderBias** (high Nomadism): agent explores freely outside territory
+- **Low wanderBias** (low Nomadism): agent prefers to stay inside territory; deposit actions are boosted when out of territory, pulling the agent back toward the flag
+
+### Farm Construction
+
+Faction members may only build farms **within their faction's territory radius**. Agents who wander outside their territory lose the ability to build until they return. Faction-less agents have no building restriction.
+
+### Territory Overlap
+
+Territories can overlap. When two factions' territories intersect, the resulting competition naturally encourages conflict:
+
+- Members of each faction may become more aggressive toward each other inside the overlap
+- Combat and conversion events reduce opposing faction populations, which reduces their territory radius
+- The faction that consistently wins will expand while the loser contracts
+
+### Territory Display
+
+Territory boundaries can be toggled via the **Show faction territories** checkbox in the Interaction Tools panel. Each faction's territory is rendered as a semi-transparent filled circle with a dashed border in the faction's color.
+
 ## Strategic Implications
 
 ### Advantages of Factions

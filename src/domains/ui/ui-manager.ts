@@ -114,6 +114,14 @@ export interface DomRefs {
     btnReplenish: HTMLButtonElement | null;
     btnPaintSaltWater: HTMLButtonElement | null;
     btnPaintLand: HTMLButtonElement | null;
+    btnSpeedSlow: HTMLButtonElement | null;
+    btnSpeedNormal: HTMLButtonElement | null;
+    btnSpeedFast: HTMLButtonElement | null;
+    btnSpeedVFast: HTMLButtonElement | null;
+    btnSize62: HTMLButtonElement | null;
+    btnSize124: HTMLButtonElement | null;
+    btnSize160: HTMLButtonElement | null;
+    btnSize200: HTMLButtonElement | null;
   };
   fileLoad: HTMLInputElement | null;
   ranges: {
@@ -166,6 +174,7 @@ export interface DomRefs {
   logFilters: HTMLElement | null;
   pauseChk: HTMLInputElement | null;
   gridChk: HTMLInputElement | null;
+  territoriesChk: HTMLInputElement | null;
   factionSortEl: HTMLSelectElement | null;
   familySortEl: HTMLSelectElement | null;
 }
@@ -191,6 +200,14 @@ export class UIManager {
         btnReplenish: qs('#btnReplenish') as HTMLButtonElement | null,
         btnPaintSaltWater: qs('#btnPaintSaltWater') as HTMLButtonElement | null,
         btnPaintLand: qs('#btnPaintLand') as HTMLButtonElement | null,
+        btnSpeedSlow: qs('#btnSpeedSlow') as HTMLButtonElement | null,
+        btnSpeedNormal: qs('#btnSpeedNormal') as HTMLButtonElement | null,
+        btnSpeedFast: qs('#btnSpeedFast') as HTMLButtonElement | null,
+        btnSpeedVFast: qs('#btnSpeedVFast') as HTMLButtonElement | null,
+        btnSize62: qs('#btnSize62') as HTMLButtonElement | null,
+        btnSize124: qs('#btnSize124') as HTMLButtonElement | null,
+        btnSize160: qs('#btnSize160') as HTMLButtonElement | null,
+        btnSize200: qs('#btnSize200') as HTMLButtonElement | null,
       },
       fileLoad: qs('#fileLoad') as HTMLInputElement | null,
       ranges: {
@@ -243,6 +260,7 @@ export class UIManager {
       logFilters: qs('#logFilters'),
       pauseChk: qs('#cbPauseOnBlur') as HTMLInputElement | null,
       gridChk: qs('#cbDrawGrid') as HTMLInputElement | null,
+      territoriesChk: qs('#cbDrawTerritories') as HTMLInputElement | null,
       factionSortEl: qs('#factionSort') as HTMLSelectElement | null,
       familySortEl: qs('#familySort') as HTMLSelectElement | null,
     };

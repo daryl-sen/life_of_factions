@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const world = new World();
   (window as unknown as Record<string, unknown>).world = world;
 
-  // Pause & Grid toggles
+  // Pause, Grid & Territory toggles
   if (dom.pauseChk) {
     dom.pauseChk.checked = world.pauseOnBlur;
     dom.pauseChk.addEventListener('change', () => (world.pauseOnBlur = dom.pauseChk!.checked));
@@ -28,6 +28,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (dom.gridChk) {
     dom.gridChk.checked = world.drawGrid;
     dom.gridChk.addEventListener('change', () => (world.drawGrid = dom.gridChk!.checked));
+  }
+  if (dom.territoriesChk) {
+    dom.territoriesChk.checked = world.drawTerritories;
+    dom.territoriesChk.addEventListener('change', () => (world.drawTerritories = dom.territoriesChk!.checked));
   }
 
   // Log UI
@@ -81,8 +85,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (dom.buttons.btnResume) dom.buttons.btnResume.disabled = false;
       if (dom.ranges.rngAgents) dom.ranges.rngAgents.disabled = true;
       if (dom.nums.numAgents) dom.nums.numAgents.disabled = true;
-      if (dom.ranges.rngWorldSize) dom.ranges.rngWorldSize.disabled = true;
       if (dom.nums.numWorldSize) dom.nums.numWorldSize.disabled = true;
+      dom.buttons.btnSize62?.setAttribute('disabled', '');
+      dom.buttons.btnSize124?.setAttribute('disabled', '');
+      dom.buttons.btnSize160?.setAttribute('disabled', '');
+      dom.buttons.btnSize200?.setAttribute('disabled', '');
     } catch {
       PersistenceManager.clearAutosave();
     }
