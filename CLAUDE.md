@@ -293,6 +293,19 @@ docs/
 
 ---
 
+## Adding a New Gene (mandatory checklist)
+
+When adding a new gene, update **all four** of these files — missing any one causes silent bugs:
+
+1. **`src/domains/genetics/gene-registry.ts`** — Add the `[code, GeneDef]` entry to `GENE_REGISTRY`.
+2. **`src/domains/genetics/types.ts`** — Add the new trait group to `TraitSet` (e.g. `readonly nomadism: { readonly wanderBias: number }`).
+3. **`src/domains/genetics/expression.ts`** — Add `const x = s('XY')` and return the new trait in the object literal.
+4. **`src/domains/genetics/genome.ts`** — `ALL_CODES` is **auto-derived** from `GENE_REGISTRY` and requires no manual edit. If the new gene should *not* appear in randomly generated genomes (e.g. it is superseded by a newer gene), add its code to `RANDOM_EXCLUDED`.
+
+> **Why this matters:** Omitting a gene from `ALL_CODES` (before the auto-derivation fix) meant all agents silently used the default trait value — a bug that is invisible at build time. The auto-derivation in `genome.ts` prevents this, but the other three files still require manual updates.
+
+---
+
 ## Agent Workflow Rules
 
 ### For all changes
