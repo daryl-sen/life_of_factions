@@ -274,12 +274,17 @@ export class Renderer {
     for (const [fid, faction] of world.factions) {
       const flag = world.flags.get(fid);
       if (!flag) continue;
-      const radius = faction.territoryRadius() * CELL_PX;
+      const r = faction.territoryRadius();
+      // Draw as Manhattan-distance diamond to match the actual territory check
       const cx = (flag.x + 0.5) * CELL_PX;
       const cy = (flag.y + 0.5) * CELL_PX;
       ctx.save();
       ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.moveTo(cx,              cy - r * CELL_PX); // top
+      ctx.lineTo(cx + r * CELL_PX, cy);              // right
+      ctx.lineTo(cx,              cy + r * CELL_PX); // bottom
+      ctx.lineTo(cx - r * CELL_PX, cy);              // left
+      ctx.closePath();
       ctx.fillStyle = faction.color + '14';
       ctx.fill();
       ctx.strokeStyle = faction.color + '60';
