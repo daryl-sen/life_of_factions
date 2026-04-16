@@ -56,6 +56,45 @@ function traitCell(label: string, value: string, numValue: number, geneCode: str
   return `<div title="${tooltip}" style="color:${color};cursor:help">${label} ${value}</div>`;
 }
 
+/** Short labels that differ from the first-3-chars-of-gene-name default */
+const TRAIT_LABEL_OVERRIDES: Record<string, string> = {
+  'II': 'COP', 'KK': 'CRG', 'MM': 'RCL', 'NN': 'CHR',
+  'UU': 'GRD', 'VV': 'MTN', 'AG': 'PRG', 'AR': 'TRB',
+};
+
+/** Genes excluded from the auto grid (handled separately or superseded) */
+const SKIP_TRAIT_GENES = new Set(['OO', 'TT']);
+
+function formatTraitVal(compKey: string, val: number): string {
+  if (compKey.endsWith('Ms')) return (val / 1000).toFixed(1) + 's';
+  if (compKey === 'speedMult') return val.toFixed(2) + 'x';
+  if (compKey === 'mutationRate') return val.toFixed(4);
+  if (val >= 100) return val.toFixed(0);
+  if (val >= 10) return val.toFixed(1);
+  return val.toFixed(2);
+}
+
+/** Build all trait cells dynamically from the gene registry — no manual updates needed for new genes */
+function buildTraitCells(a: Agent): string {
+  const traitMap = a.traits as unknown as Record<string, Record<string, number>>;
+  let out = '';
+  for (const [code, def] of GENE_REGISTRY) {
+    if (SKIP_TRAIT_GENES.has(code)) continue;
+    const traitObj = traitMap[def.name.toLowerCase()];
+    if (!traitObj) continue;
+    const comp = def.components[0];
+    if (!comp) continue;
+    const val = traitObj[comp.key];
+    if (typeof val !== 'number') continue;
+    const label = TRAIT_LABEL_OVERRIDES[code] ?? def.name.slice(0, 3).toUpperCase();
+    out += traitCell(label, formatTraitVal(comp.key, val), val, code, `${def.name} — ${comp.key}`);
+  }
+  if (a.traits.parthenogenesis.canSelfReproduce) {
+    out += '<div title="Parthenogenesis — Can reproduce without a partner" style="color:#f9a8d4;cursor:help">ASEXUAL</div>';
+  }
+  return out;
+}
+
 function qs(sel: string): HTMLElement | null {
   return document.querySelector(sel);
 }
@@ -678,25 +717,7 @@ export class UIManager {
       <div style="font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border)">
         <div style="color:var(--muted);margin-bottom:4px;font-weight:600">TRAITS</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;font-size:10px">
-          ${traitCell('STR', a.traits.strength.baseAttack.toFixed(1), a.traits.strength.baseAttack, 'AA', 'Strength — Base attack damage')}
-          ${traitCell('RES', a.traits.resilience.baseMaxHp.toFixed(0), a.traits.resilience.baseMaxHp, 'EE', 'Resilience — Base max health')}
-          ${traitCell('VIG', a.traits.vigor.baseMaxEnergy.toFixed(0), a.traits.vigor.baseMaxEnergy, 'CC', 'Vigor — Base max energy')}
-          ${traitCell('LON', (a.traits.longevity.maxAgeMs / 1000).toFixed(0) + 's', a.traits.longevity.maxAgeMs, 'BB', 'Longevity — Max lifespan')}
-          ${traitCell('AGI', a.traits.agility.speedMult.toFixed(2) + 'x', a.traits.agility.speedMult, 'GG', 'Agility — Movement speed multiplier')}
-          ${traitCell('MET', a.traits.metabolism.fullnessDecay.toFixed(3), a.traits.metabolism.fullnessDecay, 'DD', 'Metabolism — Fullness decay rate (lower = slower hunger)')}
-          ${traitCell('AGG', a.traits.aggression.baseProbability.toFixed(2), a.traits.aggression.baseProbability, 'JJ', 'Aggression — Likelihood to attack')}
-          ${traitCell('COP', a.traits.cooperation.baseProbability.toFixed(2), a.traits.cooperation.baseProbability, 'II', 'Cooperation — Likelihood to help/heal/share')}
-          ${traitCell('CRG', a.traits.courage.fleeHpRatio.toFixed(2), a.traits.courage.fleeHpRatio, 'KK', 'Courage — Flee HP threshold (lower = braver)')}
-          ${traitCell('FER', a.traits.fertility.energyThreshold.toFixed(0), a.traits.fertility.energyThreshold, 'LL', 'Fertility — Energy needed to reproduce (lower = more fertile)')}
-          ${traitCell('APT', a.traits.aptitude.xpPerLevel.toFixed(0), a.traits.aptitude.xpPerLevel, 'HH', 'Aptitude — XP per level (lower = faster leveling)')}
-          ${traitCell('FID', a.traits.fidelity.leaveProbability.toFixed(2), a.traits.fidelity.leaveProbability, 'SS', 'Fidelity — Chance to leave faction (lower = more loyal)')}
-          ${traitCell('RCL', a.traits.recall.memorySlots.toFixed(0), a.traits.recall.memorySlots, 'MM', 'Recall — Resource memory slots')}
-          ${traitCell('CHR', a.traits.charisma.relationshipSlots.toFixed(0), a.traits.charisma.relationshipSlots, 'NN', 'Charisma — Max relationship slots')}
-          ${traitCell('END', a.traits.endurance.inventoryCapacity.toFixed(0), a.traits.endurance.inventoryCapacity, 'RR', 'Endurance — Inventory capacity')}
-          ${traitCell('MAT', (a.traits.maturity.babyDurationMs / 1000).toFixed(0) + 's', a.traits.maturity.babyDurationMs, 'QQ', 'Maturity — Baby stage duration (lower = matures faster)')}
-          ${traitCell('GRD', a.traits.greed.hoardProbability.toFixed(2), a.traits.greed.hoardProbability, 'UU', 'Greed — Probability of opportunistic resource hoarding')}
-          ${traitCell('MTN', a.traits.maternity.feedProbability.toFixed(2), a.traits.maternity.feedProbability, 'VV', 'Maternity — Probability of feeding nearby babies')}
-          ${a.traits.parthenogenesis.canSelfReproduce ? '<div title="Parthenogenesis — Can reproduce without a partner" style="color:#f9a8d4;cursor:help">ASEXUAL</div>' : ''}
+          ${buildTraitCells(a)}
         </div>
       </div>
       <div style="font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--border)">
