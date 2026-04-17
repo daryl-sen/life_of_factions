@@ -716,6 +716,57 @@ This cycle gives wood a strategic purpose beyond inventory filler and creates a 
 - **Benefits all agents:** Any agent can harvest from any farm's food output
 - **Inspiration reward:** The +25 inspiration bonus from building encourages farm construction
 
+## Housing (v4.5)
+
+Houses are buildable structures that agents enter for shelter and enhanced sleep. They are owned by families and can be upgraded through four tiers.
+
+### House Tiers
+
+| Tier | Emoji | Capacity | Size | HP | Wood Cost to Build |
+|------|-------|----------|------|----|--------------------|
+| tent | ⛺ | 2 | 1x1 | 20 | 3 (build_house) |
+| house | 🏠 | 4 | 1x1 | 35 | 5 (upgrade from tent) |
+| big_house | 🏠 | 6 | 2x2 | 50 | 8 (upgrade from house) |
+| settlement | 🏘️ | 8 | 2x2 | 70 | 12 (upgrade from big_house) |
+
+### Housing Resource Flow
+
+```
+Wood (3 units) → build_house action → tent spawns adjacent
+  → +10 XP to builder, builder becomes owner
+  → tent can be upgraded (5 wood) → house
+  → house can be upgraded (8 wood) → big_house (2x2)
+  → big_house can be upgraded (12 wood) → settlement (2x2)
+```
+
+### Sleep in House
+
+| Property | Value |
+|----------|-------|
+| Energy recovery per 500ms | 12 (vs 8 for outdoor sleep) |
+| Multiplier | 1.5× outdoor sleep rate |
+| Duration | 15.6–23.4s |
+
+### House Decay
+
+Houses lose HP over time. At 0 HP, the house is destroyed and occupants are evicted.
+
+| Tier | On Destruction |
+|------|---------------|
+| tent | Wood rubble spawned |
+| house/big_house/settlement | Derelict house (🏚️) spawned; agents can harvest wood from rubble |
+
+### Ownership Rules
+
+- Owner = builder (or heir after death)
+- **On owner death:** Eldest child inherits → eldest family member → vacant
+- Family members (same `familyName`) may enter any family house with capacity
+- Vacant houses (no owner) are accessible to any agent with capacity
+
+### Farms as Shelter
+
+Farms also function as 1-occupant shelters. An agent can enter an adjacent farm to sleep inside (same 1.5× recovery). Farm shelter uses the `farm:<id>` houseId encoding.
+
 ## Economy Balance
 
 ### Resource Flows

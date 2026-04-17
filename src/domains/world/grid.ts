@@ -1,6 +1,6 @@
 import { GRID_SIZE } from '../../core/constants';
 import { key } from '../../core/utils';
-import type { IFoodBlock, IFarm, IObstacle, IFlag, IWaterBlock, ITreeBlock, ISeedling, ILootBag, IPoopBlock, IEgg, ISaltWaterBlock, IMedicineBlock, IFlowerBlock, ICactusBlock } from './types';
+import type { IFoodBlock, IFarm, IObstacle, IFlag, IWaterBlock, ITreeBlock, ISeedling, ILootBag, IPoopBlock, IEgg, ISaltWaterBlock, IMedicineBlock, IFlowerBlock, ICactusBlock, IHouse } from './types';
 
 export class Grid {
   size: number = GRID_SIZE;
@@ -20,6 +20,8 @@ export class Grid {
   readonly medicineBlocks: Map<string, IMedicineBlock> = new Map();
   readonly flowerBlocks: Map<string, IFlowerBlock> = new Map();
   readonly cactusBlocks: Map<string, ICactusBlock> = new Map();
+  readonly houses: Map<string, IHouse> = new Map();
+  readonly houseCells: Set<string> = new Set();
 
   isBlocked(x: number, y: number, ignoreId: string | null = null): boolean {
     if (x < 0 || y < 0 || x >= this.size || y >= this.size) return true;
@@ -31,6 +33,7 @@ export class Grid {
     if (this.treeBlocks.has(k)) return true;
     if (this.cactusBlocks.has(k)) return true;
     if (this.saltWaterBlocks.has(k)) return true;
+    if (this.houseCells.has(k)) return true;
     const occ = this.agentsByCell.get(k);
     if (occ && occ !== ignoreId) return true;
     return false;
@@ -47,6 +50,7 @@ export class Grid {
     if (this.treeBlocks.has(k)) return true;
     if (this.cactusBlocks.has(k)) return true;
     if (this.saltWaterBlocks.has(k)) return true;
+    if (this.houseCells.has(k)) return true;
     return false;
   }
 
@@ -68,7 +72,8 @@ export class Grid {
       this.saltWaterBlocks.has(k) ||
       this.medicineBlocks.has(k) ||
       this.flowerBlocks.has(k) ||
-      this.cactusBlocks.has(k)
+      this.cactusBlocks.has(k) ||
+      this.houseCells.has(k)
     );
   }
 
@@ -98,5 +103,7 @@ export class Grid {
     this.medicineBlocks.clear();
     this.flowerBlocks.clear();
     this.cactusBlocks.clear();
+    this.houses.clear();
+    this.houseCells.clear();
   }
 }

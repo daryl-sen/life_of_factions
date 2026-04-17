@@ -18,7 +18,7 @@ export interface NearbyResource {
 }
 
 export interface NearbyBlock {
-  readonly type: 'poop' | 'lootBag' | 'flag' | 'farm' | 'obstacle' | 'tree';
+  readonly type: 'poop' | 'lootBag' | 'flag' | 'farm' | 'obstacle' | 'tree' | 'house';
   readonly pos: IPosition;
   readonly dist: number;
   readonly id?: string;
@@ -41,6 +41,12 @@ export interface DecisionContext {
   readonly inEnemyTerritory: boolean;
   /** The faction ID whose territory the agent is encroaching on, if any */
   readonly enemyTerritoryFactionId: string | null;
+  /** Houses within vision range */
+  readonly nearbyHouses: NearbyBlock[];
+  /** Agent has access to a nearby house with capacity */
+  readonly hasAccessibleHouse: boolean;
+  /** Agent is currently inside a house or farm */
+  readonly isInsideHouse: boolean;
 }
 
 export interface ActionCandidate {

@@ -54,4 +54,5 @@ export interface AgentOpts {
   generation?: number;
   matingTargetId?: string | null;
   parentIds?: string[];
+  houseId?: string | null;
 }

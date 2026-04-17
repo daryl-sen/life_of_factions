@@ -39,6 +39,7 @@ const LOD_SCALE = 0.55;
 const DRY_TREE_FILTER = 'saturate(0.3) sepia(0.6) brightness(0.9)';
 
 // LOD fallback colors
+const LOD_HOUSE   = '#8B6914';
 const LOD_WATER   = '#4488cc';
 const LOD_TREE_WET = '#3d6b2e';
 const LOD_TREE_DRY = '#8B7355';
@@ -128,6 +129,7 @@ export class Renderer {
     this._drawCactusBlocks(ctx, world, vb, lod);
     this._drawLootBags(ctx, world, vb, lod);
     this._drawFarms(ctx, world, vb, lod);
+    this._drawHouses(ctx, world, vb, lod);
     this._drawObstacles(ctx, world, vb, lod);
     this._drawFlags(ctx, world, vb, lod);
 
@@ -529,6 +531,46 @@ export class Renderer {
     }
   }
 
+  private _drawHouses(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
+    const drawn = new Set<string>();
+    for (const house of world.houses.values()) {
+      if (drawn.has(house.id)) continue;
+      drawn.add(house.id);
+
+      const in2x2View = house.size === '2x2'
+        ? (this._inView(house.x, house.y, vb) || this._inView(house.x + 1, house.y, vb) ||
+           this._inView(house.x, house.y + 1, vb) || this._inView(house.x + 1, house.y + 1, vb))
+        : this._inView(house.x, house.y, vb);
+
+      if (!in2x2View) continue;
+
+      const dmg = 1 - house.hp / house.maxHp;
+      ctx.globalAlpha = dmg > 0 ? 1 - Math.min(0.6, dmg) : 1;
+
+      if (lod) {
+        this._fillCell(ctx, house.x, house.y, LOD_HOUSE, 0);
+        if (house.size === '2x2') {
+          this._fillCell(ctx, house.x + 1, house.y, LOD_HOUSE, 0);
+          this._fillCell(ctx, house.x, house.y + 1, LOD_HOUSE, 0);
+          this._fillCell(ctx, house.x + 1, house.y + 1, LOD_HOUSE, 0);
+        }
+      } else if (house.size === '2x2') {
+        const { canvas: ec, w, h } = this._emojiCache.get(house.emoji);
+        const drawSize = CELL_PX * 2 - 2;
+        const scale = Math.min(drawSize / w, drawSize / h);
+        const dw = w * scale;
+        const dh = h * scale;
+        const bx = house.x * CELL_PX;
+        const by = house.y * CELL_PX;
+        ctx.drawImage(ec, bx + (CELL_PX * 2 - dw) / 2, by + (CELL_PX * 2 - dh) / 2, dw, dh);
+      } else {
+        this._drawCellEmoji(ctx, house.x, house.y, house.emoji);
+      }
+
+      ctx.globalAlpha = 1;
+    }
+  }
+
   private _drawObstacles(ctx: CanvasRenderingContext2D, world: World, vb: ViewBounds, lod: boolean): void {
     const drawn = new Set<string>();
     for (const o of world.obstacles.values()) {
@@ -594,6 +636,7 @@ export class Renderer {
   private _drawAgents(ctx: CanvasRenderingContext2D, world: World, toolLines: Array<{ agent: Agent; action: IActionState }>, vb: ViewBounds): void {
     const now = performance.now();
     for (const agent of world.agents) {
+      if (agent.isInsideHouse) continue;
       if (!this._inView(agent.cellX, agent.cellY, vb) &&
           !this._inView(agent.prevCellX ?? agent.cellX, agent.prevCellY ?? agent.cellY, vb)) continue;
 

@@ -86,6 +86,18 @@ export class ContextBuilder {
       }
     }
 
+    // Nearby houses (deduplicate multi-cell houses by id)
+    const nearbyHouses: NearbyBlock[] = [];
+    const seenHouseIds = new Set<string>();
+    for (const [, house] of world.grid.houses) {
+      if (seenHouseIds.has(house.id)) continue;
+      seenHouseIds.add(house.id);
+      const dist = manhattan(agent.cellX, agent.cellY, house.x, house.y);
+      if (dist <= vr) {
+        nearbyHouses.push({ type: 'house', pos: { x: house.x, y: house.y }, dist, id: house.id });
+      }
+    }
+
     // Own faction flag
     let nearOwnFlag = false;
     let ownFlagPos = null;
@@ -123,6 +135,15 @@ export class ContextBuilder {
 
     const needBands = evaluateNeeds(agent);
 
+    // Determine if agent has access to a nearby house with room
+    const hasAccessibleHouse = nearbyHouses.some(nb => {
+      const house = world.grid.houses.get(key(nb.pos.x, nb.pos.y));
+      if (!house) return false;
+      if (house.occupantIds.length >= house.capacity) return false;
+      // Access: family match or vacant
+      return !house.ownerId || house.familyName === agent.familyName || house.familyName === '';
+    });
+
     return {
       agent,
       nearbyAgents,
@@ -137,6 +158,9 @@ export class ContextBuilder {
       inOwnTerritory,
       inEnemyTerritory,
       enemyTerritoryFactionId,
+      nearbyHouses,
+      hasAccessibleHouse,
+      isInsideHouse: agent.isInsideHouse,
     };
   }
 }

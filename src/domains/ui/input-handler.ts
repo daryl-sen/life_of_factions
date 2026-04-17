@@ -270,6 +270,15 @@ export class InputHandler {
 
       world.selectedId = id || null;
       world.activeLogAgentId = id || null;
+
+      // Check for house click (only if no agent found)
+      if (!id) {
+        const houseAtCell = world.grid.houses.get(key(x, y)) ?? null;
+        world.selectedHouseId = houseAtCell?.id ?? null;
+      } else {
+        world.selectedHouseId = null;
+      }
+
       // Sync the agent filter dropdown
       const agentSelect = document.getElementById('agentFilterSelect') as HTMLSelectElement | null;
       if (agentSelect) agentSelect.value = id || '';

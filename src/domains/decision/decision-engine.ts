@@ -1,5 +1,6 @@
-import { GRID_SIZE } from '../../core/constants';
+import { GRID_SIZE, HOUSE_TIER_CONFIG } from '../../core/constants';
 import { rndi, key } from '../../core/utils';
+import { findHouseAt, getNextTier } from '../action/effects/house-effects';
 import type { Agent } from '../entity/agent';
 import { ENTITY_CLASSES } from '../entity/entity-class';
 import { ACTION_REGISTRY } from '../action/action-registry';
@@ -8,13 +9,14 @@ import { Mood } from '../entity/types';
 import { shouldFlee } from './flee-evaluator';
 import { scoreAction } from './action-scorer';
 import type { DecisionContext, ActionCandidate } from './types';
+import type { World } from '../world/world';
 
 /**
  * The decision engine replaces the old InteractionEngine's if-chain
  * with scored action selection.
  */
 export class DecisionEngine {
-  static decide(agent: Agent, context: DecisionContext): ActionCandidate | null {
+  static decide(agent: Agent, context: DecisionContext, world: World): ActionCandidate | null {
     // Flee check (new behavior from Courage gene)
     if (shouldFlee(agent, context)) {
       return fleeCandidate(agent, context);
@@ -31,13 +33,13 @@ export class DecisionEngine {
       if (!def) continue;
 
       // Quick requirement filters
-      if (!passesRequirements(actionType, agent, context)) continue;
+      if (!passesRequirements(actionType, agent, context, world)) continue;
 
       const score = scoreAction(def, agent, context);
       if (score <= -Infinity) continue;
 
       // Resolve target for scored candidate
-      const target = resolveTarget(actionType, agent, context);
+      const target = resolveTarget(actionType, agent, context, world);
       candidates.push({
         actionType,
         targetId: target?.targetId,
@@ -72,7 +74,7 @@ export class DecisionEngine {
   }
 }
 
-function passesRequirements(type: ActionType, agent: Agent, ctx: DecisionContext): boolean {
+function passesRequirements(type: ActionType, agent: Agent, ctx: DecisionContext, world: World): boolean {
   switch (type) {
     case 'eat':
       return agent.inventory.food > 0;
@@ -150,6 +152,33 @@ function passesRequirements(type: ActionType, agent: Agent, ctx: DecisionContext
     case 'build_farm': {
       return agent.inventory.wood >= 3 && agent.energy >= 6;
     }
+    case 'build_house': {
+      return !agent.isInsideHouse &&
+        agent.inventory.wood >= HOUSE_TIER_CONFIG.tent.woodCost &&
+        agent.energy >= 6;
+    }
+    case 'upgrade_house': {
+      if (agent.isInsideHouse) return false;
+      // Find an adjacent owned house that can be upgraded
+      const adj = ctx.nearbyHouses.filter(nb => nb.dist <= 1);
+      return adj.some(nb => {
+        const house = findHouseAt(world, nb.pos.x, nb.pos.y);
+        if (!house || house.ownerId !== agent.id) return false;
+        const nextTier = getNextTier(house.tier);
+        if (!nextTier) return false;
+        return agent.inventory.wood >= HOUSE_TIER_CONFIG[nextTier].woodCost;
+      });
+    }
+    case 'enter_house': {
+      if (agent.isInsideHouse) return false;
+      return ctx.hasAccessibleHouse;
+    }
+    case 'exit_house': {
+      return agent.isInsideHouse;
+    }
+    case 'sleep_in_house': {
+      return agent.isInsideHouse;
+    }
     default:
       return true;
   }
@@ -158,7 +187,8 @@ function passesRequirements(type: ActionType, agent: Agent, ctx: DecisionContext
 function resolveTarget(
   type: ActionType,
   agent: Agent,
-  ctx: DecisionContext
+  ctx: DecisionContext,
+  world: World
 ): { targetId?: string; targetPos?: { x: number; y: number } } | null {
   switch (type) {
     case 'attack': {
@@ -246,6 +276,33 @@ function resolveTarget(
       const rt = agent.fullness <= agent.hygiene ? 'food' : 'water';
       return { resourceType: rt } as { resourceType: string } & { targetId?: string; targetPos?: { x: number; y: number } };
     }
+    case 'upgrade_house': {
+      // Find nearest adjacent owned house that can still be upgraded
+      const adj = ctx.nearbyHouses.filter(nb => nb.dist <= 1);
+      for (const nb of adj) {
+        const house = findHouseAt(world, nb.pos.x, nb.pos.y);
+        if (!house || house.ownerId !== agent.id) continue;
+        if (!getNextTier(house.tier)) continue;
+        return { targetPos: { x: nb.pos.x, y: nb.pos.y } };
+      }
+      return null;
+    }
+    case 'enter_house': {
+      // Find nearest accessible house
+      const sorted = [...ctx.nearbyHouses].sort((a, b) => a.dist - b.dist);
+      for (const nb of sorted) {
+        const house = findHouseAt(world, nb.pos.x, nb.pos.y);
+        if (!house) continue;
+        if (house.occupantIds.length >= house.capacity) continue;
+        if (house.ownerId && house.familyName !== agent.familyName && house.familyName !== '') continue;
+        return { targetPos: { x: nb.pos.x, y: nb.pos.y } };
+      }
+      return null;
+    }
+    case 'build_house':
+    case 'exit_house':
+    case 'sleep_in_house':
+      return {};
     default:
       return {};
   }

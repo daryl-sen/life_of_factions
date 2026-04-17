@@ -62,6 +62,10 @@ export class Agent {
   // Movement speed accumulator (ephemeral, not persisted)
   moveCredit: number;
 
+  // Shelter
+  houseId: string | null;
+  isInsideHouse: boolean;
+
   // Legacy fields
   poopTimerMs: number;
   babyMsRemaining: number;
@@ -147,8 +151,10 @@ export class Agent {
     // Legacy
     this.poopTimerMs = opts.poopTimerMs ?? 0;
     this.babyMsRemaining = opts.babyMsRemaining ?? 0;
+    this.houseId = opts.houseId ?? null;
+    this.isInsideHouse = !!this.houseId;
     this.resourceMemory = new Map<ResourceMemoryType, IResourceMemoryEntry[]>([
-      ['food', []], ['water', []], ['wood', []],
+      ['food', []], ['water', []], ['wood', []], ['shelter', []],
     ]);
   }
 

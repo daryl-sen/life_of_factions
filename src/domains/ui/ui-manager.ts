@@ -200,6 +200,7 @@ export interface DomRefs {
     stDeaths: HTMLElement | null;
     stWater: HTMLElement | null;
     stTrees: HTMLElement | null;
+    stHouses: HTMLElement | null;
   };
   barEls: {
     barAgents: HTMLElement | null;
@@ -286,6 +287,7 @@ export class UIManager {
         stDeaths: qs('#stDeaths'),
         stWater: qs('#stWater'),
         stTrees: qs('#stTrees'),
+        stHouses: qs('#stHouses'),
       },
       barEls: {
         barAgents: qs('#barAgents'),
@@ -429,6 +431,12 @@ export class UIManager {
     if (s.stFarms) s.stFarms.textContent = compactNum(world.farms.size);
     if (s.stObstacles) s.stObstacles.textContent = compactNum(world.obstacles.size);
     if (s.stFlags) s.stFlags.textContent = compactNum(world.flags.size);
+    // Count unique houses (multi-cell houses share the same object)
+    if (s.stHouses) {
+      const seenHouses = new Set<string>();
+      for (const h of world.houses.values()) seenHouses.add(h.id);
+      s.stHouses.textContent = compactNum(seenHouses.size);
+    }
 
     const birthsPerMin = UIManager._ratePerMinute(world.birthTimestamps);
     const deathsPerMin = UIManager._ratePerMinute(world.deathTimestamps);
@@ -575,6 +583,39 @@ export class UIManager {
     if (!el) return;
     const badge = qs('#inspectorBadge');
     if (!world.selectedId) {
+      // Check for selected house
+      if (world.selectedHouseId) {
+        let house = null;
+        for (const [, h] of world.grid.houses) {
+          if (h.id === world.selectedHouseId) { house = h; break; }
+        }
+        if (house) {
+          if (badge) (badge as HTMLElement).style.display = '';
+          const owner = world.agentsById.get(house.ownerId);
+          const ownerName = owner ? `${owner.name} ${owner.familyName}` : house.ownerId ? '(deceased)' : 'Vacant';
+          const hpPct = Math.round((house.hp / house.maxHp) * 100);
+          const occupants = house.occupantIds
+            .map(id => world.agentsById.get(id)?.name ?? '?')
+            .join(', ') || 'Empty';
+          const tierLabel = house.tier.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
+          el.innerHTML = `
+            <div class="agent-card">
+              <div class="agent-avatar">${house.emoji}</div>
+              <div class="agent-info">
+                <div class="agent-name-row">
+                  <span class="agent-name">${tierLabel}</span>
+                </div>
+                <div class="stat-row"><span>Owner:</span><span>${ownerName}</span></div>
+                <div class="stat-row"><span>Family:</span><span>${house.familyName || 'Unclaimed'}</span></div>
+                <div class="stat-row"><span>Occupants:</span><span>${occupants}</span></div>
+                <div class="stat-row"><span>Capacity:</span><span>${house.occupantIds.length}/${house.capacity}</span></div>
+                <div class="stat-row"><span>Durability:</span><span>${hpPct}%</span></div>
+                <div class="progress-wrap"><div class="progress-bar hp-bar" style="width:${hpPct}%"></div></div>
+              </div>
+            </div>`;
+          return;
+        }
+      }
       el.innerHTML = '<div class="muted">Click an agent on the canvas.</div>';
       if (badge) (badge as HTMLElement).style.display = 'none';
       return;
