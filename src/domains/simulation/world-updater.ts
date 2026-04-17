@@ -1,5 +1,6 @@
-import { TICK_MS, OBSTACLE_CATEGORY } from '../../core/constants';
+import { TICK_MS, OBSTACLE_CATEGORY, HOUSE_DECAY_INTERVAL_MS, HOUSE_DECAY_AMOUNT } from '../../core/constants';
 import { key, log, manhattan } from '../../core/utils';
+import { evictOccupants, placeHouseRubble, unregisterHouseCells } from '../action/effects/house-effects';
 import type { World } from '../world/world';
 
 // ── Inlined TUNE constants ──
@@ -139,6 +140,43 @@ export class WorldUpdater {
     world.blockManager.tickDecay();
   }
 
+  // ── House deterioration ──
+
+  static tickHouseDecay(world: World): void {
+    const toDestroy: string[] = [];
+    const seen = new Set<string>();
+
+    for (const [, house] of world.grid.houses) {
+      if (seen.has(house.id)) continue;
+      seen.add(house.id);
+
+      house.decayTimerMs -= TICK_MS;
+      if (house.decayTimerMs <= 0) {
+        house.decayTimerMs = HOUSE_DECAY_INTERVAL_MS;
+        house.hp -= HOUSE_DECAY_AMOUNT;
+        if (house.hp <= 0) {
+          toDestroy.push(house.id);
+        }
+      }
+    }
+
+    for (const houseId of toDestroy) {
+      // Find the house object
+      let target = null;
+      for (const [, h] of world.grid.houses) {
+        if (h.id === houseId) { target = h; break; }
+      }
+      if (!target) continue;
+
+      evictOccupants(world, target);
+      unregisterHouseCells(world, target);
+      placeHouseRubble(world, target);
+
+      log(world, 'housing', `A ${target.tier.replace('_', ' ')} collapsed`, null, { x: target.x, y: target.y });
+      world.events.emit('house:destroyed', { house: target });
+    }
+  }
+
   // ── Combined update ──
 
   static update(world: World): void {
@@ -148,5 +186,6 @@ export class WorldUpdater {
     WorldUpdater.tickTreeSustain(world);
     WorldUpdater.tickFlowerDecay(world);
     WorldUpdater.tickBlockDecay(world);
+    WorldUpdater.tickHouseDecay(world);
   }
 }

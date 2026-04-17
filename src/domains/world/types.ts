@@ -22,6 +22,7 @@ export interface IFarm {
   y: number;
   spawnsRemaining: number;
   spawnTimerMs: number;
+  occupantId: string | null;
 }
 
 export interface IObstacle {
@@ -143,6 +144,25 @@ export interface ISaltWaterBlock {
   id: string;
   x: number;
   y: number;
+}
+
+export type HouseTier = 'tent' | 'house' | 'big_house' | 'settlement';
+
+export interface IHouse {
+  id: string;
+  x: number;
+  y: number;
+  tier: HouseTier;
+  emoji: string;
+  hp: number;
+  maxHp: number;
+  capacity: number;
+  size: '1x1' | '2x2';
+  cells: Array<{ x: number; y: number }>;
+  ownerId: string;
+  familyName: string;
+  occupantIds: string[];
+  decayTimerMs: number;
 }
 
 export type PaintMode = 'none' | 'draw' | 'erase' | 'replenish' | 'paintSaltWater' | 'paintLand';

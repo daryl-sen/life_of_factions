@@ -11,7 +11,7 @@ export interface IInventory {
 
 export type ResourceType = 'food' | 'water' | 'wood';
 
-export type ResourceMemoryType = 'food' | 'water' | 'wood';
+export type ResourceMemoryType = 'food' | 'water' | 'wood' | 'shelter';
 
 export interface IResourceMemoryEntry {
   x: number;

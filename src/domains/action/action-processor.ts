@@ -9,6 +9,11 @@ import { onBuildFarmComplete } from './effects/build-effects';
 import { onPoopComplete, onCleanComplete } from './effects/hygiene-effects';
 import { onReproduceComplete } from './effects/reproduce-effects';
 import { onPlayComplete } from './effects/play-effects';
+import {
+  onBuildHouseComplete, onUpgradeHouseComplete,
+  onEnterHouseComplete, onExitHouseComplete,
+  onSleepInHouseTick, onSleepInHouseComplete,
+} from './effects/house-effects';
 
 const ENERGY_LOW_THRESHOLD = 40;
 const FULLNESS_ACTION_DECAY_PER_SEC = 0.02;
@@ -18,6 +23,7 @@ const LOW_ENERGY_EXEMPT = new Set([
   'attack', 'sleep', 'harvest', 'eat', 'wash',
   'deposit', 'withdraw', 'pickup', 'poop', 'clean',
   'play', 'build_farm', 'await_mate',
+  'build_house', 'upgrade_house', 'enter_house', 'exit_house', 'sleep_in_house',
 ]);
 
 export class ActionProcessor {
@@ -103,6 +109,7 @@ function applyPeriodicEffect(world: World, agent: Agent, target: Agent | undefin
   const act = agent.action!;
   switch (act.type) {
     case 'sleep': onSleepTick(world, agent); break;
+    case 'sleep_in_house': onSleepInHouseTick(world, agent); break;
     case 'attack': if (target) onAttackTick(world, agent, target); break;
     case 'heal': if (target) onHealTick(world, agent, target); break;
     case 'share': if (target) onShareTick(world, agent, target); break;
@@ -130,5 +137,10 @@ function applyCompletion(world: World, agent: Agent, target: Agent | undefined):
     case 'play': onPlayComplete(world, agent); break;
     case 'build_farm': onBuildFarmComplete(world, agent); break;
     case 'reproduce': onReproduceComplete(world, agent, target); break;
+    case 'build_house': onBuildHouseComplete(world, agent); break;
+    case 'upgrade_house': onUpgradeHouseComplete(world, agent); break;
+    case 'enter_house': onEnterHouseComplete(world, agent); break;
+    case 'exit_house': onExitHouseComplete(world, agent); break;
+    case 'sleep_in_house': onSleepInHouseComplete(world, agent); break;
   }
 }

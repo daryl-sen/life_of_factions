@@ -4,6 +4,12 @@
 
 Emoji Life is a zero-player, real-time 2D sandbox simulation where autonomous agents ("little people") live on a 62×62 grid world. Agents gather resources, interact socially, form factions, reproduce, build structures, and fight over territory.
 
+## What's New in v4.5
+
+- **Housing system:** Agents build and inhabit 4-tier houses (tent → house → big_house → settlement). Agents inside houses are hidden from the grid and sleep with 1.5× energy recovery. Houses decay over time, can be upgraded, and ownership transfers to heirs on death.
+- **Farm shelter:** Agents can also sleep inside farms (1 occupant, 1.5× sleep).
+- **House inspector:** Click a house cell to view tier, HP, owner, and occupants.
+
 ## What's New in v4.2
 
 - **Three gestation paths** via the `AG` gene: transfer mechanic (gradual need-transfer), instant birth (zero starting needs), or v4 countdown fallback
@@ -25,7 +31,8 @@ Emoji Life is a zero-player, real-time 2D sandbox simulation where autonomous ag
 - **Energy System**: Core resource — recovered only via sleep, drained by actions (scaled by traits and level) and movement
 - **Relationships**: Bidirectional bonds between agents that evolve through interactions
 - **Factions**: Groups formed from strong relationships, complete with flags and healing auras
-- **Autosave**: World state is automatically saved to localStorage every 60 seconds and restored on page load (v4.2 save format; v4 saves are backward compatible)
+- **Autosave**: World state is automatically saved to localStorage every 60 seconds and restored on page load (v4.5 save format; v4.2/v4.3 saves are backward compatible)
+- **Housing**: Buildable houses with 4 tiers; agents inside are hidden from grid, sleep 1.5× faster
 
 ## Documentation Structure
 
@@ -61,7 +68,8 @@ Emoji Life is a zero-player, real-time 2D sandbox simulation where autonomous ag
 - **Resource**: `harvest`, `deposit`, `withdraw`, `pickup`
 - **Hygiene**: `poop`, `clean`
 - **Leisure**: `play`
-- **Build**: `build_farm`
+- **Build**: `build_farm`, `build_house`, `upgrade_house`
+- **Housing**: `enter_house`, `exit_house`, `sleep_in_house`
 - **Reproduction**: `reproduce`, `seek_mate`, `await_mate`
 
 ### World Objects
@@ -76,3 +84,4 @@ Emoji Life is a zero-player, real-time 2D sandbox simulation where autonomous ag
 - **Poop blocks**: Hygiene hazards (💩)
 - **Seedlings**: Growing into trees (🌱)
 - **Eggs**: Hatchable agent spawns (🥚)
+- **Houses**: Buildable 4-tier shelters (⛺🏠🏘️) — agents inside are hidden; click to inspect

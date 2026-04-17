@@ -1,5 +1,5 @@
 import type { LogCategory } from '../domains/action/types';
-import type { TreeVariant, ObstacleCategory } from '../domains/world/types';
+import type { TreeVariant, ObstacleCategory, HouseTier } from '../domains/world/types';
 
 export const CELL_PX = 16;
 export let GRID_SIZE = 62;
@@ -44,6 +44,27 @@ export const FACTION_COLORS: readonly string[] = [
   '#8d6e63',
 ];
 
+export interface HouseTierConfig {
+  readonly capacity: number;
+  readonly size: '1x1' | '2x2';
+  readonly hp: number;
+  readonly woodCost: number;
+  readonly emoji: string;
+}
+
+export const HOUSE_TIER_CONFIG: Record<HouseTier, HouseTierConfig> = {
+  tent:        { capacity: 2, size: '1x1', hp: 20, woodCost: 3,  emoji: '\u26FA' },          // ⛺
+  house:       { capacity: 4, size: '1x1', hp: 35, woodCost: 5,  emoji: '\u{1F3E0}' },       // 🏠
+  big_house:   { capacity: 6, size: '2x2', hp: 50, woodCost: 8,  emoji: '\u{1F3E0}' },       // 🏠
+  settlement:  { capacity: 8, size: '2x2', hp: 70, woodCost: 12, emoji: '\u{1F3D8}\uFE0F' }, // 🏘️
+};
+
+export const HOUSE_DECAY_INTERVAL_MS = 60_000;
+export const HOUSE_DECAY_AMOUNT = 1;
+export const HOUSE_SLEEP_ENERGY_BONUS = 1.5;
+export const HOUSE_DERELICT_EMOJI = '\u{1F3DA}\uFE0F'; // 🏚️
+export const HOUSE_RUBBLE_EMOJI = '\u{1FAB5}';          // 🪵 (wood log)
+
 export const AGENT_EMOJIS: Record<string, string> = {
   talk: '\u{1F604}',      // 😄
   quarrel: '\u{1F624}',   // 😤
@@ -61,9 +82,14 @@ export const AGENT_EMOJIS: Record<string, string> = {
   poop: '\u{1F623}',      // 😣
   clean: '\u{1F637}',     // 😷
   play: '\u{1F92A}',      // 🤪
-  build_farm: '\u{1F920}',// 🤠
-  seek_mate: '\u{1F495}', // 💕
-  await_mate: '\u{1F497}',// 💗
+  build_farm: '\u{1F920}',  // 🤠
+  seek_mate: '\u{1F495}',  // 💕
+  await_mate: '\u{1F497}', // 💗
+  build_house: '\u{1F6E0}\uFE0F',  // 🛠️
+  upgrade_house: '\u{1F528}',      // 🔨
+  enter_house: '\u{1F6B6}',        // 🚶
+  exit_house: '\u{1F6B6}',         // 🚶
+  sleep_in_house: '\u{1F634}',     // 😴
 };
 
 export const IDLE_EMOJIS = {
@@ -94,15 +120,15 @@ export const OBSTACLE_EMOJIS = [
 ] as const;
 
 export const WORLD_EMOJIS = {
-  farm: '\u{1F3E1}',        // 🏡
+  farm:        '\u{1F3E1}',        // 🏡
   obstacle: '\u{1FAA8}',    // 🪨
   flag: '\u{1F6A9}',        // 🚩
   water: '\u{1F4A6}',       // 💦
   cloud: '\u{1F327}\uFE0F', // 🌧️
   seedling: '\u{1F331}',    // 🌱
-  lootBag: '\u{1F45D}',     // 👝
-  poop: '\u{1F4A9}',        // 💩
-  egg: '\u{1F95A}',         // 🥚
+  lootBag:     '\u{1F45D}',        // 👝
+  poop:        '\u{1F4A9}',        // 💩
+  egg:         '\u{1F95A}',        // 🥚
 } as const;
 
 export const TREE_VARIANT_EMOJI: Record<TreeVariant, string> = {
@@ -164,4 +190,5 @@ export const LOG_CATS: readonly LogCategory[] = [
   'harvest',
   'loot',
   'hygiene',
+  'housing',
 ];

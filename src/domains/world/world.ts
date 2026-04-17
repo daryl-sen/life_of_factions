@@ -91,4 +91,9 @@ export class World {
   get medicineBlocks() { return this.grid.medicineBlocks; }
   get flowerBlocks() { return this.grid.flowerBlocks; }
   get cactusBlocks() { return this.grid.cactusBlocks; }
+  get houses() { return this.grid.houses; }
+  get houseCells() { return this.grid.houseCells; }
+
+  // UI state for house inspector
+  selectedHouseId: string | null = null;
 }

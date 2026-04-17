@@ -28,28 +28,34 @@ export const ENTITY_CLASSES: Record<EntityClassName, EntityClassDef> = {
       'reproduce', 'sleep', 'harvest', 'eat', 'wash',
       'deposit', 'withdraw', 'pickup', 'poop', 'clean',
       'play', 'build_farm', 'seek_mate',
+      'build_house', 'upgrade_house', 'enter_house', 'exit_house', 'sleep_in_house',
     ]),
     emojiMap: {
-      idle: '\u{1F642}',     // 🙂
-      talk: '\u{1F604}',     // 😄
-      quarrel: '\u{1F624}',  // 😤
-      attack: '\u{1F621}',   // 😡
-      heal: '\u{1F917}',     // 🤗
-      share: '\u{1FAE2}',    // 🫢
-      reproduce: '\u{1F60D}',// 😍
-      sleep: '\u{1F634}',    // 😴
-      harvest: '\u{1FAE8}',  // 🫨
-      eat: '\u{1F914}',      // 🤔
-      wash: '\u{1F914}',     // 🤔
-      deposit: '\u{1F617}',  // 😗
-      withdraw: '\u{1F617}', // 😗
-      pickup: '\u{1F914}',   // 🤔
-      poop: '\u{1F623}',     // 😣
-      clean: '\u{1F637}',    // 😷
-      play: '\u{1F92A}',     // 🤪
-      build_farm: '\u{1F920}',// 🤠
-      seek_mate: '\u{1F495}', // 💕
-      await_mate: '\u{1F497}',// 💗
+      idle: '\u{1F642}',          // 🙂
+      talk: '\u{1F604}',          // 😄
+      quarrel: '\u{1F624}',       // 😤
+      attack: '\u{1F621}',        // 😡
+      heal: '\u{1F917}',          // 🤗
+      share: '\u{1FAE2}',         // 🫢
+      reproduce: '\u{1F60D}',     // 😍
+      sleep: '\u{1F634}',         // 😴
+      harvest: '\u{1FAE8}',       // 🫨
+      eat: '\u{1F914}',           // 🤔
+      wash: '\u{1F914}',          // 🤔
+      deposit: '\u{1F617}',       // 😗
+      withdraw: '\u{1F617}',      // 😗
+      pickup: '\u{1F914}',        // 🤔
+      poop: '\u{1F623}',          // 😣
+      clean: '\u{1F637}',         // 😷
+      play: '\u{1F92A}',          // 🤪
+      build_farm: '\u{1F920}',    // 🤠
+      seek_mate: '\u{1F495}',     // 💕
+      await_mate: '\u{1F497}',    // 💗
+      build_house: '\u{1F6E0}\uFE0F', // 🛠️
+      upgrade_house: '\u{1F528}', // 🔨
+      enter_house: '\u{1F6B6}',   // 🚶
+      exit_house: '\u{1F6B6}',    // 🚶
+      sleep_in_house: '\u{1F634}',// 😴
     },
   },
   elder: {
@@ -59,16 +65,17 @@ export const ENTITY_CLASSES: Record<EntityClassName, EntityClassDef> = {
       'sleep', 'harvest', 'eat', 'wash',
       'deposit', 'withdraw', 'pickup', 'poop', 'clean',
       'play', 'build_farm',
+      'build_house', 'upgrade_house', 'enter_house', 'exit_house', 'sleep_in_house',
     ]),
     emojiMap: {
-      idle: '\u{1F9D3}',     // 🧓
+      idle: '\u{1F9D3}',          // 🧓
       talk: '\u{1F604}',
       quarrel: '\u{1F624}',
       attack: '\u{1F621}',
       heal: '\u{1F917}',
       share: '\u{1FAE2}',
       sleep: '\u{1F634}',
-      harvest: '\u{1FAE8}',  // 🫨
+      harvest: '\u{1FAE8}',       // 🫨
       eat: '\u{1F914}',
       wash: '\u{1F914}',
       deposit: '\u{1F617}',
@@ -78,7 +85,12 @@ export const ENTITY_CLASSES: Record<EntityClassName, EntityClassDef> = {
       clean: '\u{1F637}',
       play: '\u{1F92A}',
       build_farm: '\u{1F920}',
-      await_mate: '\u{1F497}',// 💗
+      await_mate: '\u{1F497}',    // 💗
+      build_house: '\u{1F6E0}\uFE0F', // 🛠️
+      upgrade_house: '\u{1F528}', // 🔨
+      enter_house: '\u{1F6B6}',   // 🚶
+      exit_house: '\u{1F6B6}',    // 🚶
+      sleep_in_house: '\u{1F634}',// 😴
     },
     statModifiers: { attackMult: 0.7 },
   },
