@@ -23,8 +23,41 @@ Actions are discrete behaviors agents perform. Each action has a duration, energ
 | `clean` | 2.1-3.1s | 0.25 | 1 (adjacent poop block) | Yes | |
 | `play` | 3.9-6.5s | 0.15 | 1 (adjacent interactable block) | Yes | 🤪 |
 | `build_farm` | 5.2s | 0.25 | self (spawns on adjacent free cell) | Yes | |
+| `build_house` | 5.2s | 0.3 | self (spawns adjacent tent) | Yes | 🏗️ |
+| `upgrade_house` | 5.2s | 0.3 | 1 (adjacent owned house) | Yes | 🔨 |
+| `enter_house` | 0.5s | 0 | 1 (adjacent accessible house) | Yes | |
+| `exit_house` | 0.5s | 0 | self (inside house) | Yes | |
+| `sleep_in_house` | 15.6-23.4s | 0 (restores) | self (inside house) | Yes | 😴 |
 
 > **Note:** `harvest` is a single consolidated action covering food, water, and wood — the `resourceType` in the action payload determines which block type is harvested. The `wash` action (formerly `drink`) consumes water from inventory to restore hygiene.
+
+## Housing Actions
+
+### build_house
+
+**Requirements:** 3+ wood in inventory, adult or elder, no owned house nearby.
+
+**Effect (on completion):** Spawns a tent (⛺) on an adjacent free cell. The builder becomes owner. Awards 10 XP. Logs `'housing'` category event. Consumes 3 wood.
+
+### upgrade_house
+
+**Requirements:** Agent owns adjacent house; sufficient wood for next tier. Costs: tent→house: 5 wood, house→big_house: 8 wood, big_house→settlement: 12 wood.
+
+**Effect (on completion):** Upgrades house to next tier in place. 1x1→2x2 upgrade expands to an adjacent free cell; aborts (refunds wood) if no expansion space.
+
+| Current | Next | Wood Cost | Size |
+|---------|------|-----------|------|
+| ⛺ tent | 🏠 house | 5 | 1x1 |
+| 🏠 house | 🏠 big_house | 8 | 2x2 |
+| 🏠 big_house | 🏘️ settlement | 12 | 2x2 |
+
+### enter_house / exit_house
+
+Agents enter adjacent houses they own or that are vacant with capacity. Inside, agents are removed from the visible grid and cannot be targeted. Farms hold 1 occupant.
+
+### sleep_in_house
+
+Like `sleep` but with **1.5× energy recovery** (12 energy per 500ms vs 8). Only available when inside a house. Preferred over outdoor sleep when energy is low.
 
 ## Social Actions
 

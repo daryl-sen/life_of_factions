@@ -17,7 +17,12 @@ export type ActionType =
   | 'play'
   | 'build_farm'
   | 'seek_mate'
-  | 'await_mate';
+  | 'await_mate'
+  | 'build_house'
+  | 'upgrade_house'
+  | 'enter_house'
+  | 'exit_house'
+  | 'sleep_in_house';
 
 export enum ActionTag {
   COMBAT = 'combat',
@@ -84,7 +89,8 @@ export type LogCategory =
   | 'eat'
   | 'harvest'
   | 'loot'
-  | 'hygiene';
+  | 'hygiene'
+  | 'housing';
 
 export interface ILogEntry {
   t: number;

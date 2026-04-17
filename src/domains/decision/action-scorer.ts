@@ -54,6 +54,26 @@ function hardOverride(action: ActionDef, agent: Agent, context: DecisionContext)
     return Infinity;
   }
 
+  // Mandatory sleep in house when inside and energy critical
+  if (action.type === 'sleep_in_house' && context.isInsideHouse && context.needBands['energy'] === NeedBand.CRITICAL) {
+    return Infinity;
+  }
+
+  // Can't enter house if already inside
+  if (action.type === 'enter_house' && context.isInsideHouse) {
+    return -Infinity;
+  }
+
+  // Can't exit house if not inside
+  if (action.type === 'exit_house' && !context.isInsideHouse) {
+    return -Infinity;
+  }
+
+  // Can't sleep in house if not inside
+  if (action.type === 'sleep_in_house' && !context.isInsideHouse) {
+    return -Infinity;
+  }
+
   // Block reproduce if already pregnant
   if (action.type === 'reproduce' && context.pregnant) {
     return -Infinity;
@@ -84,6 +104,11 @@ function needScore(action: ActionDef, context: DecisionContext): number {
   // Sleep addresses energy need
   if (action.type === 'sleep') {
     score += BAND_SCORES[bands['energy'] ?? NeedBand.NORMAL] * 1.5;
+  }
+
+  // Sleep in house: same as sleep but +50 bonus (strictly better than outdoor sleep)
+  if (action.type === 'sleep_in_house') {
+    score += BAND_SCORES[bands['energy'] ?? NeedBand.NORMAL] * 1.5 + 50;
   }
 
   // Eat addresses fullness need
@@ -161,7 +186,7 @@ function moodScore(action: ActionDef, agent: Agent, context: DecisionContext): n
       const fertilityBonus = (130 - agent.traits.fertility.energyThreshold) / 80;
       score += 150 + fertilityBonus * 50;
     }
-    if (action.type === 'build_farm') {
+    if (action.type === 'build_farm' || action.type === 'build_house' || action.type === 'upgrade_house') {
       score += 80;
     }
   }
@@ -240,6 +265,39 @@ function situationalScore(action: ActionDef, agent: Agent, context: DecisionCont
   if (action.type === 'clean') {
     const poop = context.nearbyBlocks.filter(b => b.type === 'poop' && b.dist <= 1);
     if (poop.length > 0) score += 40;
+  }
+
+  // ── Housing situational scores ──
+  if (action.type === 'enter_house') {
+    // Strongly prefer shelter when under attack
+    if (context.underAttack) score += 400;
+    // Boost when energy is low (want to sleep inside)
+    const energyBand = context.needBands['energy'];
+    if (energyBand === NeedBand.CRITICAL || energyBand === NeedBand.LOW) score += 150;
+    // Baseline preference for shelter when accessible
+    if (context.hasAccessibleHouse) score += 40;
+  }
+
+  if (action.type === 'exit_house') {
+    // Want to leave when energy is full and have external needs
+    const energyBand = context.needBands['energy'];
+    if (energyBand === NeedBand.HIGH || energyBand === NeedBand.FULL) score += 60;
+    // Urgently leave when starving
+    const fullnessBand = context.needBands['fullness'];
+    if (fullnessBand === NeedBand.CRITICAL || fullnessBand === NeedBand.LOW) score += 200;
+    // Social need drives going outside
+    const socialBand = context.needBands['social'];
+    if (socialBand === NeedBand.CRITICAL || socialBand === NeedBand.LOW) score += 80;
+  }
+
+  if (action.type === 'build_house' && !context.hasAccessibleHouse) {
+    // Strong drive to build when no shelter nearby and have resources
+    score += 100;
+  }
+
+  if (action.type === 'upgrade_house') {
+    // Modest bonus — upgrade is quality-of-life
+    score += 30;
   }
 
   // ── Territory effects ──

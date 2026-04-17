@@ -81,7 +81,75 @@ export class SimulationEngine {
           }
           log(world, 'loot', `${a.name} dropped a loot bag`, a.id, { x: a.cellX, y: a.cellY });
         }
-        world.agentsByCell.delete(key(a.cellX, a.cellY));
+        // House cleanup: remove from occupants if inside, and transfer ownership
+        if (a.isInsideHouse && a.houseId) {
+          if (!a.houseId.startsWith('farm:')) {
+            for (const [, house] of world.grid.houses) {
+              if (house.id === a.houseId) {
+                const idx = house.occupantIds.indexOf(a.id);
+                if (idx >= 0) house.occupantIds.splice(idx, 1);
+                break;
+              }
+            }
+          } else {
+            // Farm shelter
+            for (const farm of world.grid.farms.values()) {
+              if (farm.occupantId === a.id) { farm.occupantId = null; break; }
+            }
+          }
+        } else {
+          world.agentsByCell.delete(key(a.cellX, a.cellY));
+        }
+
+        // Transfer house ownership
+        for (const [, house] of world.grid.houses) {
+          if (house.ownerId !== a.id) continue;
+
+          // Find eldest child (same familyName, parent is the dead agent)
+          let heir: string | null = null;
+          let heirAge = -1;
+          for (const candidate of world.agents) {
+            if (candidate.id === a.id) continue;
+            if (candidate.health <= 0) continue;
+            if (candidate.familyName !== a.familyName) continue;
+            // Is a child?
+            if (candidate.parentIds.includes(a.id) && candidate.ageTicks > heirAge) {
+              heir = candidate.id;
+              heirAge = candidate.ageTicks;
+            }
+          }
+
+          // Fallback: eldest family member
+          if (!heir) {
+            for (const candidate of world.agents) {
+              if (candidate.id === a.id) continue;
+              if (candidate.health <= 0) continue;
+              if (candidate.familyName !== a.familyName) continue;
+              if (candidate.ageTicks > heirAge) {
+                heir = candidate.id;
+                heirAge = candidate.ageTicks;
+              }
+            }
+          }
+
+          if (heir) {
+            const heirAgent = world.agentsById.get(heir);
+            house.ownerId = heir;
+            house.familyName = a.familyName;
+            const heirName = heirAgent?.name ?? 'Someone';
+            log(world, 'housing', `${heirName} inherited ${a.name}'s ${house.tier.replace('_', ' ')}`, heir, { houseId: house.id });
+            world.events.emit('house:ownership-changed', { houseId: house.id, newOwnerId: heir });
+          } else {
+            // Vacant
+            house.ownerId = '';
+            log(world, 'housing', `${a.name}'s ${house.tier.replace('_', ' ')} is now vacant`, null, { houseId: house.id });
+            world.events.emit('house:ownership-changed', { houseId: house.id, newOwnerId: null });
+          }
+        }
+
+        if (!a.isInsideHouse) {
+          world.agentsByCell.delete(key(a.cellX, a.cellY));
+        }
         world.agentsById.delete(a.id);
         removedIds.push(a.id);
         if (a.factionId && world.factions.has(a.factionId)) {

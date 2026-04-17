@@ -717,7 +717,10 @@ export class AgentUpdater {
         agent.action.type !== 'poop' &&
         agent.action.type !== 'clean' &&
         agent.action.type !== 'play' &&
-        agent.action.type !== 'build_farm'
+        agent.action.type !== 'build_farm' &&
+        agent.action.type !== 'sleep_in_house' &&
+        agent.action.type !== 'exit_house' &&
+        agent.action.type !== 'enter_house'
       ) {
         agent.action = null;
       }
@@ -730,6 +733,41 @@ export class AgentUpdater {
       if (hpRatio < agent.traits.courage.fleeHpRatio) {
         agent.action = null;
       }
+    }
+
+    // ── Sheltered agents: simplified in-house processing ──
+
+    if (agent.isInsideHouse) {
+      if (agent.action) {
+        ActionProcessor.process(world, agent, TICK_MS);
+      } else {
+        // In-house decisions: sleep if tired, exit if energy full and needs demand going outside
+        if (agent.energy < MANDATORY_SLEEP_THRESHOLD) {
+          tryStartAction(agent, 'sleep_in_house');
+        } else if (agent.energy >= agent.maxEnergy * 0.8 &&
+          (agent.fullness < FULLNESS_CRITICAL_THRESHOLD || agent.hygiene < CRITICAL_HYGIENE_THRESHOLD)) {
+          tryStartAction(agent, 'exit_house');
+        } else if (agent.energy < ENERGY_LOW_THRESHOLD) {
+          tryStartAction(agent, 'sleep_in_house');
+        }
+      }
+      agent.clampStats();
+      // Disease, starvation, and age checks still apply to sheltered agents
+      if (agent.diseased) {
+        agent.energy -= passiveEnergyDrainPerTick(agent.traits);
+        agent.health -= (DISEASE_HP_DRAIN_PER_SEC * TICK_MS) / 1000;
+        if (agent.hygiene > DISEASE_CURE_HYGIENE_THRESHOLD) {
+          agent.diseased = false;
+          log(world, 'hygiene', `${agent.name} recovered from disease`, agent.id, {});
+        }
+      }
+      if (agent.fullness <= 0) agent.health -= (STARVE_HP_PER_SEC * TICK_MS) / 1000;
+      if (agent.fullness > FULLNESS_REGEN_THRESHOLD) agent.healBy((REGEN_HP_PER_SEC * TICK_MS) / 1000);
+      if (agent.ageTicks >= agent.maxAgeTicks) {
+        agent.health = 0;
+        log(world, 'death', `${agent.name} died of old age`, agent.id, {});
+      }
+      return;
     }
 
     // ── Action processing or movement/decision ──
@@ -834,7 +872,7 @@ export class AgentUpdater {
         // ── Idle decision ──
         if (!agent.path && !agent.action) {
           // Try the new DecisionEngine first for scored action selection
-          const candidate = DecisionEngine.decide(agent, ContextBuilder.build(world, agent));
+          const candidate = DecisionEngine.decide(agent, ContextBuilder.build(world, agent), world);
           if (candidate && candidate.actionType === 'seek_mate' && candidate.targetId) {
             // Handle seek_mate: consent check, start pathfinding, partner waits
             const partner = world.agentsById.get(candidate.targetId);

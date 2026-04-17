@@ -7,7 +7,7 @@ import { Agent } from '../entity/agent';
 import { Genome } from '../genetics';
 import { Faction, FactionManager } from '../faction';
 
-const VERSION = '4.3.0';
+const VERSION = '4.5.0';
 
 // Inlined TUNE constants
 const FARM_MAX_SPAWNS = 12;
@@ -79,6 +79,14 @@ export class PersistenceManager {
       obstacles.push(o);
     }
     const farms = [...world.farms.values()];
+    // Deduplicate multi-cell houses
+    const housesSeen = new Set<string>();
+    const houses: unknown[] = [];
+    for (const h of world.houses.values()) {
+      if (housesSeen.has(h.id)) continue;
+      housesSeen.add(h.id);
+      houses.push(h);
+    }
     const foodBlocks = [...world.foodBlocks.values()];
     const agents = world.agents.map((a) => ({
       id: a.id,
@@ -125,10 +133,13 @@ export class PersistenceManager {
       goal: a.goal,
       replanAtTick: a.replanAtTick,
       pathFailCount: a.pathFailCount,
+      houseId: a.houseId,
+      isInsideHouse: a.isInsideHouse,
       resourceMemory: [
         ['food', a.resourceMemory.get('food') ?? []],
         ['water', a.resourceMemory.get('water') ?? []],
         ['wood', a.resourceMemory.get('wood') ?? []],
+        ['shelter', a.resourceMemory.get('shelter') ?? []],
       ],
       pregnancy: a.pregnancy.active ? {
         remainingMs:         a.pregnancy.remainingMs,
@@ -145,7 +156,7 @@ export class PersistenceManager {
       } : null,
     }));
     return {
-      version: 'v4.3',
+      version: 'v4.5',
       meta: { version: VERSION, savedAt: Date.now() },
       grid: { CELL: CELL_PX, GRID: GRID_SIZE },
       state: {
@@ -164,6 +175,7 @@ export class PersistenceManager {
       flags,
       obstacles,
       farms,
+      houses,
       foodBlocks,
       waterBlocks: PersistenceManager._serializeWaterBlocks(world),
       treeBlocks: [...world.treeBlocks.values()],
@@ -242,8 +254,8 @@ export class PersistenceManager {
     // Version check: v4 saves have no top-level version; v4.2 saves have version:'v4.2'.
     // Throw on unknown future versions to surface incompatibility early.
     const saveVersion = d.version as string | undefined;
-    if (saveVersion && saveVersion !== 'v4.2' && saveVersion !== 'v4.3') {
-      throw new Error(`Save file version "${saveVersion}" is not compatible with v4.3`);
+    if (saveVersion && saveVersion !== 'v4.2' && saveVersion !== 'v4.3' && saveVersion !== 'v4.5') {
+      throw new Error(`Save file version "${saveVersion}" is not compatible with v4.5`);
     }
     world.running = false;
     world.grid.clear();
@@ -294,7 +306,31 @@ export class PersistenceManager {
         ...fm,
         spawnsRemaining: fm.spawnsRemaining ?? FARM_MAX_SPAWNS,
         spawnTimerMs: fm.spawnTimerMs ?? rndi(FARM_SPAWN_INTERVAL_RANGE[0], FARM_SPAWN_INTERVAL_RANGE[1]),
+        occupantId: fm.occupantId ?? null,
       });
+    }
+    // Restore houses (register all cells for multi-cell houses)
+    for (const h of d.houses || []) {
+      const house = {
+        id: h.id,
+        x: h.x,
+        y: h.y,
+        tier: h.tier,
+        emoji: h.emoji,
+        hp: h.hp,
+        maxHp: h.maxHp,
+        capacity: h.capacity,
+        size: h.size ?? '1x1',
+        cells: h.cells ?? [{ x: h.x, y: h.y }],
+        ownerId: h.ownerId ?? '',
+        familyName: h.familyName ?? '',
+        occupantIds: h.occupantIds ?? [],
+        decayTimerMs: h.decayTimerMs ?? 60000,
+      };
+      for (const c of house.cells) {
+        world.grid.houses.set(key(c.x, c.y), house);
+        world.grid.houseCells.add(key(c.x, c.y));
+      }
     }
     for (const c of (d.foodBlocks || d.crops || [])) {
       world.foodBlocks.set(key(c.x, c.y), {
@@ -465,9 +501,22 @@ export class PersistenceManager {
         parentIds: a.parentIds ?? [],
         goal: a.goal ?? null,
         replanAtTick: a.replanAtTick ?? 0,
+        houseId: a.houseId ?? null,
       });
-      // Restore pathFailCount (not in AgentOpts, set directly)
+      // Restore pathFailCount and shelter state (not in AgentOpts, set directly)
       agent.pathFailCount = a.pathFailCount ?? 0;
+      agent.isInsideHouse = a.isInsideHouse ?? false;
+      // Validate houseId references an existing house or farm
+      if (agent.houseId) {
+        if (agent.houseId.startsWith('farm:')) {
+          const farmId = agent.houseId.slice(5);
+          const farmExists = [...world.farms.values()].some(f => f.id === farmId);
+          if (!farmExists) { agent.houseId = null; agent.isInsideHouse = false; }
+        } else {
+          const houseExists = [...world.grid.houses.values()].some(h => h.id === agent.houseId);
+          if (!houseExists) { agent.houseId = null; agent.isInsideHouse = false; }
+        }
+      }
       // Validate matingTargetId references an existing agent
       if (agent.matingTargetId && !(d.agents || []).some((x: Record<string, unknown>) => x.id === agent.matingTargetId)) {
         agent.matingTargetId = null;
@@ -499,7 +548,10 @@ export class PersistenceManager {
 
       world.agents.push(agent);
       world.agentsById.set(agent.id, agent);
-      world.agentsByCell.set(key(agent.cellX, agent.cellY), agent.id);
+      // Agents inside houses are not on the visible grid
+      if (!agent.isInsideHouse) {
+        world.agentsByCell.set(key(agent.cellX, agent.cellY), agent.id);
+      }
 
       // Only register births if no saved family registry (backward compat)
       if (!Array.isArray(d.familyRegistry)) {
