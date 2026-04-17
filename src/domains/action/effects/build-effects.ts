@@ -1,5 +1,5 @@
 import { GRID_SIZE } from '../../../core/constants';
-import { key, uuid, rndi, log } from '../../../core/utils';
+import { key, uuid, rndi, log, manhattan } from '../../../core/utils';
 import type { Agent } from '../../entity/agent';
 import type { World } from '../../world/world';
 
@@ -13,6 +13,16 @@ const BUILD_INSPIRATION_GAIN = 25;
 
 export function onBuildFarmComplete(world: World, agent: Agent): void {
   if (agent.inventory.wood < FARM_WOOD_COST || agent.energy < FARM_ENERGY_COST) return;
+
+  // Faction members may only build within their own territory
+  if (agent.factionId) {
+    const flag = world.flags.get(agent.factionId);
+    const faction = world.factions.get(agent.factionId);
+    if (flag && faction) {
+      const inTerritory = manhattan(agent.cellX, agent.cellY, flag.x, flag.y) <= faction.territoryRadius();
+      if (!inTerritory) return;
+    }
+  }
 
   const adj: [number, number][] = [
     [agent.cellX + 1, agent.cellY], [agent.cellX - 1, agent.cellY],

@@ -33,33 +33,16 @@ export class Controls {
       if (labels.lblAgents) labels.lblAgents.textContent = ranges.rngAgents!.value;
       if (nums.numAgents) nums.numAgents.value = ranges.rngAgents!.value;
     });
-    ranges.rngSpeed?.addEventListener('input', () => {
-      if (labels.lblSpeed) labels.lblSpeed.textContent = ranges.rngSpeed!.value + '%';
-      if (nums.numSpeed) nums.numSpeed.value = ranges.rngSpeed!.value;
-      world.speedPct = Number(ranges.rngSpeed!.value);
-    });
     ranges.rngCloudRate?.addEventListener('input', () => {
       if (labels.lblCloudRate) labels.lblCloudRate.textContent = Number(ranges.rngCloudRate!.value).toFixed(1) + '\u00d7';
       if (nums.numCloudRate) nums.numCloudRate.value = ranges.rngCloudRate!.value;
       world.cloudSpawnRate = Number(ranges.rngCloudRate!.value);
-    });
-    ranges.rngWorldSize?.addEventListener('input', () => {
-      const v = Number(ranges.rngWorldSize!.value);
-      if (labels.lblWorldSize) labels.lblWorldSize.textContent = v + '\u00d7' + v;
-      if (nums.numWorldSize) nums.numWorldSize.value = ranges.rngWorldSize!.value;
     });
     nums.numAgents?.addEventListener('input', () => {
       const v = $clamp(Number(nums.numAgents!.value), 20, 300);
       nums.numAgents!.value = String(v);
       if (ranges.rngAgents) ranges.rngAgents.value = String(v);
       if (labels.lblAgents) labels.lblAgents.textContent = String(v);
-    });
-    nums.numSpeed?.addEventListener('input', () => {
-      const v = $clamp(Number(nums.numSpeed!.value), 5, 300);
-      nums.numSpeed!.value = String(v);
-      if (ranges.rngSpeed) ranges.rngSpeed.value = String(v);
-      if (labels.lblSpeed) labels.lblSpeed.textContent = v + '%';
-      world.speedPct = v;
     });
     nums.numCloudRate?.addEventListener('input', () => {
       const v = $clamp(Number(nums.numCloudRate!.value), 0, 10);
@@ -68,11 +51,36 @@ export class Controls {
       if (labels.lblCloudRate) labels.lblCloudRate.textContent = v.toFixed(1) + '\u00d7';
       world.cloudSpawnRate = v;
     });
-    nums.numWorldSize?.addEventListener('input', () => {
-      const v = $clamp(Number(nums.numWorldSize!.value), 20, 120);
-      nums.numWorldSize!.value = String(v);
-      if (ranges.rngWorldSize) ranges.rngWorldSize.value = String(v);
-      if (labels.lblWorldSize) labels.lblWorldSize.textContent = v + '\u00d7' + v;
+
+    // Speed buttons
+    const speedBtns = [
+      { btn: buttons.btnSpeedSlow,   val: 50 },
+      { btn: buttons.btnSpeedNormal, val: 100 },
+      { btn: buttons.btnSpeedFast,   val: 200 },
+      { btn: buttons.btnSpeedVFast,  val: 300 },
+    ];
+    speedBtns.forEach(({ btn, val }) => {
+      btn?.addEventListener('click', () => {
+        world.speedPct = val;
+        if (nums.numSpeed) nums.numSpeed.value = String(val);
+        speedBtns.forEach(({ btn: b }) => b?.classList.remove('selected'));
+        btn.classList.add('selected');
+      });
+    });
+
+    // World size buttons (only effective before start)
+    const sizeBtns = [
+      { btn: buttons.btnSize62,  val: 62 },
+      { btn: buttons.btnSize124, val: 124 },
+      { btn: buttons.btnSize160, val: 160 },
+      { btn: buttons.btnSize200, val: 200 },
+    ];
+    sizeBtns.forEach(({ btn, val }) => {
+      btn?.addEventListener('click', () => {
+        if (nums.numWorldSize) nums.numWorldSize.value = String(val);
+        sizeBtns.forEach(({ btn: b }) => b?.classList.remove('selected'));
+        btn.classList.add('selected');
+      });
     });
 
     buttons.btnStart?.addEventListener('click', () => {
@@ -89,12 +97,12 @@ export class Controls {
       world.activeLogCats = new Set(LOG_CATS);
       UIManager.setupLogFilters(world, dom.logFilters, doRenderLog);
       // Apply world size before seeding
-      const worldSize = Number(ranges.rngWorldSize?.value || 62);
+      const worldSize = Number(nums.numWorldSize?.value || 62);
       setGridSize(worldSize);
       world.grid.size = worldSize;
       world.terrainField.resize(worldSize);
 
-      world.speedPct = Number(ranges.rngSpeed?.value || 100);
+      world.speedPct = Number(nums.numSpeed?.value || 100);
       world.cloudSpawnRate = Number(ranges.rngCloudRate?.value || 1);
       _worldGenerator.seed(world);
       spawnAgents(Number(ranges.rngAgents?.value || 20));
@@ -105,8 +113,11 @@ export class Controls {
       if (buttons.btnResume) buttons.btnResume.disabled = true;
       if (ranges.rngAgents) ranges.rngAgents.disabled = true;
       if (nums.numAgents) nums.numAgents.disabled = true;
-      if (ranges.rngWorldSize) ranges.rngWorldSize.disabled = true;
       if (nums.numWorldSize) nums.numWorldSize.disabled = true;
+      buttons.btnSize62?.setAttribute('disabled', '');
+      buttons.btnSize124?.setAttribute('disabled', '');
+      buttons.btnSize160?.setAttribute('disabled', '');
+      buttons.btnSize200?.setAttribute('disabled', '');
       if (onWorldResize) onWorldResize();
       world.log.push({
         t: performance.now(),
@@ -179,8 +190,11 @@ export class Controls {
       if (buttons.btnResume) buttons.btnResume.disabled = true;
       if (ranges.rngAgents) ranges.rngAgents.disabled = false;
       if (nums.numAgents) nums.numAgents.disabled = false;
-      if (ranges.rngWorldSize) ranges.rngWorldSize.disabled = false;
       if (nums.numWorldSize) nums.numWorldSize.disabled = false;
+      buttons.btnSize62?.removeAttribute('disabled');
+      buttons.btnSize124?.removeAttribute('disabled');
+      buttons.btnSize160?.removeAttribute('disabled');
+      buttons.btnSize200?.removeAttribute('disabled');
     });
 
     buttons.btnSpawnCrop?.addEventListener('click', () => {

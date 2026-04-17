@@ -242,5 +242,43 @@ function situationalScore(action: ActionDef, agent: Agent, context: DecisionCont
     if (poop.length > 0) score += 40;
   }
 
+  // ── Territory effects ──
+  const sensitivity = agent.traits.tribalism.territorialSensitivity;
+  const wanderBias  = agent.traits.nomadism.wanderBias;
+
+  if (context.inOwnTerritory) {
+    // Boost positive social/helpful actions toward faction allies
+    if (action.tags.has(ActionTag.SOCIAL) || action.tags.has(ActionTag.HELPFUL)) {
+      const allies = context.nearbyAgents.filter(n => n.sameFaction);
+      if (allies.length > 0) score += 60 * sensitivity;
+    }
+    // Boost combat against enemies encroaching on own territory
+    if (action.tags.has(ActionTag.COMBAT)) {
+      const enemies = context.nearbyAgents.filter(n => n.isEnemy);
+      if (enemies.length > 0) score += 80 * sensitivity;
+    }
+    // Low wander-bias agents prefer to stay put (penalize moving away)
+    if (action.type === 'deposit') {
+      score -= (1 - wanderBias) * 20; // deposit pulls toward flag — slight penalty for homebodies already inside
+    }
+  }
+
+  if (context.inEnemyTerritory) {
+    // Slight combat boost against members of the faction whose territory we're in
+    if (action.type === 'attack') {
+      const territoryOwners = context.nearbyAgents.filter(
+        n => n.isEnemy && n.agent.factionId === context.enemyTerritoryFactionId
+      );
+      if (territoryOwners.length > 0) score += 50 * sensitivity;
+    }
+  }
+
+  // Nomadism: homebodies (low wanderBias) that are outside their territory prefer returning
+  if (!context.inOwnTerritory && agent.factionId && context.ownFlagPos) {
+    if (action.type === 'deposit' && agent.inventoryTotal() >= 1) {
+      score += (1 - wanderBias) * 50;
+    }
+  }
+
   return score;
 }

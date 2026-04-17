@@ -97,6 +97,30 @@ export class ContextBuilder {
       }
     }
 
+    // Territory membership
+    let inOwnTerritory = false;
+    let inEnemyTerritory = false;
+    let enemyTerritoryFactionId: string | null = null;
+
+    if (agent.factionId) {
+      const ownFlag = world.grid.flags.get(agent.factionId);
+      const ownFaction = world.factions.get(agent.factionId);
+      if (ownFlag && ownFaction) {
+        inOwnTerritory = manhattan(agent.cellX, agent.cellY, ownFlag.x, ownFlag.y) <= ownFaction.territoryRadius();
+      }
+    }
+
+    for (const [fid, faction] of world.factions) {
+      if (fid === agent.factionId) continue;
+      const flag = world.grid.flags.get(fid);
+      if (!flag) continue;
+      if (manhattan(agent.cellX, agent.cellY, flag.x, flag.y) <= faction.territoryRadius()) {
+        inEnemyTerritory = true;
+        enemyTerritoryFactionId = fid;
+        break;
+      }
+    }
+
     const needBands = evaluateNeeds(agent);
 
     return {
@@ -110,6 +134,9 @@ export class ContextBuilder {
       nearOwnFlag,
       ownFlagPos,
       mood: computeMood(needBands),
+      inOwnTerritory,
+      inEnemyTerritory,
+      enemyTerritoryFactionId,
     };
   }
 }
