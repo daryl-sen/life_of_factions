@@ -12,7 +12,7 @@ export interface NearbyAgent {
 }
 
 export interface NearbyResource {
-  readonly type: 'food' | 'water' | 'wood' | 'seedling' | 'medicine' | 'cactus';
+  readonly type: 'food' | 'water' | 'wood' | 'seedling' | 'cactus';
   readonly pos: IPosition;
   readonly dist: number;
 }

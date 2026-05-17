@@ -5,6 +5,8 @@
 **Version target:** 4.3.0
 **Status:** Draft
 
+> **Post-v4.3 update (issue #65):** Medicine is now consumed on contact (in `AgentUpdater.update` after movement) — not via the `harvest` action. The `harvestMedicine()` function, the `'medicine'` entry in `NearbyResource.type`, and the medicine scan in `context-builder.ts` have been removed. `MEDICINE_SPAWN_CHANCE` has been reduced 20× (0.0003 → 0.000015). Sections below describing the harvest-based flow are historical.
+
 ---
 
 ## 1. Scope

@@ -215,7 +215,6 @@ function resolveTarget(
       const r = adjRes[0];
       let resourceType: string;
       if (r.type === 'food') resourceType = 'food_lq';
-      else if (r.type === 'medicine') resourceType = 'medicine';
       else if (r.type === 'cactus') resourceType = 'cactus';
       else resourceType = r.type;
       return { targetPos: { x: r.pos.x, y: r.pos.y }, resourceType } as { targetPos: { x: number; y: number }; resourceType: string } & { targetId?: string };

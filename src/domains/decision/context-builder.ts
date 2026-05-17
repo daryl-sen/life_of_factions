@@ -52,17 +52,7 @@ export class ContextBuilder {
       }
     }
 
-    // Scan for nearby medicine blocks (only relevant if diseased)
-    if (agent.diseased) {
-      for (const [, block] of world.grid.medicineBlocks) {
-        const dist = manhattan(agent.cellX, agent.cellY, block.x, block.y);
-        if (dist <= vr) {
-          nearbyResources.push({ type: 'medicine', pos: { x: block.x, y: block.y }, dist });
-        }
-      }
-    }
-
-    // Scan for nearby cactus blocks
+// Scan for nearby cactus blocks
     for (const [, block] of world.grid.cactusBlocks) {
       const dist = manhattan(agent.cellX, agent.cellY, block.x, block.y);
       if (dist <= vr) {
