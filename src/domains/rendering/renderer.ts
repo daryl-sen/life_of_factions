@@ -116,6 +116,7 @@ export class Renderer {
     ctx.drawImage(this._terrainCanvas!, sx, sy, sw, sh, sx, sy, sw, sh);
 
     if (world.drawGrid) this._drawGrid(ctx, camera, vb);
+    if (world.drawTerritories) this._drawTerritories(ctx, world);
     this._drawWaterBlocks(ctx, world, vb, lod);
     this._drawTreeBlocks(ctx, world, vb, lod);
     this._drawSeedlings(ctx, world, vb, lod);
@@ -265,6 +266,34 @@ export class Renderer {
     }
     ctx.stroke();
     ctx.restore();
+  }
+
+  // --- Territories ---
+
+  private _drawTerritories(ctx: CanvasRenderingContext2D, world: World): void {
+    for (const [fid, faction] of world.factions) {
+      const flag = world.flags.get(fid);
+      if (!flag) continue;
+      const r = faction.territoryRadius();
+      // Draw as Manhattan-distance diamond to match the actual territory check
+      const cx = (flag.x + 0.5) * CELL_PX;
+      const cy = (flag.y + 0.5) * CELL_PX;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(cx,              cy - r * CELL_PX); // top
+      ctx.lineTo(cx + r * CELL_PX, cy);              // right
+      ctx.lineTo(cx,              cy + r * CELL_PX); // bottom
+      ctx.lineTo(cx - r * CELL_PX, cy);              // left
+      ctx.closePath();
+      ctx.fillStyle = faction.color + '14';
+      ctx.fill();
+      ctx.strokeStyle = faction.color + '60';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
   }
 
   // --- Static helpers ---

@@ -1,4 +1,4 @@
-import { lookupGene } from './gene-registry';
+import { lookupGene, GENE_REGISTRY } from './gene-registry';
 import { expressGenome } from './expression';
 import type { RawGeneEntry, TraitSet } from './types';
 
@@ -9,14 +9,12 @@ const MAX_DNA_LENGTH = 250;     // 50 genes
 // Essential gene codes that must be present for viability
 const ESSENTIAL_CODES = ['AA', 'BB', 'CC', 'DD', 'EE'];
 
-// All catalog codes (uppercase) used when generating random genomes.
-// OO (Gregariousness) replaced by AD (Sociality) for new agents per v4.2.
-// OO remains in GENE_REGISTRY for backward-compatible DNA parsing.
-const ALL_CODES = [
-  'AA', 'BB', 'CC', 'DD', 'EE', 'FF', 'GG', 'HH', 'II', 'JJ',
-  'KK', 'LL', 'MM', 'NN', 'AD', 'PP', 'QQ', 'RR', 'SS', 'TT',
-  'UU', 'VV', 'AG', 'AP',
-];
+// Genes kept in GENE_REGISTRY for backward-compatible DNA parsing but excluded
+// from random generation (superseded genes go here).
+const RANDOM_EXCLUDED = new Set(['OO']);
+
+// Derived from the registry so new genes are automatically included — never edit this manually.
+const ALL_CODES: string[] = [...GENE_REGISTRY.keys()].filter(code => !RANDOM_EXCLUDED.has(code));
 
 /** Parse a 5-character gene segment into a RawGeneEntry */
 function parseGene(segment: string, position: number): RawGeneEntry {

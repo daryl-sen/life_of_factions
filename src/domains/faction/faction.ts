@@ -15,6 +15,11 @@ export class Faction {
     return this.members.size;
   }
 
+  /** Territory radius in grid cells. Base 10, +1 per 5 members, capped at 25. */
+  territoryRadius(): number {
+    return Math.min(25, 10 + Math.floor(this.members.size / 5));
+  }
+
   addMember(agentId: string): void {
     this.members.add(agentId);
   }

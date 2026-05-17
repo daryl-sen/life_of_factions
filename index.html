@@ -442,6 +442,41 @@
         border-radius: 12px;
         border: 1px solid rgba(34, 211, 238, 0.2);
       }
+      /* ── Option Button Groups ──────────────── */
+      .option-btn-group {
+        display: flex;
+        gap: 5px;
+        margin-bottom: 14px;
+      }
+      .option-btn {
+        flex: 1;
+        padding: 7px 4px;
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        text-align: center;
+        transition: all 0.2s;
+        box-shadow: none;
+        white-space: nowrap;
+        letter-spacing: 0.2px;
+      }
+      .option-btn:hover:not(:disabled) {
+        color: var(--text);
+        border-color: var(--border-accent);
+      }
+      .option-btn.selected {
+        background: var(--accent-dim);
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .option-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
       input[type="range"] {
         -webkit-appearance: none;
         width: 100%;
@@ -1012,12 +1047,22 @@
           <h3 class="section-heading">GLOBAL PARAMETERS</h3>
           <div class="param-row"><span class="param-label">STARTING AGENTS</span><span class="param-value" id="lblAgents">20</span></div>
           <input id="rngAgents" type="range" min="20" max="300" step="1" value="20"/>
-          <div class="param-row"><span class="param-label">SIMULATION SPEED</span><span class="param-value" id="lblSpeed">100%</span></div>
-          <input id="rngSpeed" type="range" min="5" max="300" step="1" value="100"/>
+          <div class="param-row" style="margin-bottom:6px"><span class="param-label">SIMULATION SPEED</span></div>
+          <div class="option-btn-group">
+            <button id="btnSpeedSlow"   class="option-btn"          data-speed="50">Slow 50%</button>
+            <button id="btnSpeedNormal" class="option-btn selected"  data-speed="100">Normal</button>
+            <button id="btnSpeedFast"   class="option-btn"          data-speed="200">Fast 200%</button>
+            <button id="btnSpeedVFast"  class="option-btn"          data-speed="300">V.Fast 300%</button>
+          </div>
           <div class="param-row"><span class="param-label">CLOUD SPAWN RATE</span><span class="param-value" id="lblCloudRate">1.0&times;</span></div>
           <input id="rngCloudRate" type="range" min="0" max="10.0" step="0.1" value="1"/>
-          <div class="param-row"><span class="param-label">WORLD SIZE</span><span class="param-value" id="lblWorldSize">62&times;62</span></div>
-          <input id="rngWorldSize" type="range" min="20" max="120" step="2" value="62"/>
+          <div class="param-row" style="margin-bottom:6px"><span class="param-label">WORLD SIZE</span></div>
+          <div class="option-btn-group">
+            <button id="btnSize62"  class="option-btn selected" data-size="62">62&times;62</button>
+            <button id="btnSize124" class="option-btn"          data-size="124">124&times;124</button>
+            <button id="btnSize160" class="option-btn"          data-size="160">160&times;160</button>
+            <button id="btnSize200" class="option-btn"          data-size="200">200&times;200</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1057,6 +1102,7 @@
           <div style="margin-top:12px">
             <label class="toggle-row"><input type="checkbox" id="cbPauseOnBlur"/> Pause when unfocused</label>
             <label class="toggle-row"><input type="checkbox" id="cbDrawGrid"/> Draw grid overlays</label>
+            <label class="toggle-row"><input type="checkbox" id="cbDrawTerritories"/> Show faction territories</label>
           </div>
           <div id="indicatorConfigMount" style="margin-top:14px"></div>
         </div>

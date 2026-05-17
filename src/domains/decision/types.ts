@@ -35,6 +35,12 @@ export interface DecisionContext {
   readonly nearOwnFlag: boolean;
   readonly ownFlagPos: IPosition | null;
   readonly mood: Mood;
+  /** Agent is currently within their own faction's territory radius */
+  readonly inOwnTerritory: boolean;
+  /** Agent is currently inside another faction's territory radius */
+  readonly inEnemyTerritory: boolean;
+  /** The faction ID whose territory the agent is encroaching on, if any */
+  readonly enemyTerritoryFactionId: string | null;
 }
 
 export interface ActionCandidate {

@@ -5,7 +5,7 @@
 Emoji Life is a zero-player, real-time 2D sandbox simulation deployed to GitHub Pages. Autonomous agents live on a 62x62 grid, gathering food, forming factions, reproducing, building, and fighting. The simulation is "cozy-chaotic" — designed to produce emergent stories, not follow a script.
 
 **Live site:** https://daryl-sen.github.io/life_of_factions/
-**Version:** 4.2.0
+**Version:** 4.4.0
 **Branch strategy:** Feature branches off `main`, bundled PRs.
 
 ---
@@ -290,6 +290,19 @@ docs/
 - **Pure functions** for calculations (gene expression, scoring, damage formulas). No side effects.
 - **Side effects** only in clearly marked methods (`apply()`, `execute()`, `emit()`, `render()`).
 - **Per-agent values** come from `agent.traits`, not from global constants.
+
+---
+
+## Adding a New Gene (mandatory checklist)
+
+When adding a new gene, update **all four** of these files — missing any one causes silent bugs:
+
+1. **`src/domains/genetics/gene-registry.ts`** — Add the `[code, GeneDef]` entry to `GENE_REGISTRY`.
+2. **`src/domains/genetics/types.ts`** — Add the new trait group to `TraitSet` (e.g. `readonly nomadism: { readonly wanderBias: number }`).
+3. **`src/domains/genetics/expression.ts`** — Add `const x = s('XY')` and return the new trait in the object literal.
+4. **`src/domains/genetics/genome.ts`** — `ALL_CODES` is **auto-derived** from `GENE_REGISTRY` and requires no manual edit. If the new gene should *not* appear in randomly generated genomes (e.g. it is superseded by a newer gene), add its code to `RANDOM_EXCLUDED`.
+
+> **Why this matters:** Omitting a gene from `ALL_CODES` (before the auto-derivation fix) meant all agents silently used the default trait value — a bug that is invisible at build time. The auto-derivation in `genome.ts` prevents this, but the other three files still require manual updates.
 
 ---
 

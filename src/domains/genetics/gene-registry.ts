@@ -173,6 +173,20 @@ export const GENE_REGISTRY: ReadonlyMap<string, TraitDef> = new Map<string, Trai
       { key: 'mutationRate', min: 0.001, default: 0.005, max: 0.02, scale: 10000, inverted: false },
     ],
   }],
+  ['AQ', {
+    code: 'AQ', name: 'Nomadism', essential: false,
+    // High = prefers wandering outside territory. Low = prefers staying inside own territory.
+    components: [
+      { key: 'wanderBias', min: 0.0, default: 0.5, max: 1.0, scale: 500, inverted: false },
+    ],
+  }],
+  ['AR', {
+    code: 'AR', name: 'Tribalism', essential: false,
+    // How strongly territorial context amplifies/modulates this agent's behavior.
+    components: [
+      { key: 'territorialSensitivity', min: 0.0, default: 0.5, max: 1.0, scale: 500, inverted: false },
+    ],
+  }],
 ]);
 
 /**

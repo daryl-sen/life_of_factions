@@ -59,6 +59,17 @@ Unlike v4.0, there is **no hard upper ceiling** — traits with high gene counts
 
 Agents with high `AP` produce more varied children — useful for exploring trait space but risky in stable environments. The `mutationRate` for a sexual offspring is the average of both parents' rates; for asexual offspring it is the agent's own rate.
 
+### Territory Traits
+
+| Gene | Trait | Key | Range | Effect |
+|------|-------|-----|-------|--------|
+| `AQ` | Nomadism | `wanderBias` | 0.0–1.0 | 0 = stays inside faction territory; 1 = wanders freely outside |
+| `AR` | Tribalism | `territorialSensitivity` | 0.0–1.0 | How strongly territorial context amplifies social/combat decisions |
+
+Agents with high **Tribalism** (`AR`) respond strongly to territory: inside their own territory they become friendlier to allies and more aggressive toward intruders. Outside their territory, the same effects apply but are dampened.
+
+Agents with low **Nomadism** (`AQ`) home-body agents that are outside their territory get a pull back toward the flag (deposit actions are boosted), keeping them clustered near their base. High Nomadism agents explore freely.
+
 ### Survivability
 
 | Gene | Trait | Key | Range | Effect |

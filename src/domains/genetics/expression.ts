@@ -73,6 +73,10 @@ export function expressGenome(genes: ReadonlyArray<RawGeneEntry>): TraitSet {
   const volatility    = s('AP');
   const pregnancyTrait = s('AG');
 
+  // Territory traits
+  const nomadism  = s('AQ');
+  const tribalism = s('AR');
+
   // Sociality: use AD expression when AD genes are present;
   // otherwise fall back to the gregariousness value so all callers
   // can unconditionally read `traits.sociality.socialDecay`.
@@ -166,6 +170,12 @@ export function expressGenome(genes: ReadonlyArray<RawGeneEntry>): TraitSet {
     },
     volatility: {
       mutationRate: volatility['mutationRate'] ?? TUNE.mutation.baseRate,
+    },
+    nomadism: {
+      wanderBias: nomadism['wanderBias'] ?? 0.5,
+    },
+    tribalism: {
+      territorialSensitivity: tribalism['territorialSensitivity'] ?? 0.5,
     },
   };
 }

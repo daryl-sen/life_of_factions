@@ -533,12 +533,18 @@ export class PersistenceManager {
     });
     const { dom } = opts;
     if (dom.gridChk) dom.gridChk.checked = world.drawGrid;
+    if (dom.territoriesChk) dom.territoriesChk.checked = world.drawTerritories;
     if (dom.pauseChk) dom.pauseChk.checked = world.pauseOnBlur;
     if (dom.factionSortEl) dom.factionSortEl.value = world.factionSort;
     if (dom.familySortEl) dom.familySortEl.value = world.familySort;
-    if (dom.ranges.rngSpeed) dom.ranges.rngSpeed.value = String(world.speedPct);
     if (dom.nums.numSpeed) dom.nums.numSpeed.value = String(world.speedPct);
-    if (dom.labels.lblSpeed) dom.labels.lblSpeed.textContent = `${world.speedPct}%`;
+    // Sync speed button selection
+    const speedMap: Record<number, string> = { 50: 'btnSpeedSlow', 100: 'btnSpeedNormal', 200: 'btnSpeedFast', 300: 'btnSpeedVFast' };
+    ['btnSpeedSlow', 'btnSpeedNormal', 'btnSpeedFast', 'btnSpeedVFast'].forEach(id => {
+      (dom.buttons as unknown as Record<string, HTMLButtonElement | null>)[id]?.classList.remove('selected');
+    });
+    const activeSpeedBtn = speedMap[world.speedPct] ?? 'btnSpeedNormal';
+    (dom.buttons as unknown as Record<string, HTMLButtonElement | null>)[activeSpeedBtn]?.classList.add('selected');
     if (dom.ranges.rngCloudRate) dom.ranges.rngCloudRate.value = String(world.cloudSpawnRate);
     if (dom.nums.numCloudRate) dom.nums.numCloudRate.value = String(world.cloudSpawnRate);
     if (dom.labels.lblCloudRate) dom.labels.lblCloudRate.textContent = world.cloudSpawnRate.toFixed(1) + '\u00d7';

@@ -45,6 +45,10 @@ export interface TraitSet {
   readonly pregnancy: { readonly gestationMs: number };
   /** AP gene. Per-child mutation rate. Defaults to TUNE.mutation.baseRate when AP absent. */
   readonly volatility: { readonly mutationRate: number };
+  /** AQ gene. 0 = strongly prefers own territory; 1 = prefers wandering outside. */
+  readonly nomadism: { readonly wanderBias: number };
+  /** AR gene. How strongly territorial context amplifies this agent's social/combat decisions. */
+  readonly tribalism: { readonly territorialSensitivity: number };
 }
 
 /** Definition of a single trait component's scaling */
