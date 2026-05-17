@@ -33,7 +33,7 @@ const TROPICAL_DENSITY_CAP = 2;          // max 🌴 in 3×3 area
 const REGULAR_DENSITY_CAP = 3;           // max 🌳 in 3×3 area
 
 // ── New plant tuning ──
-const MEDICINE_SPAWN_CHANCE = 0.0003;    // per mountain obstacle per tick
+const MEDICINE_SPAWN_CHANCE = 0.000015;  // per mountain obstacle per tick
 const MEDICINE_SPAWN_RADIUS = 3;
 
 const FLOWER_SPAWN_CHANCE = 0.0002;      // per fresh-water block per tick

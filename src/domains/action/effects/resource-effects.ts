@@ -23,8 +23,7 @@ export function onHarvestComplete(world: World, agent: Agent): void {
 
   const rt = act.payload?.resourceType || 'food_lq';
 
-  // Medicine bypasses inventory-full check (it's a status cure, not an item)
-  if (rt !== 'medicine' && agent.inventoryFull()) return;
+  if (agent.inventoryFull()) return;
 
   if (rt === 'food_hq' || rt === 'food_lq') {
     harvestFood(world, agent, tp);
@@ -32,8 +31,6 @@ export function onHarvestComplete(world: World, agent: Agent): void {
     harvestWater(world, agent, tp);
   } else if (rt === 'wood') {
     harvestWood(world, agent, tp);
-  } else if (rt === 'medicine') {
-    harvestMedicine(world, agent, tp);
   } else if (rt === 'cactus') {
     harvestCactus(world, agent, tp);
   }
@@ -119,18 +116,6 @@ function harvestWood(world: World, agent: Agent, tp: { x: number; y: number }): 
     world.grid.treeBlocks.delete(k);
     world.deadMarkers.push({ cellX: tree.x, cellY: tree.y, cause: 'tree', msRemaining: 10000 });
   }
-  checkLevelUp(world, agent);
-}
-
-function harvestMedicine(world: World, agent: Agent, tp: { x: number; y: number }): void {
-  const k = key(tp.x, tp.y);
-  const block = world.grid.medicineBlocks.get(k);
-  if (!block) return;
-  if (!agent.diseased) return; // no benefit if healthy
-  world.grid.medicineBlocks.delete(k);
-  agent.diseased = false;
-  agent.addXp(XP_PER_HARVEST);
-  log(world, 'harvest', `${agent.name} used medicine to cure disease`, agent.id, { x: tp.x, y: tp.y });
   checkLevelUp(world, agent);
 }
 

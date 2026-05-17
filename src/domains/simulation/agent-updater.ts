@@ -1010,6 +1010,18 @@ export class AgentUpdater {
 
     agent.clampStats();
 
+    // ── Medicine contact cure ──
+    // Diseased agents standing on a medicine block consume it and are cured.
+    if (agent.diseased) {
+      const k = key(agent.cellX, agent.cellY);
+      const med = world.grid.medicineBlocks.get(k);
+      if (med) {
+        world.grid.medicineBlocks.delete(k);
+        agent.diseased = false;
+        log(world, 'hygiene', `${agent.name} stepped on medicine and was cured`, agent.id, { x: agent.cellX, y: agent.cellY });
+      }
+    }
+
     // ── Disease effects ──
     if (agent.diseased) {
       agent.energy -= passiveEnergyDrainPerTick(agent.traits); // 2x drain (disease doubles energy drain)

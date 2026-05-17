@@ -110,15 +110,15 @@ These are new block types distinct from trees. They do not go through the seedli
 | Emoji | 🌿 |
 | Spawn condition | Random spawn near mountain-category obstacles |
 | Passable | Yes — agents can walk through this block |
-| Harvestable | Yes — via the existing harvest action |
-| Yield | No food/water. Cures the harvesting agent's disease. |
+| Harvestable | No — consumed on contact |
+| Yield | No food/water. Cures the agent's disease on contact. |
 | Regrowth | Respawns over time near mountains (passive spawn like seedlings near water) |
 
 **Behavior notes:**
-- A new passable block type. Unlike trees, agents can walk over medicine plants.
-- Harvested via the existing `harvest` action. When a diseased agent harvests a medicine block, the block is removed and the agent's disease is cured (`agent.diseased = false`). No food or resource yield.
-- Non-diseased agents ignore medicine plants (no benefit from harvesting).
-- Agents use medicine **opportunistically** — they do not actively pathfind toward it. If a diseased agent happens to be adjacent to a medicine block, they can harvest it.
+- A passable block type. Agents can walk over medicine plants.
+- Consumed on contact: when a diseased agent steps onto a medicine block, the block is removed and the agent's disease is cured (`agent.diseased = false`). No food or resource yield, no harvest action involved.
+- Non-diseased agents pass over medicine plants without consuming them.
+- Agents do not actively pathfind toward medicine — cure is purely incidental to movement (issue #65 — earlier "harvest" path was never used by the decision engine in practice).
 - Spawns passively near mountain obstacles with a low per-tick chance, similar to how seedlings spawn near water.
 - Does not grow, age, or produce offspring. It either exists or has been harvested.
 - Medicine is the first "special resource" — future special resources may grant temporary effects or bonus resources, but that system is out of scope for this PRD.
